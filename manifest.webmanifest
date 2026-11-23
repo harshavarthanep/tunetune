@@ -1,7 +1,7 @@
 {
   "name": "Tune Tune",
   "short_name": "Tune Tune",
-  "description": "Free music player: trending songs, worldwide charts, live radio, synced lyrics, equalizer and offline downloads.",
+  "description": "Free music & podcast player: songs in every Indian language, live radio, synced lyrics, equalizer, offline downloads and shareable playlists.",
   "id": "./",
   "start_url": "./",
   "scope": "./",
@@ -38,12 +38,37 @@
     "minimal-ui"
   ],
   "launch_handler": {
-    "client_mode": "focus-existing"
+    "client_mode": [
+      "focus-existing",
+      "auto"
+    ]
   },
   "shortcuts": [
     {
+      "name": "Resume playing",
+      "short_name": "Resume",
+      "url": "./?open=resume",
+      "icons": [
+        {
+          "src": "icons/icon-192.png",
+          "sizes": "192x192"
+        }
+      ]
+    },
+    {
       "name": "Search",
       "url": "./?tab=search",
+      "icons": [
+        {
+          "src": "icons/icon-192.png",
+          "sizes": "192x192"
+        }
+      ]
+    },
+    {
+      "name": "Favorite Songs",
+      "short_name": "Favorites",
+      "url": "./?open=liked",
       "icons": [
         {
           "src": "icons/icon-192.png",
@@ -62,6 +87,28 @@
       ]
     },
     {
+      "name": "Driving Mode",
+      "short_name": "Drive",
+      "url": "./?open=drive",
+      "icons": [
+        {
+          "src": "icons/icon-192.png",
+          "sizes": "192x192"
+        }
+      ]
+    },
+    {
+      "name": "Live Radio",
+      "short_name": "Radio",
+      "url": "./?open=radio",
+      "icons": [
+        {
+          "src": "icons/icon-192.png",
+          "sizes": "192x192"
+        }
+      ]
+    },
+    {
       "name": "Library",
       "url": "./?tab=library",
       "icons": [
@@ -70,6 +117,33 @@
           "sizes": "192x192"
         }
       ]
+    }
+  ],
+  "share_target": {
+    "action": "./",
+    "method": "GET",
+    "params": {
+      "title": "title",
+      "text": "text",
+      "url": "url"
+    }
+  },
+  "file_handlers": [
+    {
+      "action": "./",
+      "accept": {
+        "audio/*": [
+          ".mp3",
+          ".m4a",
+          ".aac",
+          ".flac",
+          ".wav",
+          ".ogg",
+          ".opus",
+          ".aiff",
+          ".alac"
+        ]
+      }
     }
   ]
 }
