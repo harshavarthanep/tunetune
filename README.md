@@ -1,71 +1,52 @@
-# Tune Tune 2.1
+# Tune Tune 3.0
 
-A free music player with the YouTube Music catalog, 40 language collections, live radio, synced lyrics, an equalizer and offline downloads. No account, no API keys, no ads.
+A free music and podcast player: the YouTube Music catalog in 40 languages, podcasts, live radio, synced lyrics, an equalizer, downloads, and your own stats. No account, no API keys.
 
-## What changed in 2.1: songs always play
+## Which version should I use?
 
-In 2.0, the website found songs through public mirrors (that works) but also tried to get the audio from them. YouTube blocks that, so songs ended in "Can't play".
+| | Android app | Desktop app (Win/Mac/Linux) | Website / PWA |
+|---|---|---|---|
+| Audio | Direct from YouTube Music, audio only | Direct from YouTube Music, audio only | Free mirrors when they work, otherwise YouTube's own player |
+| Ads | None | None | YouTube's player can show ads |
+| Screen locked / app in background | Keeps playing, lock-screen controls | Keeps playing (system tray) | Can stop when the YouTube player is used |
+| Start time | About 1 second | About 1 second | Slower, depends on mirrors |
+| Equalizer, downloads | Yes | Yes | Only with working mirrors |
 
-2.1 adds YouTube's own official embedded player as a playback engine. It doesn't depend on mirrors, so a song plays whenever YouTube itself allows it to.
-- **Automatic** (default): uses a fast audio stream when one responds within a few seconds. Otherwise it plays the song in the YouTube player instantly, and skips the busy mirrors for 20 minutes so the next songs start right away.
-- If a video can't be embedded, it plays another upload of the same song.
-- The video appears where the album art usually is in Now Playing.
-- Some phones (mainly iPhone) need one tap on the video before the first song; the app opens it and tells you.
-- Settings → Music sources → Playback lets you choose Automatic, YouTube player, or Audio only.
+**For PixelMusic-style listening, use the Android app.** Browsers don't allow websites to fetch YouTube audio directly, so no website can be fully ad-free and play with the screen off. That's why PixelMusic, InnerTune and ViMusic are all Android apps.
 
-**Trade-offs of the YouTube player:** the equalizer and downloads need an audio stream. Those always work in the desktop and Android apps, and work in the browser when a mirror responds. On phones, music can pause when the screen locks while using the YouTube player. For screen-off listening, use the Android app.
+## Get the apps (free, built by GitHub)
+1. Push this folder to your GitHub repo (keep the hidden `.github` folder).
+2. Open the repo → **Actions** → **Build apps** → **Run workflow**. Wait about 15 minutes.
+3. Open the repo's **Releases**. The newest one has `TuneTune.apk`, `TuneTune-Windows.exe`, `TuneTune-macOS.dmg` and `TuneTune-Linux.AppImage`.
 
-## Why v1 showed a blank screen
+Permanent links (always the newest build):
+`https://github.com/<you>/<repo>/releases/latest/download/TuneTune.apk`
 
-v1 declared a variable called `top`, which every browser already reserves (`window.top`). Browsers refuse to run a script with that clash, so nothing loaded. v2 runs entirely inside its own private scope, so no browser name can ever collide with it again.
+The website finds this link by itself when hosted on GitHub Pages. It shows a "Get the Android app" card on Android phones and in Settings → Apps.
 
-## Three ways to run it
+**Installing on Android:** open TuneTune.apk and allow "Install unknown apps" once. Future builds install as updates over the old one, so your library stays.
+**Keep it playing:** if your phone is aggressive about battery (Xiaomi, Oppo, Vivo, Samsung), set Tune Tune's battery usage to "Unrestricted".
 
-| | How music is fetched | Best for |
-|---|---|---|
-| **Desktop app** (Windows / Mac / Linux) | Talks to YouTube Music directly from your own internet connection | Most reliable. Full YouTube Music home, albums, charts, moods & genres |
-| **Android app** (APK) | Same direct engine as desktop | Phone use with the direct engine |
-| **Website / PWA** (GitHub Pages) | Free public YouTube mirrors (Piped and Invidious), switched automatically | Any device, nothing to install |
+## Website (GitHub Pages)
+Upload everything to the repo → Settings → Pages → Deploy from branch → `main` / root.
 
-Browsers block websites from calling YouTube directly, which is why the website version uses mirrors. The desktop and Android apps don't have that limit.
+## What's new in 3.0
+- **Podcasts tab:** top shows for your country, 20 categories (including Tamil, Hindi, Malayalam, Telugu), search, show pages, follow, "New episodes", "Continue listening" with exact resume, ±15/30 s skip, episode notes, mark played, downloads.
+- **Android app made PixelMusic-grade:** direct audio, no video or ads, a background media service so music continues with the screen off, and notification and lock-screen controls.
+- **Premium audio:** always the highest-quality stream (OPUS ~160 kbps from YouTube), loudness normalization so songs play at an even volume, and a quality badge in Now Playing. Your own FLAC/WAV files play lossless, with a gold "Lossless" badge.
+- **Made for you:** Daily Mixes from your most-played artists, and **Your Replay** (minutes per day, weekly chart, streak, top songs and artists, all kept on your device).
+- **Everyday features:** follow artists, import a YouTube or YouTube Music playlist from a link, save your queue as a playlist, "Don't recommend this", swipe the mini player to skip, and haptic feedback.
+- Faster browser playback: shorter mirror timeouts, and YouTube's player is preloaded in the background.
 
-### Website (GitHub Pages)
-1. Upload everything in this folder to a GitHub repo (for example `TuneTune`).
-2. Settings → Pages → Deploy from branch → `main` / root.
-3. Open `https://<username>.github.io/TuneTune/`. On Android Chrome: menu → *Install app*. On iPhone Safari: Share → *Add to Home Screen*.
+A note on audio quality: YouTube's best audio is about 160 kbps Opus, which sounds the same as a CD for most listeners. True hi-res lossless only exists in your own files (FLAC/WAV), and Tune Tune plays those at full quality.
 
-### Desktop and Android apps (built free by GitHub)
-1. Push this folder to GitHub (the `.github/workflows/build-apps.yml` file must be included).
-2. Open the repo's **Actions** tab → **Build apps** → **Run workflow**.
-3. After about 10 minutes, open the finished run and download from **Artifacts**:
-   `TuneTune-Windows` (.exe installer), `TuneTune-macOS` (.dmg), `TuneTune-Linux` (.AppImage), `TuneTune-Android` (.apk).
-
-To run the desktop app on your own PC instead: install Node.js, then in this folder run `npm install` and `npm start`.
-
-**First launch notes:** Windows shows "Windows protected your PC" (click *More info → Run anyway*) and macOS needs right-click → *Open*, because the apps aren't code-signed. On Android, allow "Install unknown apps" for your browser or file manager.
-
-## What keeps the music playing
-- Every song has four ways to play: direct audio (apps), Piped mirrors, Invidious mirrors, then the official YouTube player. If one fails mid-song, the next takes over from the same second.
-- A watchdog restarts a frozen stream after 15 seconds, and resumes automatically when the internet comes back.
-- The next song's stream is fetched while the current one plays, so tracks change instantly even with the screen off.
-- When your queue ends, Autoplay adds related songs (YouTube Music radio) 45 seconds before the end.
-- Unavailable songs are skipped. If every source is down, it stops after 6 tries with a clear message instead of looping.
-- Desktop app: closing the window keeps it playing in the system tray, and the OS isn't allowed to suspend it.
-- Settings → Music sources → **Test music sources** shows exactly what's working.
-
-## Features
-- Home: quick picks based on what you play, top songs and playlists for your languages, worldwide chart (played in full), live radio, free indie music
-- Explore: charts, 40 languages (each with top songs, new releases, romance, party, melodies, throwback, sad, devotional, artists), moods, genres; plus YouTube Music's own moods & genres in the apps
-- Search: songs, albums, artists, playlists, radio, free music and your library, with suggestions as you type
-- Player: synced lyrics, queue with drag to reorder, shuffle, repeat, Start Radio, 10-band EQ with 15 presets, sleep timer, speed, lock-screen/headphone controls
-- Library: favorites, playlists (save any YouTube playlist to your library), downloads with "Download all", Save to Device as a music file, device music import, history, backup/restore
-- Streaming quality: High, Normal or Data saver
+## All features
+Home (quick picks, daily mixes, language shelves, global chart, radio, podcasts) · Explore (charts, 40 languages, moods, genres, live radio) · Search (songs, albums, artists, playlists, podcasts, radio, free music, library, suggestions, top result) · Now Playing (synced lyrics, queue with drag to reorder, shuffle/repeat, autoplay radio, 10-band EQ with 15 presets, sleep timer, speed) · Library (favorites, playlists, downloads with Save to Device, device music import, podcasts, artists, stations, history, Replay, backup/restore) · light/dark themes · 9 accent colours · keyboard shortcuts · works offline for downloads.
 
 ## Good to know
-- Public mirrors are run by volunteers and are sometimes busy; the website switches between them automatically. For a mirror you control, add a self-hosted Piped or Invidious address under Settings → Music sources → Custom mirror.
-- This uses YouTube's unofficial interfaces, which goes against YouTube's terms. It's fine as a personal app, but Google can change things at any time; the app then falls back to mirrors, Audius and radio while you update it.
-- The Android app plays in the background, but Android's lock-screen media controls come from Chrome. If you want those, also install the website version from Chrome.
-- iPhone: use the website (Add to Home Screen). Apple doesn't allow installing apps outside the App Store without a paid developer account.
+- This uses YouTube's unofficial interfaces, which goes against YouTube's terms. It's fine as a personal app, but Google changes things sometimes. Settings → Music sources → Test music sources shows what's working.
+- iPhone: use the website (Add to Home Screen). Installing apps on iPhone outside the App Store needs a Mac and a paid Apple developer account.
+- Spotify playlists can't be imported: Spotify requires each user to log in to a developer account for that.
 
 ## Files
-`index.html`, `styles.css`, `app.js` — the app · `sw.js`, `manifest.webmanifest` — offline + install · `icons/` · `desktop/` — desktop app shell · `capacitor.config.json` — Android app config · `package.json` — build setup · `.github/workflows/build-apps.yml` — free app builds
+`index.html`, `styles.css`, `app.js` — the app · `sw.js`, `manifest.webmanifest` — offline + install · `icons/` · `desktop/` — desktop app · `capacitor.config.json`, `scripts/android-setup.js`, `build/` — Android app (icons, splash, signing key, background playback) · `package.json` · `.github/workflows/build-apps.yml` — builds and publishes all apps
