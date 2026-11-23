@@ -642,33 +642,6 @@ body{zoom:var(--zoom,1)}
 #mini .m-aw::after{content:"";position:absolute;inset:0;border-radius:8px;box-shadow:inset 0 0 0 .5px rgba(0,0,0,.08)}
 .np-art img{will-change:transform}
 
-/* ---------- v1.1: album deck (previous / current / next) ---------- */
-#np .np-art{touch-action:pan-y;--sw:0px}
-#np .np-art #np-img{position:relative;z-index:2;width:min(80cqw,96cqh);height:min(80cqw,96cqh);
-  transform:translate3d(var(--sw),0,0) scale(var(--sc,1));transition:transform .55s cubic-bezier(.3,1.25,.5,1),opacity .35s;cursor:grab}
-#np.paused{--sc:.86}
-#np .np-art .dk{position:absolute;top:50%;left:50%;z-index:1;width:calc(min(80cqw,96cqh) * .66);height:calc(min(80cqw,96cqh) * .66);
-  object-fit:cover;border-radius:10px;opacity:0;pointer-events:none;cursor:pointer;filter:brightness(.78) saturate(.9);box-shadow:0 14px 34px rgba(0,0,0,.35);
-  transform:translate3d(calc(-50% + var(--dx) + var(--sw) * .55),-50%,0) scale(.92);transition:opacity .35s,transform .5s cubic-bezier(.3,1.1,.4,1)}
-#np .np-art .dk-prev{--dx:calc(-50cqw - 6px)}
-#np .np-art .dk-next{--dx:calc(50cqw + 6px)}
-#np .np-art .dk.show{opacity:.6;pointer-events:auto}
-#np .np-art .dk.logo{object-fit:contain;background:#fff;padding:8%}
-#np.paused .np-art .dk{transform:translate3d(calc(-50% + var(--dx) + var(--sw) * .55),-50%,0) scale(.86)}
-#np.video .np-art .dk.show{opacity:.45}
-#np.open .np-art .dk{animation:none}
-#np .np-art.swiping #np-img,#np .np-art.swiping .dk,#np .np-art.nojump #np-img,#np .np-art.nojump .dk{transition:none;cursor:grabbing}
-#np .np-art.settle #np-img{transition:transform .2s ease-in,opacity .2s;opacity:.5}
-#np .np-art.in-r #np-img{animation:deckInR .45s cubic-bezier(.2,.9,.3,1.1)}
-#np .np-art.in-l #np-img{animation:deckInL .45s cubic-bezier(.2,.9,.3,1.1)}
-@keyframes deckInR{from{transform:translate3d(30%,0,0) scale(.72);opacity:.3}}
-@keyframes deckInL{from{transform:translate3d(-30%,0,0) scale(.72);opacity:.3}}
-.burst{position:absolute;z-index:4;left:50%;top:50%;width:96px;height:96px;margin:-48px 0 0 -48px;color:#fff;opacity:0;pointer-events:none;filter:drop-shadow(0 6px 20px rgba(0,0,0,.4))}
-.burst .ic{width:100%;height:100%}
-.burst.go{animation:burst .8s cubic-bezier(.2,1.6,.4,1)}
-@keyframes burst{0%{opacity:0;transform:scale(.3)}30%{opacity:1;transform:scale(1.1)}70%{opacity:1;transform:scale(1)}100%{opacity:0;transform:scale(1.25)}}
-@media (min-width:900px){#np .np-art #np-img{width:min(86cqw,100cqh);height:min(86cqw,100cqh)} #np .np-art .dk-prev{--dx:calc(-50cqw + 10px)} #np .np-art .dk-next{--dx:calc(50cqw - 10px)}}
-
 /* ---------- selected options use the accent colour ---------- */
 .seg button.on,:root[data-theme="dark"] .seg button.on{background:var(--accent);color:#fff;box-shadow:0 3px 10px color-mix(in srgb,var(--accent) 35%,transparent)}
 .seg button{transition:background-color .2s,color .2s}
@@ -710,18 +683,6 @@ kbd{font:600 12px ui-monospace,Menlo,monospace;padding:2px 6px;border-radius:5px
 .dv-c button.big .ic{width:50%;height:50%}
 .dv-c2 button.on{background:var(--accent)}
 .dv-up{font-size:15px;opacity:.65;text-align:center;max-width:90vw;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-height:20px;margin-bottom:6px}
-/* the fade-in rule must never hide the Now Playing art once it has loaded */
-#np-img.ld,#np .np-art #np-img.ld{opacity:1}
-#np.video .np-art #np-img{opacity:0}
-#np .np-art.settle #np-img{opacity:.5}
-
-/* ---------- v1.1: YouTube songs sit in the album deck as a square ---------- */
-#ytbox{width:min(80cqw,96cqh);height:min(80cqw,96cqh);aspect-ratio:1/1;border-radius:12px;
-  transform:translate3d(calc(-50% + var(--sw,0px)),-50%,0);transition:opacity .35s,transform .55s cubic-bezier(.3,1.25,.5,1);z-index:2}
-#ytbox iframe,#ytbox #ytp{position:absolute;top:0;left:50%;height:100%;width:177.78%;transform:translateX(-50%);border:0;pointer-events:none}
-#np .np-art.swiping #ytbox{transition:none}
-@media (min-width:900px){#ytbox{width:min(86cqw,100cqh);height:min(86cqw,100cqh)}}
-
 /* ---------- menus: blurred background, centred card on bigger screens ---------- */
 .bd{background:rgba(0,0,0,.38);-webkit-backdrop-filter:blur(16px) saturate(1.3);backdrop-filter:blur(16px) saturate(1.3)}
 @media (min-width:700px) and (min-height:560px){
@@ -753,14 +714,6 @@ kbd{font:600 12px ui-monospace,Menlo,monospace;padding:2px 6px;border-radius:5px
 .nudge .fb{flex:none;width:auto;padding:0 16px;height:36px}
 .nudge-x{flex:none;width:30px;height:30px;display:grid;place-items:center;color:var(--text2)}
 .nudge-x .ic{width:16px;height:16px}
-#np.needtap #ytbox iframe,#np.needtap #ytbox #ytp{pointer-events:auto}
-/* desktop: side albums stay inside the art column (never over the lyrics) */
-@media (min-width:900px){
-  #np .np-art #np-img,#ytbox{width:min(72cqw,100cqh);height:min(72cqw,100cqh)}
-  #np .np-art .dk{width:calc(min(72cqw,100cqh) * .62);height:calc(min(72cqw,100cqh) * .62)}
-  #np .np-art .dk-prev{--dx:calc(-50cqw + min(72cqw,100cqh) * .31)}
-  #np .np-art .dk-next{--dx:calc(50cqw - min(72cqw,100cqh) * .31)}
-}
 
 /* ---------- audio quality: gold badges ---------- */
 .qbadge{cursor:pointer;display:inline-flex;align-items:center;gap:5px;transition:transform .15s}
@@ -789,3 +742,78 @@ kbd{font:600 12px ui-monospace,Menlo,monospace;padding:2px 6px;border-radius:5px
 .mosaic{width:120px;height:120px;border-radius:12px;overflow:hidden;display:grid;grid-template-columns:1fr 1fr;background:var(--fill);margin-bottom:6px}
 .mosaic img{width:100%;height:100%;object-fit:cover}
 .mosaic img:only-child{grid-column:span 2;grid-row:span 2}
+
+/* ---------- v1.1: album carousel (previous · current · next) ---------- */
+#np .np-art{touch-action:pan-y;--p:0;--ap:0;--S:min(80cqw,96cqh);--D:calc(50cqw + 6px)}
+@media (min-width:900px){#np .np-art{--S:min(72cqw,100cqh);--D:calc(50cqw - min(72cqw,100cqh) * .31)}}
+#np .np-art #np-img,#np .np-art .dk,#ytbox{position:absolute;left:50%;top:50%;width:var(--S);height:var(--S);margin:calc(var(--S) / -2) 0 0 calc(var(--S) / -2);
+  border-radius:12px;transition:transform .5s cubic-bezier(.22,.9,.28,1),opacity .4s ease,box-shadow .4s;will-change:transform}
+#np .np-art #np-img,#ytbox{z-index:2;transform:translate3d(calc(var(--p) * var(--D)),0,0) scale(calc((1 - .38 * var(--ap)) * var(--sc,1)));box-shadow:0 18px 50px rgba(0,0,0,.4);cursor:grab}
+#np .np-art #np-img{opacity:calc(1 - .45 * var(--ap))}
+#np .np-art .dk{z-index:1;object-fit:cover;opacity:0;pointer-events:none;cursor:pointer;box-shadow:0 12px 30px rgba(0,0,0,.3)}
+#np .np-art .dk-next{transform:translate3d(calc(var(--D) + var(--p) * var(--D)),0,0) scale(calc(1 - .38 * (1 + var(--p))))}
+#np .np-art .dk-prev{transform:translate3d(calc(-1 * var(--D) + var(--p) * var(--D)),0,0) scale(calc(1 - .38 * (1 - var(--p))))}
+#np .np-art .dk-next.show{opacity:calc(1 - .45 * (1 + var(--p)));pointer-events:auto}
+#np .np-art .dk-prev.show{opacity:calc(1 - .45 * (1 - var(--p)));pointer-events:auto}
+#np .np-art .dk.logo{object-fit:contain;background:#fff;padding:8%}
+#np.paused{--sc:.86}
+#np .np-art.drag #np-img,#np .np-art.drag .dk,#np .np-art.drag #ytbox{transition:none;cursor:grabbing}
+#np-img.ld,#np .np-art #np-img.ld{opacity:calc(1 - .45 * var(--ap))}
+#np.video .np-art #np-img{opacity:0}
+#np.video .np-art .dk-next.show,#np.video .np-art .dk-prev.show{opacity:.45}
+#np.open .np-art .dk,#np.open .np-art #np-img{animation:none}
+.burst{position:absolute;z-index:4;left:50%;top:50%;width:96px;height:96px;margin:-48px 0 0 -48px;color:#fff;opacity:0;pointer-events:none;filter:drop-shadow(0 6px 20px rgba(0,0,0,.4))}
+.burst .ic{width:100%;height:100%}
+.burst.go{animation:burst .8s cubic-bezier(.2,1.6,.4,1)}
+@keyframes burst{0%{opacity:0;transform:scale(.3)}30%{opacity:1;transform:scale(1.1)}70%{opacity:1;transform:scale(1)}100%{opacity:0;transform:scale(1.25)}}
+
+/* YouTube songs: square like album art; full video (so you can press Skip) when an ad plays or you ask for it */
+#ytbox{overflow:hidden;background:#000;aspect-ratio:auto}
+#ytbox iframe,#ytbox #ytp{position:absolute;top:0;left:50%;height:100%;width:177.78%;transform:translateX(-50%);border:0;pointer-events:none;transition:width .45s,height .45s}
+#np.ytfull #ytbox{width:min(100cqw,calc(100cqh * 16 / 9));height:calc(min(100cqw,calc(100cqh * 16 / 9)) * 9 / 16);margin:calc(min(100cqw,calc(100cqh * 16 / 9)) * -9 / 32) 0 0 calc(min(100cqw,calc(100cqh * 16 / 9)) / -2);
+  transform:none;z-index:5;cursor:auto;transition:width .45s cubic-bezier(.22,.9,.28,1),height .45s cubic-bezier(.22,.9,.28,1),margin .45s cubic-bezier(.22,.9,.28,1)}
+#np.ytfull #ytbox iframe,#np.ytfull #ytbox #ytp,#np.needtap #ytbox iframe,#np.needtap #ytbox #ytp{width:100%;left:0;transform:none;pointer-events:auto}
+#np.ytfull .np-art .dk{opacity:0 !important;pointer-events:none}
+.yt-pill{position:absolute;z-index:6;right:8px;bottom:6px;display:none;align-items:center;gap:6px;padding:7px 12px;border-radius:16px;font:600 12.5px/1 inherit;color:#fff;
+  background:rgba(0,0,0,.55);-webkit-backdrop-filter:blur(10px);backdrop-filter:blur(10px)}
+.yt-pill .ic{width:14px;height:14px}
+#np.video .yt-pill{display:inline-flex}
+#np.ytad .yt-pill{background:var(--accent)}
+
+/* mini player: songs slide up (next) or down (previous) like a card */
+#mini.m-next .m-art,#mini.m-next .m-txt{animation:mUp .42s cubic-bezier(.22,.9,.28,1)}
+#mini.m-prev .m-art,#mini.m-prev .m-txt{animation:mDown .42s cubic-bezier(.22,.9,.28,1)}
+@keyframes mUp{from{transform:translateY(70%);opacity:0}}
+@keyframes mDown{from{transform:translateY(-70%);opacity:0}}
+/* Now Playing title also slides with the card */
+#np.t-next .np-tt{animation:tIn .45s cubic-bezier(.22,.9,.28,1)}
+#np.t-prev .np-tt{animation:tInL .45s cubic-bezier(.22,.9,.28,1)}
+@keyframes tIn{from{transform:translateX(28px);opacity:0}}
+@keyframes tInL{from{transform:translateX(-28px);opacity:0}}
+.np-meta .np-ib+.np-ib{margin-left:2px}
+
+/* ---------- lyrics toolbar ---------- */
+#ly-tools{position:absolute;top:0;left:0;right:0;z-index:4;display:none;gap:8px;flex-wrap:wrap;padding:2px 2px 16px;pointer-events:none}
+#ly-tools .lyb{pointer-events:auto;-webkit-backdrop-filter:blur(12px);backdrop-filter:blur(12px)}
+#ly-tools:empty{display:none !important}
+#np.p-lyr #ly-tools{display:flex}
+#np.p-lyr #np-lyr{-webkit-mask-image:linear-gradient(to bottom,transparent 0,#000 84px,#000 calc(100% - 48px),transparent);mask-image:linear-gradient(to bottom,transparent 0,#000 84px,#000 calc(100% - 48px),transparent)}
+@media (min-width:900px){
+  #ly-tools{position:relative;grid-area:panel;align-self:start;padding:6px 8px 0}
+  #np:not(.p-q) #ly-tools{display:flex}
+  #np:not(.p-q) #np-lyr{-webkit-mask-image:linear-gradient(to bottom,transparent 0,#000 90px,#000 calc(100% - 60px),transparent);mask-image:linear-gradient(to bottom,transparent 0,#000 90px,#000 calc(100% - 60px),transparent)}
+}
+.lyb{display:inline-flex;align-items:center;gap:6px;padding:7px 13px;border-radius:16px;font:600 13px/1 inherit;color:#fff;background:rgba(255,255,255,.14);transition:background .2s,transform .15s}
+.lyb:active{transform:scale(.95)}
+.lyb .ic{width:15px;height:15px}
+.lyb.on{background:#fff;color:#000}
+.ly-tr{display:block;font-size:.55em;font-weight:600;opacity:.75;margin-top:4px;line-height:1.3}
+/* name field */
+.nm .tin{font-size:18px;text-align:center}
+.fb[disabled]{opacity:.45;pointer-events:none}
+.shake{animation:shake .4s}
+@keyframes shake{20%,60%{transform:translateX(-8px)}40%,80%{transform:translateX(8px)}}
+/* share buttons */
+.pill.icon{width:auto;min-width:48px;padding:0 14px}
+.pill.icon .ic{margin:0}
+#np-share .ic{width:22px;height:22px}

@@ -202,6 +202,8 @@ const I = {
   ban: svg(P('M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18zM5.6 5.6l12.8 12.8')),
   chevUp: svg(P('M5 15l7-7 7 7', 2.4)),
   info: svg(P('M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18zM12 11v6M12 7.5v.5', 2)),
+  expand: svg(P('M14 4h6v6M10 20H4v-6M20 4l-7 7M4 20l7-7', 2)),
+  translate: svg(P('M4 5h9M8.5 3v2M6 5c.6 3 2.6 5.6 5 7M11 5c-.8 3.6-3.3 6.6-6.5 8.5M13 20l4-9 4 9M14.4 17h5.2', 1.8)),
   wave: svg(P('M4 10v4M8 6v12M12 3v18M16 7v10M20 10v4', 2.2)),
   eye: svg(P('M2.5 12S6 5.5 12 5.5 21.5 12 21.5 12 18 18.5 12 18.5 2.5 12 2.5 12z', 1.8) + P('M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6z', 1.8)),
   user2: svg(P('M12 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8zM4.5 20.5c1-3.8 4-5.5 7.5-5.5s6.5 1.7 7.5 5.5', 1.9)),
@@ -942,6 +944,16 @@ function parseLoose(txt) {
   txt = String(txt || '').trim(); const i = txt.search(/[[{]/); if (i < 0) return null;
   try { return JSON.parse(txt.slice(i)); } catch (e) { return null; }
 }
+const SITE = { server: '' };
+async function loadSiteConfig() {
+  try {
+    const r = await fetchT('tunetune-config.json?v=' + Math.floor(Date.now() / 3600e3), { cache: 'no-store' }, 4000); if (!r.ok) return;
+    const j = await r.json(); let v = String((j && (j.musicServer || j.server)) || '').trim(); if (!v) return;
+    if (!/^https?:\/\//.test(v)) v = 'https://' + v;
+    SITE.server = v.includes('{url}') ? v : v.replace(/[?#].*$/, '').replace(/\/+$/, '') + '/?url={url}';
+    if (!S.settings.proxy) { JSA.reset(); JSA.setVia('custom'); mem.clear(); }
+  } catch (e) { }
+}
 const WORKER_CODE = "// Tune Tune music server \u2014 paste into a free Cloudflare Worker and press Deploy\nconst ALLOW = /(^|\\.)(jiosaavn\\.com|saavncdn\\.com|saavn\\.com)$/;\nconst CORS = {\n  'Access-Control-Allow-Origin': '*',\n  'Access-Control-Allow-Methods': 'GET, HEAD, OPTIONS',\n  'Access-Control-Allow-Headers': '*',\n  'Access-Control-Expose-Headers': 'Content-Length, Content-Range, Accept-Ranges, Content-Type',\n};\nexport default {\n  async fetch(req) {\n    if (req.method === 'OPTIONS') return new Response(null, { headers: CORS });\n    const target = new URL(req.url).searchParams.get('url');\n    if (!target) return new Response('Tune Tune relay is running', { headers: CORS });\n    let t;\n    try { t = new URL(target); } catch (e) { return new Response('Bad link', { status: 400, headers: CORS }); }\n    if (!ALLOW.test(t.hostname)) return new Response('Not allowed', { status: 403, headers: CORS });\n    const h = {\n      'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0 Safari/537.36',\n      'Accept': '*/*', 'Accept-Language': 'en-IN,en;q=0.9', 'Referer': 'https://www.jiosaavn.com/',\n    };\n    const range = req.headers.get('Range');\n    if (range) h['Range'] = range;\n    if (t.hostname.endsWith('jiosaavn.com')) h['Cookie'] = 'gdpr_acceptance=true; DL=english';\n    const media = t.hostname.endsWith('saavncdn.com');\n    const r = await fetch(t.toString(), { method: req.method, headers: h, cf: { cacheTtl: media ? 86400 : 300, cacheEverything: true } });\n    const out = new Headers(r.headers);\n    for (const k in CORS) out.set(k, CORS[k]);\n    out.delete('set-cookie');\n    return new Response(r.body, { status: r.status, headers: out });\n  },\n};\n";
 const JSA = {
   via: '', fails: new Map(), deadUntil: 0,
@@ -956,7 +968,8 @@ const JSA = {
     return j;
   },
   relays() {
-    const c = S.settings.proxy ? [{ id: 'custom', wrap: u => (S.settings.proxy.includes('{url}') ? S.settings.proxy.replace('{url}', enc(u)) : S.settings.proxy + enc(u)) }] : [];
+    const px = S.settings.proxy || SITE.server;
+    const c = px ? [{ id: 'custom', wrap: u => (px.includes('{url}') ? px.replace('{url}', enc(u)) : px + enc(u)) }] : [];
     return [...c, ...JS_RELAYS];
   },
   order() {
@@ -1285,11 +1298,28 @@ const Embed = {
     this.poll = setInterval(() => {
       const d = this.duration;
       if (d && d !== this.lastDur) { this.lastDur = d; this.emit('durationchange'); }
-      this.emit('timeupdate');
+      this.emit('timeupdate'); this.adCheck();
     }, 250);
   },
   stopPoll() { clearInterval(this.poll); this.poll = 0; },
+  adCheck() {
+    if (Player.el !== this) return;
+    const ct = this.currentTime, now = Date.now(), d = this.duration, t = Player.cur;
+    const moving = this.lastCt != null && Math.abs(ct - this.lastCt) > 0.08; this.lastCt = ct;
+    if (this.state !== 1) { this.stuck = 0; return; }
+    if (!moving) { if (!this.stuck) this.stuck = now; } else this.stuck = 0;
+    const odd = d && t && t.duration > 90 && d < 75 && Math.abs(d - t.duration) > 30;
+    if (odd || (this.stuck && now - this.stuck > 1600)) { this.okRun = 0; if (!this.ad) this.setAd(true); }
+    else if (moving) { this.okRun = (this.okRun || 0) + 1; if (this.ad && this.okRun >= 6) this.setAd(false); }
+  },
+  setAd(on) {
+    this.ad = on; const np = $('#np'); if (!np) return;
+    np.classList.toggle('ytad', on); np.classList.toggle('ytfull', on || this.pinned); UI.ytPill();
+    if (on && !npOpen && !this.adToast) { this.adToast = 1; toast('An ad is playing — open the player to see the Skip button'); }
+  },
+  resetAd() { this.ad = false; this.pinned = false; this.adToast = 0; this.stuck = 0; this.okRun = 0; this.lastCt = null; const np = $('#np'); if (np) np.classList.remove('ytad', 'ytfull'); UI.ytPill(); },
   async open(id, start, autoplay) {
+    this.resetAd();
     this.err = null; this.id = id; this.srcAttr = 'youtube:' + id; this.state = -1; this.lastDur = 0;
     await this.ensure();
     if (this.id !== id) return;
@@ -1853,6 +1883,11 @@ const Player = {
     })().finally(() => { this.extending = null; });
     return this.extending;
   },
+  prevTrack() {
+    if (this.i > 0) { this.i--; this.load(true); }
+    else if (this.repeat === 'all' && this.queue.length > 1) { this.i = this.queue.length - 1; this.load(true); }
+    else if (this.loaded) this.seek(0);
+  },
   prev() {
     const t = this.cur; if (!t) return;
     if (!t.live && this.loaded && this.el.currentTime > 3) { this.el.currentTime = 0; return; }
@@ -1987,9 +2022,18 @@ const UI = {
     const art = artOf(t), big = artOf(t, true);
     const ma = $('#m-art'); if (ma.getAttribute('src') !== art) { delete ma.dataset.fb; ma.src = art; } ma.classList.toggle('logo', !!t.live);
     $('#m-t').textContent = t.title; $('#m-s').textContent = t.artist;
+    const changed = this._lid !== t.id;
+    let dir = 0;
+    if (changed && this._lid) { if (this._lq === Player.queue) { if (Player.i === this._li + 1 || (this._li === Player.queue.length - 1 && Player.i === 0)) dir = 1; else if (Player.i === this._li - 1 || (this._li === 0 && Player.i === Player.queue.length - 1)) dir = -1; } }
+    if (changed) { this._lid = t.id; this._li = Player.i; this._lq = Player.queue; }
     this.deck();
     if (t.source !== 'yt' && Player.via !== 'embed') $('#np').classList.remove('video');
+    if (dir) {
+      const m = $('#mini'); m.classList.remove('m-next', 'm-prev'); void m.offsetWidth; m.classList.add(dir > 0 ? 'm-next' : 'm-prev'); clearTimeout(this.mT); this.mT = setTimeout(() => m.classList.remove('m-next', 'm-prev'), 500);
+      const np = $('#np'); np.classList.remove('t-next', 't-prev'); void np.offsetWidth; np.classList.add(dir > 0 ? 't-next' : 't-prev'); clearTimeout(this.tT); this.tT = setTimeout(() => np.classList.remove('t-next', 't-prev'), 500);
+    }
     const ni = $('#np-img'); if (ni.getAttribute('src') !== big) { delete ni.dataset.fb; ni.classList.remove('ld'); ni.src = big; } ni.classList.toggle('logo', !!t.live);
+    if (dir) Deck.arrive(dir);
     clearTimeout(this.artT); this.artT = setTimeout(() => {
       if (!Player.cur || Player.cur.id !== t.id) return;
       if (ni.complete && ni.naturalWidth) ni.classList.add('ld');
@@ -2074,6 +2118,10 @@ const UI = {
       else el.classList.remove('show');
     }
   },
+  ytPill() {
+    const b = document.getElementById('yt-pill'); if (!b) return;
+    b.innerHTML = Embed.ad ? `${I.expand}Ad playing — press Skip when it appears` : Embed.pinned ? `${I.expand}Back to album art` : `${I.expand}Show video`;
+  },
   timerBtn() { $('#np-btimer').classList.toggle('on', !!(Player.sleepAt || Player.sleepEnd)); this.drive(); },
   drive() {
     const t = Player.cur; if (!t || !$('#drive')) return;
@@ -2115,12 +2163,12 @@ function buildShell() {
       <div class="np-from"><span>Playing from</span><b id="np-from"></b></div>
       <button class="np-ib" data-a="npmore" aria-label="More options">${I.more}</button></div>
     <div class="np-stage">
-      <div class="np-art" id="np-deck"><img class="dk dk-prev" id="dk-prev" alt="Previous" data-a="deckprev"><img id="np-img" alt=""><img class="dk dk-next" id="dk-next" alt="Next" data-a="decknext"><div class="burst" aria-hidden="true">${I.heartFill}</div><div id="ytbox"><div id="ytp"></div></div><p class="np-tap">Tap the video to start playing</p></div>
-      <div class="np-panel" id="np-lyr"></div>
+      <div class="np-art" id="np-deck"><img class="dk dk-prev" id="dk-prev" alt="Previous" data-a="deckprev"><img id="np-img" alt=""><img class="dk dk-next" id="dk-next" alt="Next" data-a="decknext"><div class="burst" aria-hidden="true">${I.heartFill}</div><div id="ytbox"><div id="ytp"></div></div><button class="yt-pill" id="yt-pill" data-a="ytfull">${I.expand}Show video</button><p class="np-tap">Tap the video to start playing</p></div>
+      <div class="ly-bar" id="ly-tools"></div><div class="np-panel" id="np-lyr"></div>
       <div class="np-panel" id="np-q"></div>
     </div>
     <div class="np-meta"><div class="np-tt"><div class="np-t" id="np-t"></div><div class="np-a" id="np-a" data-a="npartist"></div></div>
-      <button class="np-ib" id="np-like" data-a="nplike" aria-label="Favorite">${I.heart}</button></div>
+      <button class="np-ib" id="np-share" data-a="npshare" aria-label="Share">${I.share}</button><button class="np-ib" id="np-like" data-a="nplike" aria-label="Favorite">${I.heart}</button></div>
     <div class="scrub"><input class="rng" id="np-seek" type="range" min="0" max="1000" step="1" value="0" aria-label="Seek">
       <div class="times"><span id="np-cur">0:00</span><span class="livepill">● LIVE</span><span class="qbadge" id="np-qb" data-a="aq" role="button" tabindex="0" aria-label="Audio quality"></span><span id="np-rem">-0:00</span></div></div>
     <div class="ctrl">
@@ -2166,23 +2214,87 @@ const qRefresh = () => { UI.deck(); if (npOpen && npPanel === 'q') renderQueue()
 const npMsg = (ic, title, d) => `<div class="np-msg">${I[ic]}<b>${esc(title)}</b><p>${esc(d)}</p></div>`;
 
 let lyrState = null, lyrIdx = -1, lyrHold = 0;
+const INDIC = [[0x0900, 'hi', 'Hindi'], [0x0980, 'bn', 'Bengali'], [0x0A00, 'pa', 'Punjabi'], [0x0A80, 'gu', 'Gujarati'], [0x0B00, 'or', 'Odia'], [0x0B80, 'ta', 'Tamil'], [0x0C00, 'te', 'Telugu'], [0x0C80, 'kn', 'Kannada'], [0x0D00, 'ml', 'Malayalam']];
+function lyrScript(txt) {
+  const c = {}; for (const ch of String(txt || '')) { const cp = ch.codePointAt(0); if (cp >= 0x0900 && cp < 0x0D80) { const b = cp & 0xFF80; c[b] = (c[b] || 0) + 1; } }
+  const best = Object.entries(c).sort((x, y) => y[1] - x[1])[0]; if (!best || best[1] < 6) return null;
+  return INDIC.find(x => x[0] === +best[0]) || null;
+}
+const TL_V = { 5: 'a', 6: 'aa', 7: 'i', 8: 'ee', 9: 'u', 10: 'oo', 11: 'ru', 14: 'e', 15: 'e', 16: 'ai', 18: 'o', 19: 'o', 20: 'au' };
+const TL_M = { 0x3E: 'aa', 0x3F: 'i', 0x40: 'ee', 0x41: 'u', 0x42: 'oo', 0x43: 'ru', 0x46: 'e', 0x47: 'e', 0x48: 'ai', 0x4A: 'o', 0x4B: 'o', 0x4C: 'au', 0x57: 'au' };
+const TL_C = { 0x15: 'k', 0x16: 'kh', 0x17: 'g', 0x18: 'gh', 0x19: 'ng', 0x1A: 'ch', 0x1B: 'chh', 0x1C: 'j', 0x1D: 'jh', 0x1E: 'nj', 0x1F: 't', 0x20: 'th', 0x21: 'd', 0x22: 'dh', 0x23: 'n',
+  0x24: 't', 0x25: 'th', 0x26: 'd', 0x27: 'dh', 0x28: 'n', 0x29: 'n', 0x2A: 'p', 0x2B: 'ph', 0x2C: 'b', 0x2D: 'bh', 0x2E: 'm', 0x2F: 'y', 0x30: 'r', 0x31: 'r', 0x32: 'l', 0x33: 'l', 0x34: 'zh', 0x35: 'v', 0x36: 'sh', 0x37: 'sh', 0x38: 's', 0x39: 'h' };
+const TL_TAMIL = { 0x15: 'k', 0x1A: 's', 0x1F: 't', 0x24: 'th', 0x2A: 'p', 0x31: 'r', 0x1E: 'nj' };
+function translit(str) {
+  const out = []; const a = [...String(str || '')];
+  for (let i = 0; i < a.length; i++) {
+    const cp = a[i].codePointAt(0);
+    if (cp < 0x0900 || cp >= 0x0D80) { out.push(a[i]); continue; }
+    const base = cp & 0xFF80, o = cp - base, tamil = base === 0x0B80, deva = base === 0x0900;
+    if (TL_V[o]) { out.push(TL_V[o]); continue; }
+    if (o === 0x02) { out.push(tamil ? 'm' : 'n'); continue; } if (o === 0x03) { out.push(tamil ? 'k' : 'h'); continue; } if (o === 0x01) { out.push('n'); continue; }
+    if (o >= 0x66 && o <= 0x6F) { out.push(String(o - 0x66)); continue; }
+    if (o === 0x64 || o === 0x65) { out.push(o === 0x64 ? ',' : '.'); continue; }
+    let c = (tamil && TL_TAMIL[o]) || TL_C[o];
+    if (c) {
+      let j = i + 1; if (a[j] && (a[j].codePointAt(0) - base) === 0x3C) j++;
+      const nx = a[j] ? a[j].codePointAt(0) - base : -1, inBlock = a[j] && (a[j].codePointAt(0) & 0xFF80) === base;
+      if (inBlock && nx === 0x4D) { out.push(c); i = j; continue; }
+      if (inBlock && TL_M[nx]) { out.push(c + TL_M[nx]); i = j; if (a[i + 1] && (a[i + 1].codePointAt(0) - base) === 0x57) i++; continue; }
+      const end = !a[j] || !/[\u0900-\u0D7F]/.test(a[j]);
+      out.push(c + (deva && end && i > 0 ? '' : 'a')); i = j - 1; continue;
+    }
+  }
+  return out.join('').replace(/\s+/g, ' ');
+}
+async function translateLines(lines, from) {
+  const uniqL = [...new Set(lines.filter(x => x && x.trim()))]; const map = new Map(); const chunks = []; let cur = [];
+  for (const l of uniqL) { if ((cur.join('\n') + '\n' + l).length > 420 && cur.length) { chunks.push(cur); cur = []; } cur.push(l); }
+  if (cur.length) chunks.push(cur);
+  for (const ch of chunks) {
+    const j = await getJSON('https://api.mymemory.translated.net/get?' + new URLSearchParams({ q: ch.join('\n'), langpair: `${from}|en` }), 12000);
+    const txt = j && j.responseData && j.responseData.translatedText; if (!txt || j.responseStatus >= 400 || /MYMEMORY WARNING|QUERY LENGTH/i.test(txt)) throw new Error('translation limit');
+    const parts = txt.split(/\n/); if (parts.length === ch.length) ch.forEach((l, k) => map.set(l, decodeEnt(parts[k]).trim())); else map.set(ch.join('\n'), decodeEnt(txt));
+  }
+  return lines.map(l => map.get(l) || '');
+}
+function lyrBar(r) {
+  const sc = lyrScript((r.synced || []).map(x => x.text).join(' ') || r.plain || ''); const m = S.settings.lyrMode || 'orig';
+  const b = (k, label, ic) => `<button class="lyb ${m === k ? 'on' : ''}" data-a="lyrmode" data-m="${k}">${ic ? I[ic] : ''}${label}</button>`;
+  return `<div class="ly-bar"><button class="lyb" data-a="copylyr">${I.copy}Copy</button>${sc ? b('orig', sc[2]) + b('latin', 'English letters') + b('en', 'Translate', 'translate') : ''}</div>`;
+}
+function lyrLine(r, k, text) {
+  const m = S.settings.lyrMode || 'orig'; if (!text) return '♪';
+  if (m === 'latin' && lyrScript(r.synced ? r.synced.map(x => x.text).join(' ') : r.plain)) return esc(translit(text));
+  if (m === 'en' && r.tr && r.tr[k]) return `${esc(text)}<small class="ly-tr">${esc(r.tr[k])}</small>`;
+  return esc(text);
+}
+function renderLyrics() {
+  const box = $('#np-lyr'), r = lyrState; if (!box || !r) return;
+  if (r.synced && r.synced.length) {
+    $('#ly-tools').innerHTML = lyrBar(r);
+    box.innerHTML = `<div>${r.synced.map((l, k) => `<p class="ly" data-a="lyseek" data-t="${l.t}">${lyrLine(r, k, l.text)}</p>`).join('')}<p class="ly-src">Lyrics from LRCLIB${(S.settings.lyrMode === 'en' && r.tr) ? ' · translation by MyMemory' : ''}</p></div>`;
+    lyrIdx = -1; lyrTick(Player.loaded ? Player.el.currentTime : 0, true);
+  } else if (r.plain) {
+    const L = r.plain.split('\n');
+    $('#ly-tools').innerHTML = lyrBar(r);
+    box.innerHTML = `<div class="ly-plain">${L.map((l, k) => lyrLine(r, k, l) === '♪' ? '' : lyrLine(r, k, l)).join('\n')}</div><p class="ly-src">Lyrics from LRCLIB</p>`;
+  }
+}
 async function loadLyrics() {
   const box = $('#np-lyr'); const t = Player.cur;
   if (!t) { box.innerHTML = ''; return; }
   if (lyrState && lyrState.id === t.id) return;
-  lyrState = { id: t.id }; lyrIdx = -1;
+  lyrState = { id: t.id }; lyrIdx = -1; const tools = $('#ly-tools'); if (tools) tools.innerHTML = '';
   if (t.live) { box.innerHTML = npMsg('radio', 'Live radio', 'Lyrics aren’t available for live stations.'); return; }
-  if (t.source === 'podcast') { box.innerHTML = `<div class="ly-notes"><b>${esc(t.title)}</b><p>${esc([t.artist, fmtDate(t.date)].filter(Boolean).join(' · '))}</p><div class="ly-plain">${esc(t.desc || 'No episode notes for this one.')}</div>${t.desc ? `<p class="ly-src"><button class="ly-copy" data-a="copylyr">${I.copy}Copy notes</button></p>` : ''}</div>`; box.scrollTop = 0; return; }
+  if (t.source === 'podcast') { if (t.desc && tools) tools.innerHTML = `<button class="lyb" data-a="copylyr">${I.copy}Copy notes</button>`; box.innerHTML = `<div class="ly-notes"><b>${esc(t.title)}</b><p>${esc([t.artist, fmtDate(t.date)].filter(Boolean).join(' · '))}</p><div class="ly-plain">${esc(t.desc || 'No episode notes for this one.')}</div>${t.desc ? `<p class="ly-src"><button class="ly-copy" data-a="copylyr">${I.copy}Copy notes</button></p>` : ''}</div>`; box.scrollTop = 0; return; }
   box.innerHTML = '<div class="np-msg"><div class="spin light"></div></div>';
   let r = null; try { r = await Lyrics.get(t); } catch (e) { }
   if (!Player.cur || Player.cur.id !== t.id) return;
   lyrState = { id: t.id, ...(r || {}) };
-  if (r && r.synced && r.synced.length) {
-    box.innerHTML = `<div>${r.synced.map(l => `<p class="ly" data-a="lyseek" data-t="${l.t}">${l.text ? esc(l.text) : '♪'}</p>`).join('')}<p class="ly-src">Lyrics from LRCLIB · <button class="ly-copy" data-a="copylyr">${I.copy}Copy lyrics</button></p></div>`;
-    lyrTick(Player.loaded ? Player.el.currentTime : 0, true);
-  } else if (r && r.plain) {
-    box.innerHTML = `<div class="ly-plain">${esc(r.plain)}</div><p class="ly-src">Lyrics from LRCLIB · <button class="ly-copy" data-a="copylyr">${I.copy}Copy lyrics</button></p>`;
-    box.scrollTop = 0;
+  if (r && ((r.synced && r.synced.length) || r.plain)) {
+    renderLyrics(); if (!r.synced) box.scrollTop = 0;
+    if (S.settings.lyrMode === 'en') lyrTranslate();
   } else if (r && r.instrumental) box.innerHTML = npMsg('music', 'Instrumental', 'No words — just the music.');
   else box.innerHTML = npMsg('lyrics', 'No lyrics yet', 'Lyrics for this song aren’t in the open lyrics library.');
 }
@@ -2247,6 +2359,7 @@ function closeSheet() {
   const s = $('#sheet'); s.classList.remove('open'); sheetOpen = false;
   if (askRes) { const r = askRes; askRes = null; r(null); }
   setTimeout(() => { if (!sheetOpen) s.innerHTML = ''; }, 420);
+  if (needName && !String(S.settings.name || '').trim()) setTimeout(() => { if (!sheetOpen && !String(S.settings.name || '').trim()) nameSheet(true); }, 450);
 }
 function actionSheet({ head = '', acts = [], cancel = 'Cancel' }) {
   sheetActs = acts.filter(Boolean);
@@ -2416,9 +2529,19 @@ function openDrive() {
   art.addEventListener('pointerup', e => { if (sx === null) return; const dx = e.clientX - sx; sx = null; if (Math.abs(dx) > 60) { buzz(); dx < 0 ? Player.next() : Player.prev(); } });
   try { if (navigator.wakeLock) navigator.wakeLock.request('screen').then(l => { d._lock = l; }).catch(() => { }); } catch (e) { }
 }
+async function lyrTranslate() {
+  const r = lyrState; if (!r || r.tr || r.trBusy) return;
+  const sc = lyrScript((r.synced || []).map(x => x.text).join(' ') || r.plain || ''); if (!sc) return;
+  r.trBusy = true; const lines = r.synced ? r.synced.map(x => x.text) : r.plain.split('\n');
+  toast('Translating lyrics…');
+  try { r.tr = await translateLines(lines, sc[1]); if (lyrState === r) renderLyrics(); }
+  catch (e) { toast('Translation isn’t available right now — try English letters instead'); }
+  r.trBusy = false;
+}
 function copyLyrics() {
   const t = Player.cur; const r = lyrState; if (!t || !r) return;
-  const body = t.source === 'podcast' ? (t.desc || '') : r.synced && r.synced.length ? r.synced.map(l => l.text).join('\n') : (r.plain || '');
+  const m = S.settings.lyrMode || 'orig'; const raw = r.synced && r.synced.length ? r.synced.map(l => l.text) : String(r.plain || '').split('\n');
+  const body = t.source === 'podcast' ? (t.desc || '') : raw.map((l, k) => m === 'latin' ? translit(l) : m === 'en' && r.tr && r.tr[k] ? `${l}\n${r.tr[k]}` : l).join('\n');
   if (!body.trim()) return toast('Nothing to copy');
   copyText(`${t.title} — ${t.artist}\n\n${body.trim()}`, t.source === 'podcast' ? 'Episode notes copied' : 'Lyrics copied');
 }
@@ -2479,14 +2602,16 @@ function playlistMenu(id) {
   });
 }
 let lpFirst = false;
-async function askName(first) {
-  S.askedName = 1; save();
-  const v = await ask(first ? 'What should we call you?' : 'Your name', first ? 'Your first name — it makes Tune Tune feel like yours' : 'Your first name', S.settings.name || '', first ? 'Continue' : 'Save');
-  if (v === null) return;
-  S.settings.name = String(v).trim().slice(0, 30); save();
-  if (S.settings.name) toast(`Nice to meet you, ${S.settings.name}!`);
-  const e = cv(); if (e.v === 'home' || e.v === 'settings') softRender();
+let needName = false;
+function nameSheet(first) {
+  needName = !!first;
+  openSheet(`<div class="sg form nm"><b class="ft">${first ? 'What should we call you?' : 'Your name'}</b>
+    <p class="fsub">Your first name — for your greeting and the mixes made for you. You can change it any time in Settings.</p>
+    <input class="tin" id="nmin" maxlength="30" value="${esc(S.settings.name || '')}" placeholder="Your name" autocomplete="given-name" autocapitalize="words" spellcheck="false">
+    <div class="fbtns">${first ? '' : '<button class="fb" data-a="sclose">Cancel</button>'}<button class="fb pri" data-a="nmsave" id="nmbtn" ${String(S.settings.name || '').trim() ? '' : 'disabled'}>${first ? 'Continue' : 'Save'}</button></div></div>`);
+  setTimeout(() => { const i = $('#nmin'); if (i) i.focus(); }, 380);
 }
+function askName(first) { nameSheet(first); }
 function langPicker(first) {
   lpFirst = !!first;
   pickSel = new Set(S.settings.langs || []);
@@ -2896,6 +3021,7 @@ function openServerGuide() {
     </ol>
     <input class="tin" id="relayin" placeholder="https://tunetune.yourname.workers.dev" value="${esc(cur)}" autocomplete="off" autocapitalize="off" spellcheck="false">
     <p class="fsub" id="relayst"></p>
+    ${S.settings.proxy ? `<p class="fsub">To keep it even after clearing browser data — on every device and for everyone using your site — add a file named <b>tunetune-config.json</b> to your GitHub repo.<button class="fb cw" data-a="copycfg">${I.copy} Copy file contents</button></p>` : ''}
     <div class="fbtns">${S.settings.proxy ? '<button class="fb" data-a="relayclear">Remove</button>' : '<button class="fb" data-a="sclose">Later</button>'}<button class="fb pri" data-a="relaysave">Test &amp; Save</button></div></div>`);
 }
 async function testSources() {
@@ -3075,7 +3201,7 @@ function collHead(title, tracks, k, o = {}) {
   const dur = mins ? (mins >= 60 ? ` · ${Math.floor(mins / 60)} hr ${mins % 60} min` : ` · ${mins} min`) : '';
   const sub = o.sub || (n ? (live ? plural(n, 'station') : plural(n, 'song') + dur) : '');
   return `<div class="ch">${art}<div class="ch-i"><h1>${esc(title)}</h1><p class="ch-sub">${esc(sub)}</p>
-    ${n ? `<div class="ch-btns"><button class="pill" data-a="playAll" data-l="${k}">${I.play}Play</button>${live ? '' : `<button class="pill" data-a="shufAll" data-l="${k}">${I.shuffle}Shuffle</button>`}</div>` : ''}</div></div>`;
+    ${n ? `<div class="ch-btns"><button class="pill" data-a="playAll" data-l="${k}">${I.play}Play</button>${live ? '' : `<button class="pill" data-a="shufAll" data-l="${k}">${I.shuffle}Shuffle</button><button class="pill icon" data-a="shareColl" data-l="${k}" aria-label="Share this playlist">${I.share}</button>`}</div>` : ''}</div></div>`;
 }
 function slotsInto(sel, nsel, tok, title, defs) {
   const box = $(sel); if (!box || tok !== renderTok) return;
@@ -3562,6 +3688,7 @@ function renderSettings() {
   const timerVal = Player.sleepEnd ? 'End of song' : Player.sleepAt ? `${Math.ceil((Player.sleepAt - Date.now()) / 60000)} min` : 'Off';
   setTimeout(() => { storageNote('#stor2'); if (IS_DESKTOP) serverPanel(); });
   return header('Settings') +
+    sGrp('You', sLi({ icon: 'user', color: '#bf5af2', label: 'Your name', value: S.settings.name || 'Add your name', a: 'setname', chev: true })) +
     sGrp('Music',
       sLi({ icon: 'globe', color: '#ff375f', label: 'Languages', value: myLangs().slice(0, 3).join(', ') + (myLangs().length > 3 ? ` +${myLangs().length - 3}` : ''), a: 'langs', chev: true }) +
       sLi({ icon: 'bars', color: '#30d158', label: 'Your Replay', a: 'go', extra: 'data-v="coll" data-k="replay"', chev: true }) +
@@ -3612,7 +3739,6 @@ function renderSettings() {
     sGrp('More', sLi({ icon: 'gear', color: '#8e8e93', label: 'Advanced', a: 'go', extra: 'data-v="advanced"', chev: true }) +
       sLi({ label: 'Version', value: VER + (IS_DESKTOP ? ' · Desktop' : IS_CAP ? ' · Android' : Server.ok ? ' · Home Server' : ' · Web') }) +
       sLi({ label: 'Shortcuts & gestures', a: 'keys', chev: true }),
-      sLi({ label: 'Your name', value: S.settings.name || 'Add', a: 'setname', chev: true }),
       `${TITLE} is free, with no account and no ads of its own. Lyrics: LRCLIB · Radio: Radio Browser · Podcasts: Apple Podcasts directory · Independent music: Audius.`) +
     '<div style="height:24px"></div>';
 }
@@ -3777,6 +3903,7 @@ const Actions = {
     S.settings.saavn = v.replace(/\/+$/, ''); Saavn.fails.clear(); Saavn.best = null; mem.clear(); PC.clear(); save(); softRender(); toast(v ? 'Saved' : 'Using automatic servers');
   },
   setproxy() { openServerGuide(); },
+  copycfg() { const v = (S.settings.proxy || '').replace('/?url={url}', ''); copyText(JSON.stringify({ musicServer: v }, null, 2) + '\n', 'Copied — create tunetune-config.json in your repo and paste this'); },
   copyworker() { copyText(WORKER_CODE, 'Server code copied — paste it in Cloudflare'); },
   async relaysave() {
     const inp = $('#relayin'); let v = (inp && inp.value || '').trim(); const st = $('#relayst');
@@ -3801,13 +3928,23 @@ const Actions = {
   errlog() { openSheet(`<div class="sg form"><b class="ft">Error log</b><pre class="log selectable">${esc(LOG.slice().reverse().join('\n') || 'No errors — everything is running smoothly.')}</pre><div class="fbtns"><button class="fb" data-a="copylog">Copy</button><button class="fb pri" data-a="sclose">Done</button></div></div>`); },
   copylog() { copyText(LOG.join('\n') || 'No errors', 'Log copied'); },
   rmrecent(el, d) { S.searches = S.searches.filter(x => x !== d.q); save(); buzz(); showSearchHome(); },
-  deckprev() { if (Date.now() - suppressDeck < 450) return; deckGo(-1); },
-  decknext() { if (Date.now() - suppressDeck < 450) return; deckGo(1); },
+  deckprev() { if (Date.now() - suppressDeck < 450) return; Deck.go(-1); },
+  decknext() { if (Date.now() - suppressDeck < 450) return; Deck.go(1); },
   copylyr() { copyLyrics(); },
+  lyrmode(el, d) { S.settings.lyrMode = d.m; save(); renderLyrics(); if (d.m === 'en') lyrTranslate(); },
   skipb2() { Player.seek(Player.el.currentTime - skipSecs(-1)); }, skipf2() { Player.seek(Player.el.currentTime + skipSecs(1)); },
   keys() { showKeys(); },
+  ytfull() { Embed.pinned = !Embed.pinned; $('#np').classList.toggle('ytfull', Embed.pinned || Embed.ad); UI.ytPill(); },
+  npshare() { if (Player.cur) share(Player.cur); },
+  shareColl(el, d) { const L = listOf(d); if (L && L.tracks.length) sharePlaylist(cv().title || L.meta.from || 'Playlist', L.tracks); },
   aq() { openAQ(); },
-  setname() { askName(false); },
+  setname() { nameSheet(false); },
+  nmsave() {
+    const i = $('#nmin'); const v = String(i && i.value || '').trim().slice(0, 30);
+    if (!v) { if (i) { i.classList.remove('shake'); void i.offsetWidth; i.classList.add('shake'); i.focus(); } return; }
+    const first = needName; S.settings.name = v; needName = false; save(); closeSheet();
+    toast(first ? `Nice to meet you, ${v}!` : 'Name updated'); const e = cv(); if (e.v === 'home' || e.v === 'settings') softRender();
+  },
   noinstall() { S.noInstall = 1; save(); softRender(); },
   eqreset() { Object.assign(S.settings, { eq: PRESETS.Flat.slice(), eqPreset: 'Flat', eqPre: 0, eqBass: 0, eqTreble: 0, eqLoud: false, eqWidth: 1 }); save(); Player.applyEq(); setHTML($('#eqbox'), eqInner()); toast('Equalizer reset'); },
   drivex() { const d = $('#drive'); if (!d) return; clearInterval(d._clock); try { d._lock && d._lock.release(); } catch (e) { } d.classList.remove('on'); setTimeout(() => d.remove(), 300); },
@@ -3826,7 +3963,7 @@ const Actions = {
   lpdone() {
     const l = pickSel ? [...pickSel] : []; S.settings.langs = l.length ? l : ['English']; pickSel = null; save(); closeSheet();
     const e = cv(); if (e.v === 'home' || e.v === 'settings') softRender();
-    if (lpFirst && !S.settings.name) setTimeout(() => askName(true), 480); lpFirst = false;
+    if (lpFirst && !String(S.settings.name || '').trim()) setTimeout(() => nameSheet(true), 480); lpFirst = false;
   },
   testsrc() { testSources(); },
   async setmirror() {
@@ -3928,7 +4065,8 @@ document.addEventListener('input', e => {
   } else if (t.id === 'dv-seek') {
     seeking = true; const a = Player.el; const d = Player.loaded && isFinite(a.duration) ? a.duration : ((Player.cur && Player.cur.duration) || 0);
     $('#dv-cur').textContent = fmt((t.value / 1000) * d); t.style.setProperty('--p', t.value / 10 + '%');
-  } else if (t.id === 'sq') searchInput(t.value);
+  } else if (t.id === 'nmin') { const b = $('#nmbtn'); if (b) b.disabled = !t.value.trim(); }
+  else if (t.id === 'sq') searchInput(t.value);
 });
 document.addEventListener('change', e => {
   const t = e.target;
@@ -3972,6 +4110,7 @@ document.addEventListener('keydown', e => {
   if (tg.matches && tg.matches('input,textarea,select')) {
     if (tg.id === 'sq' && e.key === 'Enter') { clearTimeout(sDeb); runSearch(cv()); saveSearch(tg.value); tg.blur(); }
     if (tg.id === 'askin' && e.key === 'Enter') Actions.asko();
+    if (tg.id === 'nmin' && e.key === 'Enter') Actions.nmsave();
     if (tg.type !== 'range') return;
   }
   if ((e.key === 'Enter' || e.key === ' ') && tg.matches && tg.matches('[role="button"][data-a],[role="button"][data-tab]')) { e.preventDefault(); tg.click(); return; }
@@ -4016,42 +4155,62 @@ addEventListener('drop', e => { document.body.classList.remove('dropping'); if (
 addEventListener('unhandledrejection', e => { warn('unhandled', e.reason); e.preventDefault && e.preventDefault(); });
 
 let suppressDeck = 0;
-function deckGo(dir) {
-  const art = $('#np-deck'); if (!art || !Player.cur) return;
-  if (dir > 0 && Player.i >= Player.queue.length - 1 && Player.repeat !== 'all' && !S.settings.autoplay) { art.style.setProperty('--sw', '0px'); return; }
-  buzz(); art.classList.add('settle'); art.style.setProperty('--sw', (dir > 0 ? -1 : 1) * Math.max(120, art.clientWidth * 0.55) + 'px');
-  setTimeout(() => {
-    art.classList.remove('settle'); art.classList.add('nojump'); art.style.setProperty('--sw', '0px');
-    if (dir > 0) Player.next(); else Player.prev();
-    art.classList.add(dir > 0 ? 'in-r' : 'in-l');
-    requestAnimationFrame(() => requestAnimationFrame(() => art.classList.remove('nojump')));
-    setTimeout(() => art.classList.remove('in-r', 'in-l'), 500);
-  }, 200);
-}
+const Deck = {
+  busy: false, skip: false,
+  el() { return document.getElementById('np-deck'); },
+  set(p, anim) { const a = this.el(); if (!a) return; a.classList.toggle('drag', !anim); a.style.setProperty('--p', String(+p.toFixed(4))); a.style.setProperty('--ap', String(+Math.abs(p).toFixed(4))); },
+  dist() {
+    const a = this.el(); if (!a) return 300; const W = a.clientWidth, H = a.clientHeight;
+    const wide = matchMedia('(min-width:900px)').matches; const S2 = wide ? Math.min(0.72 * W, H) : Math.min(0.8 * W, 0.96 * H);
+    return Math.max(80, wide ? W / 2 - S2 * 0.31 : W / 2 + 6);
+  },
+  has(dir) { const el = document.getElementById(dir > 0 ? 'dk-next' : 'dk-prev'); return !!(el && el.classList.contains('show')); },
+  go(dir) {
+    const a = this.el(); if (!a || !Player.cur || this.busy) return;
+    const move = () => (dir > 0 ? Player.next() : Player.prevTrack());
+    if (!this.has(dir) || $('#np').classList.contains('ytfull')) { this.set(0, true); buzz(); move(); return; }
+    buzz(); this.busy = true; this.set(-dir, true);
+    setTimeout(() => {
+      const cur = $('#np-img'), pv = $('#dk-prev'), nx = $('#dk-next'), cs = cur.getAttribute('src');
+      if (dir > 0) { cur.src = nx.getAttribute('src'); pv.src = cs; } else { cur.src = pv.getAttribute('src'); nx.src = cs; }
+      cur.classList.add('ld'); this.skip = true; this.set(0, false); move();
+      requestAnimationFrame(() => requestAnimationFrame(() => { const x = this.el(); if (x) x.classList.remove('drag'); this.busy = false; }));
+      setTimeout(() => { this.skip = false; this.busy = false; }, 700);
+    }, 430);
+  },
+  arrive(dir) {
+    if (this.skip) { this.skip = false; return; }
+    if (!dir || !npOpen || this.busy) return;
+    this.set(dir, false); void (this.el() || {}).offsetWidth;
+    requestAnimationFrame(() => requestAnimationFrame(() => this.set(0, true)));
+  },
+};
+function deckGo(dir) { Deck.go(dir); }
 function likeBurst() {
   const t = Player.cur; if (!t) return; if (!isLiked(t.id)) toggleLike(t); else buzz();
   const b = $('#np-deck .burst'); if (b) { b.classList.remove('go'); void b.offsetWidth; b.classList.add('go'); }
 }
 function bindGestures() {
-  const art = $('#np-deck'); let px = null, py = 0, pdx = 0, pt = 0, horiz = false, dMoved = 0, lastTap = 0;
-  art.addEventListener('pointerdown', e => { if ((e.target.closest('#ytbox') && $('#np').classList.contains('needtap')) || (e.pointerType === 'mouse' && e.button !== 0)) return; px = e.clientX; py = e.clientY; pdx = 0; dMoved = 0; pt = Date.now(); horiz = false; });
+  const art = $('#np-deck'); let px = null, py = 0, pdx = 0, pt = 0, horiz = false, dMoved = 0, lastTap = 0, dist = 300;
+  art.addEventListener('pointerdown', e => { if (e.target.closest('.yt-pill') || (e.target.closest('#ytbox') && ($('#np').classList.contains('needtap') || $('#np').classList.contains('ytfull'))) || (e.pointerType === 'mouse' && e.button !== 0)) return; px = e.clientX; py = e.clientY; pdx = 0; dMoved = 0; pt = Date.now(); horiz = false; });
   art.addEventListener('pointermove', e => {
     if (px === null) return; const dx = e.clientX - px, dy = e.clientY - py; dMoved = Math.max(dMoved, Math.abs(dx), Math.abs(dy));
-    if (!horiz && Math.abs(dx) > 10 && Math.abs(dx) > Math.abs(dy) * 1.2) { horiz = true; art.classList.add('swiping'); try { art.setPointerCapture(e.pointerId); } catch (x) { } }
-    if (horiz) { pdx = dx; art.style.setProperty('--sw', dx + 'px'); }
+    if (!horiz && Math.abs(dx) > 10 && Math.abs(dx) > Math.abs(dy) * 1.2 && !Deck.busy) { horiz = true; dist = Deck.dist(); try { art.setPointerCapture(e.pointerId); } catch (x) { } }
+    if (horiz) { pdx = dx; let p = clamp(dx / dist, -1, 1); if ((p < 0 && !Deck.has(1) && !S.settings.autoplay) || (p > 0 && !Deck.has(-1))) p *= 0.25; Deck.set(p, false); }
   });
   const end = e => {
-    if (px === null) return; px = null; art.classList.remove('swiping');
+    if (px === null) return; px = null;
     if (!horiz) {
-      art.style.setProperty('--sw', '0px');
       if (dMoved < 10 && e.type === 'pointerup' && (e.target.id === 'np-img' || e.target.closest('#ytbox'))) { if (Date.now() - lastTap < 320) { lastTap = 0; likeBurst(); } else lastTap = Date.now(); }
       return;
     }
     suppressDeck = Date.now();
     const fast = Math.abs(pdx) / Math.max(1, Date.now() - pt) > 0.5;
-    if (pdx < -70 || (pdx < -30 && fast)) deckGo(1); else if (pdx > 70 || (pdx > 30 && fast)) deckGo(-1); else art.style.setProperty('--sw', '0px');
+    if ((pdx < -dist * 0.28 || (pdx < -30 && fast)) && (Deck.has(1) || S.settings.autoplay)) Deck.go(1);
+    else if ((pdx > dist * 0.28 || (pdx > 30 && fast)) && Deck.has(-1)) Deck.go(-1);
+    else Deck.set(0, true);
   };
-  art.addEventListener('pointerup', end); art.addEventListener('pointercancel', end);
+  art.addEventListener('pointerup', end); art.addEventListener('pointercancel', end); art.addEventListener('lostpointercapture', e => { if (px !== null) end(e); });
   // press and hold a song or card on touch screens → its menu (iPhone has no right-click)
   let lp = null, lpX = 0, lpY = 0;
   document.addEventListener('pointerdown', e => {
@@ -4114,6 +4273,8 @@ function init() {
   }
   if (S.schema === 'r1') { S.schema = 'r2'; S.settings.ytPlayer = true; save(); }
   setTimeout(() => { openShared().catch(() => { }); }, 600);
+  loadSiteConfig();
+  try { if (navigator.storage && navigator.storage.persist) navigator.storage.persisted().then(p => { if (!p) navigator.storage.persist().catch(() => { }); }).catch(() => { }); } catch (e) { }
   try {
     if ('launchQueue' in window) window.launchQueue.setConsumer(async p => {
       if (!p || !p.files || !p.files.length) return;
@@ -4137,14 +4298,14 @@ function init() {
   Mirrors.load();
   IT.probe();
   if (!S.settings.langs) setTimeout(() => { if (!S.settings.langs && !sheetOpen) langPicker(true); }, 600);
-  else if (!S.settings.name && !S.askedName && !/[?&](play|pl|share)=/.test(location.search)) setTimeout(() => { if (!sheetOpen && !S.settings.name) askName(true); }, 2500);
+  else if (!String(S.settings.name || '').trim()) setTimeout(() => { if (!String(S.settings.name || '').trim()) { if (sheetOpen) needName = true; else nameSheet(true); } }, /[?&](play|pl|share|text|url)=/.test(location.search) ? 6000 : 1500);
   Server.detect().then(ok => { if (!DIRECT() && (S.settings.ytPlayer || S.settings.engine === 'player')) setTimeout(() => Embed.ensure().catch(() => { }), 2500); if (ok) { IT.ok = null; softRender(); } });
   if (IS_IOS) document.addEventListener('touchend', unlockAudio, { once: true, capture: true });
   if ('serviceWorker' in navigator && !NATIVE && (location.protocol === 'https:' || location.hostname === 'localhost' || location.hostname === '127.0.0.1')) {
     navigator.serviceWorker.register('sw.js').catch(() => { });
   }
   window.TuneTune = { version: VER, engine: () => (IT.ok ? 'direct' : 'mirrors') };
-  if (window.__TT_TEST__) window.TuneTune._ = { JSA, DES, Saavn, Player, Streams, Mirrors, IT, YT, S, nav, cv, Actions, itShelves, mem, Embed, MirrorHealth, download, share, probeAudio, qInfo, sharePlaylist, SvC };
+  if (window.__TT_TEST__) window.TuneTune._ = { JSA, DES, Saavn, Player, Streams, Mirrors, IT, YT, S, nav, cv, Actions, itShelves, mem, Embed, MirrorHealth, download, share, probeAudio, qInfo, sharePlaylist, SvC, translit, Deck, SITE, lyrSet: r => { lyrState = { id: Player.cur && Player.cur.id, ...r }; renderLyrics(); } };
 }
 try { init(); }
 catch (err) {
