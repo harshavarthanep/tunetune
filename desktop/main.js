@@ -57,11 +57,15 @@ app.whenReady().then(() => {
   session.defaultSession.webRequest.onBeforeSendHeaders(filter, (d, cb) => {
     const h = d.requestHeaders; let u;
     try { u = new URL(d.url); } catch (e) { return cb({ requestHeaders: h }); }
-    for (const n of ['Origin', 'Referer']) { const k = headerKey(h, n); if (k) delete h[k]; }
+    const isPlayerFrame = d.resourceType === 'subFrame' || /\/(embed|iframe_api|s\/player)\//.test(u.pathname) || u.pathname === '/iframe_api';
     if (u.hostname.endsWith('googlevideo.com')) {
       const c = u.searchParams.get('c');
-      if (UA[c]) { const k = headerKey(h, 'User-Agent'); if (k) delete h[k]; h['User-Agent'] = UA[c]; }
+      // only the app's own direct audio streams get the matching app identity; the official player's traffic is left alone
+      if (UA[c]) { for (const n of ['Origin', 'Referer', 'User-Agent']) { const k = headerKey(h, n); if (k) delete h[k]; } h['User-Agent'] = UA[c]; }
+    } else if (isPlayerFrame) {
+      const k = headerKey(h, 'Referer'); if (!k || !/^https?:/.test(h[k])) h['Referer'] = 'https://www.youtube.com/';
     } else {
+      for (const n of ['Origin', 'Referer']) { const k = headerKey(h, n); if (k) delete h[k]; }
       const ttua = headerKey(h, 'X-TT-UA');
       if (ttua) { const v = h[ttua]; delete h[ttua]; const k = headerKey(h, 'User-Agent'); if (k) delete h[k]; h['User-Agent'] = v; }
       const origin = u.hostname.startsWith('music.') ? 'https://music.youtube.com' : 'https://www.youtube.com';

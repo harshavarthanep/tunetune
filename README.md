@@ -1,6 +1,19 @@
-# Tune Tune 2.0
+# Tune Tune 2.1
 
 A free music player with the YouTube Music catalog, 40 language collections, live radio, synced lyrics, an equalizer and offline downloads. No account, no API keys, no ads.
+
+## What changed in 2.1: songs always play
+
+In 2.0, the website found songs through public mirrors (that works) but also tried to get the audio from them. YouTube blocks that, so songs ended in "Can't play".
+
+2.1 adds YouTube's own official embedded player as a playback engine. It doesn't depend on mirrors, so a song plays whenever YouTube itself allows it to.
+- **Automatic** (default): uses a fast audio stream when one responds within a few seconds. Otherwise it plays the song in the YouTube player instantly, and skips the busy mirrors for 20 minutes so the next songs start right away.
+- If a video can't be embedded, it plays another upload of the same song.
+- The video appears where the album art usually is in Now Playing.
+- Some phones (mainly iPhone) need one tap on the video before the first song; the app opens it and tells you.
+- Settings → Music sources → Playback lets you choose Automatic, YouTube player, or Audio only.
+
+**Trade-offs of the YouTube player:** the equalizer and downloads need an audio stream. Those always work in the desktop and Android apps, and work in the browser when a mirror responds. On phones, music can pause when the screen locks while using the YouTube player. For screen-off listening, use the Android app.
 
 ## Why v1 showed a blank screen
 
@@ -32,7 +45,7 @@ To run the desktop app on your own PC instead: install Node.js, then in this fol
 **First launch notes:** Windows shows "Windows protected your PC" (click *More info → Run anyway*) and macOS needs right-click → *Open*, because the apps aren't code-signed. On Android, allow "Install unknown apps" for your browser or file manager.
 
 ## What keeps the music playing
-- Every song has three stream sources (direct → Piped mirrors → Invidious). If one fails mid-song, the next takes over from the same second.
+- Every song has four ways to play: direct audio (apps), Piped mirrors, Invidious mirrors, then the official YouTube player. If one fails mid-song, the next takes over from the same second.
 - A watchdog restarts a frozen stream after 15 seconds, and resumes automatically when the internet comes back.
 - The next song's stream is fetched while the current one plays, so tracks change instantly even with the screen off.
 - When your queue ends, Autoplay adds related songs (YouTube Music radio) 45 seconds before the end.

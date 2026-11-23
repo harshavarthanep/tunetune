@@ -211,7 +211,8 @@ body.playing .bars i:nth-child(3){animation-delay:-.55s}
 .empty .btn{margin-top:16px}
 .empty.sm{padding:24px var(--pad)}
 
-.sk{background:var(--fill);border-radius:8px;animation:pulse 1.4s ease-in-out infinite;box-shadow:none}
+.sk{background:linear-gradient(90deg,var(--fill) 25%,var(--fill2) 50%,var(--fill) 75%);background-size:300% 100%;border-radius:8px;animation:shimmer 1.4s ease-in-out infinite;box-shadow:none}
+@keyframes shimmer{0%{background-position:100% 0}100%{background-position:0 0}}
 @keyframes pulse{50%{opacity:.45}}
 .spin{width:26px;height:26px;border-radius:50%;border:2.5px solid var(--fill2);border-top-color:var(--accent);animation:sp .8s linear infinite;margin:36px auto}
 .spin.light{border-color:rgba(255,255,255,.25);border-top-color:#fff}
@@ -450,9 +451,43 @@ input.rng::-moz-range-thumb{width:14px;height:14px;border:0;border-radius:50%;ba
 .ch-art.round{border-radius:50%}
 .fsub{margin:-4px 0 14px;text-align:center;color:var(--text2);font-size:14px;line-height:1.4}
 .m-s.pre{white-space:pre-line;text-align:left;line-height:1.6;margin-top:6px}
-body.buffering .m-art,body.buffering #np-pp{animation:pulse 1.2s ease-in-out infinite}
+body.buffering #np-pp{animation:pulse 1.2s ease-in-out infinite}
 .nli:focus-visible,.li:focus-visible{outline:2px solid var(--accent);outline-offset:-2px}
 @media (max-width:380px){.tab{font-size:9.5px}.tab .ic{width:24px;height:24px}}
 .sg.lp{display:flex;flex-direction:column;overflow:hidden}
 .sg.lp .chips{overflow-y:auto;min-height:0;flex:1 1 auto;padding:4px 2px}
 .sg.lp .fbtns{flex:none;padding-top:12px;margin-top:6px;border-top:.5px solid var(--sep)}
+
+/* ---------- v2.1: YouTube player engine + polish ---------- */
+#ytbox{position:absolute;left:50%;top:50%;width:min(100cqw,calc(100cqh * 16 / 9));aspect-ratio:16/9;transform:translate(-50%,-50%);
+  border-radius:12px;overflow:hidden;background:#000;box-shadow:0 24px 60px rgba(0,0,0,.45);opacity:0;pointer-events:none;visibility:visible;transition:opacity .35s}
+#ytbox iframe{width:100%;height:100%;border:0;display:block}
+#np.video #ytbox{opacity:1;pointer-events:auto}
+#np.video .np-art img{opacity:0}
+#np.p-lyr #ytbox,#np.p-q #ytbox{opacity:0;pointer-events:none}
+.np-tap{position:absolute;left:0;right:0;bottom:0;margin:0;text-align:center;font-size:14px;font-weight:600;display:none;animation:pulse 1.6s ease-in-out infinite}
+#np.needtap .np-tap{display:block}
+.m-aw{position:relative;flex:none;display:block}
+.m-ring{position:absolute;left:50%;top:50%;width:24px;height:24px;margin:-12px 0 0 -12px;border-radius:50%;border:2.5px solid rgba(255,255,255,.35);border-top-color:#fff;
+  background:rgba(0,0,0,.28);display:none;animation:sp .85s linear infinite}
+body.buffering .m-ring{display:block}
+.m-time{display:none;font-size:13px;color:var(--text2);font-variant-numeric:tabular-nums;margin-right:6px;white-space:nowrap}
+.topres{display:flex;align-items:center;gap:14px;margin:0 var(--pad) 4px;padding:14px;border-radius:16px;background:var(--grp);cursor:pointer;transition:transform .15s}
+.topres:active{transform:scale(.985)}
+.topres img{width:76px;height:76px;border-radius:10px;object-fit:cover;flex:none;background:var(--fill);box-shadow:var(--card-sh)}
+.tr-tx{flex:1;min-width:0;display:flex;flex-direction:column;gap:3px}
+.tr-tx b{font-size:19px;letter-spacing:-.2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.tr-tx span{font-size:14px;color:var(--text2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.topres .btn .ic{width:16px;height:16px}
+#view.enter>*{animation:viewIn .32s cubic-bezier(.2,.8,.2,1) both}
+@keyframes viewIn{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
+#view.enter>.nb{animation:none}
+@media (hover:hover){
+  .card .art{transition:transform .2s,box-shadow .2s}
+  .card:hover .art{transform:translateY(-3px);box-shadow:0 12px 28px rgba(0,0,0,.18)}
+  .tile{transition:transform .2s,filter .2s}.tile:hover{transform:translateY(-2px);filter:saturate(1.15)}
+}
+@media (min-width:900px){
+  .m-time{display:block}
+  #np.video.p-lyr #ytbox,#np.video.p-q #ytbox{opacity:1;pointer-events:auto}
+}

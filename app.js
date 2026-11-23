@@ -7,7 +7,7 @@
 
 const TITLE = 'Tune Tune';
 const APP = 'TuneTune';
-const VER = '2.0.0';
+const VER = '2.1.0';
 const KEY = 'tunetune.v1';
 const YEAR = new Date().getFullYear();
 const IS_IOS = /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
@@ -164,7 +164,7 @@ document.addEventListener('error', e => {
 /* ================= state ================= */
 const DEFAULTS = {
   liked: [], playlists: [], history: [], searches: [], downloads: [], locals: [],
-  settings: { theme: 'auto', accent: '#ff375f', eqOn: false, eq: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0], eqPreset: 'Flat', autoplay: true, country: '', volume: 1, langs: null, quality: 'high', mirror: '' },
+  settings: { theme: 'auto', accent: '#ff375f', eqOn: false, eq: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0], eqPreset: 'Flat', autoplay: true, country: '', volume: 1, langs: null, quality: 'high', mirror: '', engine: 'auto' },
 };
 const S = (() => {
   const base = JSON.parse(JSON.stringify(DEFAULTS));
@@ -762,46 +762,146 @@ const YT = {
 /* --- audio stream resolver: direct → Piped → Invidious, with caching & expiry --- */
 const Streams = {
   c: new Map(), pending: new Map(),
-  get(id, avoid) {
+  get(id, avoid, budget = 30000) {
     avoid = avoid || new Set();
     const hit = this.c.get(id);
     if (hit && hit.exp > Date.now() + 90e3 && !avoid.has(hit.via)) return Promise.resolve(hit);
     const key = id + '|' + [...avoid].join(',');
     if (this.pending.has(key)) return this.pending.get(key);
-    const p = this.resolve(id, avoid).finally(() => this.pending.delete(key));
+    const p = this.resolve(id, avoid, budget).finally(() => this.pending.delete(key));
     this.pending.set(key, p);
     return p;
   },
-  async resolve(id, avoid) {
-    let err = null;
-    if (!avoid.has('direct') && await IT.probe()) { try { return this.put(id, await IT.player(id)); } catch (e) { err = e; } }
-    await Promise.race([Mirrors.load(), sleep(2500)]);
+  // Tries direct → Piped → Invidious within a time budget, so a dead mirror network never stalls playback.
+  async resolve(id, avoid, budget) {
+    let err = null, hard = false;
+    const deadline = Date.now() + budget;
+    const left = () => Math.max(1500, Math.min(10000, deadline - Date.now()));
+    if (!avoid.has('direct') && await IT.probe()) { try { return this.put(id, await IT.player(id)); } catch (e) { err = e; hard = true; } }
+    await Promise.race([Mirrors.load(), sleep(2000)]);
     for (const b of Mirrors.order('piped').slice(0, 4)) {
       const via = 'piped:' + b; if (avoid.has(via)) continue;
+      if (Date.now() > deadline) break;
       try {
-        const j = await getJSON(`${b}/streams/${id}`, 12000);
+        const j = await getJSON(`${b}/streams/${id}`, left());
         if (j.error) throw softErr(j.error);
         const p = pickAudio((j.audioStreams || []).filter(s => s.url && !s.videoOnly).map(s => ({ url: s.url, mime: s.mimeType || '', bitrate: s.bitrate || 0 })));
         if (!p) throw softErr('no audio');
         Mirrors.good('piped', b); return this.put(id, { ...p, via });
-      } catch (e) { err = e; if (hardFail(e)) Mirrors.bad('piped', b); }
+      } catch (e) { err = e; if (hardFail(e)) { hard = true; Mirrors.bad('piped', b); } }
     }
     for (const b of Mirrors.order('inv').slice(0, 4)) {
       const via = 'inv:' + b; if (avoid.has(via)) continue;
+      if (Date.now() > deadline) break;
       try {
-        const j = await getJSON(`${b}/api/v1/videos/${id}?local=true`, 12000);
+        const j = await getJSON(`${b}/api/v1/videos/${id}?local=true`, left());
         if (j.error) throw softErr(j.error);
         const p = pickAudio((j.adaptiveFormats || []).filter(f => f.url && /^audio\//.test(f.type || '')).map(f => ({ url: f.url.startsWith('/') ? b + f.url : f.url, mime: f.type, bitrate: +f.bitrate || 0 })));
         if (!p) throw softErr('no audio');
         Mirrors.good('inv', b); return this.put(id, { ...p, via });
-      } catch (e) { err = e; if (hardFail(e)) Mirrors.bad('inv', b); }
+      } catch (e) { err = e; if (hardFail(e)) { hard = true; Mirrors.bad('inv', b); } }
     }
-    throw err || new Error('No stream available');
+    const out = err || new Error('No stream available');
+    if (!hard && err) out.soft = true;
+    throw out;
   },
   put(id, s) { const v = { ...s, exp: expOf(s.url) }; this.c.set(id, v); if (this.c.size > 200) this.c.delete(this.c.keys().next().value); return v; },
   drop(id) { if (id) this.c.delete(id); },
 };
 const ytIdOf = t => (t.source === 'yt' ? t.sid : t.ytId);
+
+/* --- mirror health: after mirrors fail twice, skip them for 20 minutes so songs start instantly --- */
+const MirrorHealth = {
+  s: (() => { try { return JSON.parse(localStorage.getItem('tunetune.mh') || '{}'); } catch (e) { return {}; } })(),
+  ok() { return !(this.s.until > Date.now()); },
+  bad(strong) { this.s.fails = (this.s.fails || 0) + 1; if (strong || this.s.fails >= 2) { this.s.until = Date.now() + 20 * 60e3; this.s.fails = 0; } this.keep(); },
+  good() { if (this.s.fails || this.s.until) { this.s = {}; this.keep(); } },
+  keep() { try { localStorage.setItem('tunetune.mh', JSON.stringify(this.s)); } catch (e) { } },
+};
+
+/* --- the official YouTube player (embedded): plays any song YouTube allows, no mirrors needed --- */
+const Embed = {
+  api: null, player: null, readyP: null, ready: false, broken: false, state: -1, id: '', srcAttr: '', err: null,
+  vol: 1, rate: 1, poll: 0, lastDur: 0, ls: {}, needTap: false, tapT: 0,
+  addEventListener(ev, fn) { (this.ls[ev] = this.ls[ev] || []).push(fn); },
+  emit(ev) { (this.ls[ev] || []).forEach(f => { try { f(); } catch (e) { console.warn(e); } }); },
+  loadApi() {
+    if (this.api) return this.api;
+    this.api = new Promise((res, rej) => {
+      if (window.YT && window.YT.Player) return res(window.YT);
+      const prev = window.onYouTubeIframeAPIReady;
+      window.onYouTubeIframeAPIReady = () => { if (typeof prev === 'function') { try { prev(); } catch (e) { } } res(window.YT); };
+      const sc = document.createElement('script'); sc.src = 'https://www.youtube.com/iframe_api'; sc.async = true;
+      sc.onerror = () => rej(new Error('YouTube player blocked'));
+      document.head.appendChild(sc);
+      setTimeout(() => rej(new Error('YouTube player timed out')), 15000);
+    }).catch(e => { this.api = null; throw e; });
+    return this.api;
+  },
+  async ensure() {
+    if (this.ready) return;
+    const YTA = await this.loadApi();
+    if (!this.readyP) {
+      this.readyP = new Promise((res, rej) => {
+        const vars = { autoplay: 1, controls: 0, disablekb: 1, fs: 0, iv_load_policy: 3, playsinline: 1, rel: 0 };
+        if (/^https?:/.test(location.origin)) vars.origin = location.origin;
+        let host = $('#ytp'); if (!host) { const box = $('#ytbox'); box.innerHTML = '<div id="ytp"></div>'; }
+        this.player = new YTA.Player('ytp', { width: '100%', height: '100%', playerVars: vars, events: {
+          onReady: () => { this.ready = true; try { this.player.setVolume(Math.round(this.vol * 100)); } catch (e) { } res(); },
+          onStateChange: e => this.onState(e.data),
+          onError: e => { this.err = { code: e.data }; this.stopPoll(); this.emit('error'); },
+        } });
+        setTimeout(() => { if (!this.ready) rej(new Error('YouTube player did not start')); }, 15000);
+      }).catch(e => { this.readyP = null; try { this.player && this.player.destroy(); } catch (x) { } this.player = null; throw e; });
+    }
+    await this.readyP;
+  },
+  onState(st) {
+    this.state = st;
+    if (st === 1) { this.needTap = false; clearTimeout(this.tapT); UI.tapHint(false); this.startPoll(); this.emit('play'); this.emit('playing'); }
+    else if (st === 2) { this.stopPoll(); this.emit('pause'); }
+    else if (st === 0) { this.stopPoll(); this.emit('ended'); }
+  },
+  startPoll() {
+    if (this.poll) return;
+    this.poll = setInterval(() => {
+      const d = this.duration;
+      if (d && d !== this.lastDur) { this.lastDur = d; this.emit('durationchange'); }
+      this.emit('timeupdate');
+    }, 250);
+  },
+  stopPoll() { clearInterval(this.poll); this.poll = 0; },
+  async open(id, start, autoplay) {
+    this.err = null; this.id = id; this.srcAttr = 'youtube:' + id; this.state = -1; this.lastDur = 0;
+    await this.ensure();
+    if (this.id !== id) return;
+    const opts = { videoId: id, startSeconds: Math.max(0, Math.floor(start || 0)) };
+    if (autoplay) this.player.loadVideoById(opts); else this.player.cueVideoById(opts);
+    try { this.player.setPlaybackRate(this.rate); this.player.setVolume(Math.round(this.vol * 100)); } catch (e) { }
+    clearTimeout(this.tapT);
+    if (autoplay) this.tapT = setTimeout(() => { if (this.id === id && (this.state === -1 || this.state === 5)) { this.needTap = true; UI.tapHint(true); } }, 5000);
+  },
+  play() { try { if (this.player && this.id) this.player.playVideo(); } catch (e) { } return Promise.resolve(); },
+  pause() { try { if (this.player && this.state !== 2 && this.state !== 0) this.player.pauseVideo(); } catch (e) { } },
+  stop() { this.stopPoll(); clearTimeout(this.tapT); this.needTap = false; UI.tapHint(false); this.srcAttr = ''; this.id = ''; this.state = -1; try { this.player && this.player.stopVideo(); } catch (e) { } },
+  getAttribute(n) { return n === 'src' ? this.srcAttr : null; },
+  removeAttribute() { this.stop(); },
+  load() { },
+  get src() { return this.srcAttr; },
+  get paused() { return !(this.state === 1 || this.state === 3); },
+  get ended() { return this.state === 0; },
+  get readyState() { return this.state === 1 ? 4 : 0; },
+  get error() { return this.err; },
+  get currentTime() { try { return (this.player && this.player.getCurrentTime && this.player.getCurrentTime()) || 0; } catch (e) { return 0; } },
+  set currentTime(v) { try { this.player.seekTo(v, true); } catch (e) { } },
+  get duration() { try { const d = this.player && this.player.getDuration ? this.player.getDuration() : 0; return d > 0 ? d : NaN; } catch (e) { return NaN; } },
+  get volume() { return this.vol; },
+  set volume(v) { this.vol = v; try { this.player && this.player.setVolume(Math.round(v * 100)); } catch (e) { } },
+  get playbackRate() { return this.rate; },
+  set playbackRate(r) { this.rate = r; try { this.player && this.player.setPlaybackRate(r); } catch (e) { } },
+  get defaultPlaybackRate() { return this.rate; },
+  set defaultPlaybackRate(r) { },
+};
 
 /* ================= registries for on-screen lists ================= */
 const REG = new Map(); let regN = 0;
@@ -832,12 +932,13 @@ const Player = {
   plain: null, fx: null, el: null, ctx: null, pre: null, filters: [],
   objUrl: null, ltok: 0, loaded: false, resumeAt: 0, rate: 1, vol: 1, isBlob: false, pendingSeek: 0,
   wantPlay: false, loading: false, srcAt: 0, lastProgress: 0, lastT: -1, resumeTries: 0, avoid: new Set(), attempts: 0, failRun: 0,
-  via: '', previewMode: false, prefetched: false, extending: null, badCors: new Set(), waitOnline: false,
+  via: '', previewMode: false, prefetched: false, extending: null, badCors: new Set(), waitOnline: false, embedId: '', userPaused: false,
   sleepT: null, sleepAt: 0, sleepEnd: false,
   get cur() { return this.queue[this.i] || null; },
 
   init() {
     this.plain = this.mk(false); this.el = this.plain;
+    ['timeupdate', 'play', 'playing', 'pause', 'ended', 'error', 'loadedmetadata', 'durationchange'].forEach(ev => Embed.addEventListener(ev, () => { if (this.el === Embed) this.on(ev); }));
     this.setVol(S.settings.volume == null ? 1 : S.settings.volume, true);
     this.session(); this.restore();
     setInterval(() => this.persist(), 5000);
@@ -857,8 +958,15 @@ const Player = {
       UI.time(); this.ahead();
     } else if (ev === 'durationchange') UI.time();
     else if (ev === 'play') UI.state();
-    else if (ev === 'playing') { this.loading = false; this.resumeTries = 0; this.failRun = 0; this.wantPlay = true; this.lastProgress = Date.now(); UI.state(); }
-    else if (ev === 'pause') { if (!this.loading && !a.ended) this.wantPlay = false; UI.state(); }
+    else if (ev === 'playing') {
+      this.loading = false; this.resumeTries = 0; this.failRun = 0; this.wantPlay = true; this.lastProgress = Date.now();
+      if (/^(piped|inv):/.test(this.via)) MirrorHealth.good();
+      UI.state(); UI.track(t);
+    }
+    else if (ev === 'pause') {
+      if (a === Embed && document.hidden && this.wantPlay && !this.userPaused) { setTimeout(() => { if (this.el === Embed && this.wantPlay) Embed.play(); }, 400); UI.state(); return; }
+      if (!this.loading && !a.ended) this.wantPlay = false; UI.state();
+    }
     else if (ev === 'loadedmetadata') {
       if (this.pendingSeek) { try { a.currentTime = this.pendingSeek; } catch (e) { } this.pendingSeek = 0; }
       a.playbackRate = t && t.live ? 1 : this.rate; UI.time();
@@ -873,6 +981,7 @@ const Player = {
   },
   prefetch() {
     const n = this.queue[this.i + 1]; if (!n || n.live || isDl(n.id)) return;
+    if (S.settings.engine === 'player' || (!NATIVE && !MirrorHealth.ok())) return;
     if (n.source === 'yt') Streams.get(n.sid).catch(() => { });
     else if (n.source === 'deezer') {
       const go = id => Streams.get(id).catch(() => { });
@@ -890,8 +999,15 @@ const Player = {
     }
     if (this.isBlob) { toast('This saved file can’t be played'); return this.skipAfterFail(t); }
     const yid = ytIdOf(t);
-    if (yid && !this.previewMode && this.attempts < 4) {
-      this.attempts++; if (this.via) this.avoid.add(this.via); Streams.drop(yid);
+    if (a === Embed) {
+      const code = Embed.err && Embed.err.code;
+      this.avoid.add('embed:' + this.embedId);
+      if (this.attempts < 5) { this.attempts++; return this.load(true, [2, 100, 101, 150].includes(code) ? 0 : pos, true); }
+    } else if (yid && !this.previewMode && this.attempts < 5) {
+      this.attempts++;
+      if (this.via) this.avoid.add(this.via);
+      if (!NATIVE && /^(piped|inv):/.test(this.via)) { MirrorHealth.bad(); this.avoid.add('streams'); }
+      Streams.drop(yid);
       return this.load(true, pos, true);
     }
     if (t.source === 'deezer' && this.previewMode && this.attempts < 5) {
@@ -922,7 +1038,7 @@ const Player = {
     if (autoplay) this.wantPlay = true;
     this.loading = true; this.waitOnline = false;
     UI.track(t); UI.state();
-    let src = '', blob = false;
+    let src = '', blob = false, embedId = '';
     if (t.source === 'local' || isDl(t.id)) {
       try {
         const b = await DB.get(t.id); if (tok !== this.ltok) return;
@@ -943,10 +1059,20 @@ const Player = {
           if (!yid && t.source === 'deezer' && !this.previewMode) { try { const m = await YT.match(t); if (m) { yid = t.ytId = m.sid; } } catch (e) { } }
           if (tok !== this.ltok) return;
           if (yid && !this.previewMode) {
-            try { const s = await Streams.get(yid, this.avoid); src = s.url; this.via = s.via; }
-            catch (e) { if (t.source === 'yt') throw e; }
+            const eng = S.settings.engine;
+            const tryStreams = eng !== 'player' && !this.avoid.has('streams') && (NATIVE || eng === 'audio' || MirrorHealth.ok());
+            if (tryStreams) {
+              try { const s = await Streams.get(yid, this.avoid, NATIVE ? 30000 : 9000); src = s.url; this.via = s.via; }
+              catch (e) { if (!NATIVE && !e.soft) MirrorHealth.bad(true); this.avoid.add('streams'); }
+              if (tok !== this.ltok) return;
+            }
+            if (!src && eng !== 'audio') {
+              embedId = await this.pickEmbed(t, yid);
+              if (tok !== this.ltok) return;
+            }
+            if (!src && !embedId && t.source === 'yt') throw new Error('no playable source');
           }
-          if (!src && t.source === 'deezer' && t.url) { this.previewMode = true; src = t.url; this.via = 'preview'; if (!document.hidden) toast('Full song unavailable right now — playing a 30-second preview'); }
+          if (!src && !embedId && t.source === 'deezer' && t.url) { this.previewMode = true; src = t.url; this.via = 'preview'; if (!document.hidden) toast('Full song unavailable right now — playing a 30-second preview'); }
         }
       } catch (e) {
         if (tok !== this.ltok) return;
@@ -956,11 +1082,27 @@ const Player = {
       }
       if (tok !== this.ltok) return;
     }
+    if (embedId) {
+      this.isBlob = false; this.embedId = embedId; this.via = 'embed';
+      this.route('embed');
+      this.srcAt = Date.now(); this.lastProgress = Date.now(); this.lastT = -1; this.pendingSeek = 0;
+      UI.track(t); this.meta(t);
+      try { await Embed.open(embedId, startAt, autoplay); }
+      catch (e) {
+        if (tok !== this.ltok) return;
+        Embed.broken = true; console.warn('embed', e);
+        if (!document.hidden) toast('The YouTube player is blocked on this network or by an ad blocker');
+        return this.skipAfterFail(t);
+      }
+      if (tok !== this.ltok) return;
+      if (autoplay) this.play(); else { this.loading = false; UI.state(); }
+      return;
+    }
     if (!src) return this.skipAfterFail(t);
     this.isBlob = blob;
     let host = ''; try { host = new URL(src, location.href).host; } catch (e) { }
     const fx = !!(S.settings.eqOn && !t.live && this.via !== 'preview' && (blob || !this.badCors.has(host)));
-    this.route(fx);
+    this.route(fx ? 'fx' : 'plain');
     const a = this.el;
     this.pendingSeek = startAt > 0 ? startAt : 0; this.srcAt = Date.now(); this.lastProgress = Date.now(); this.lastT = -1;
     a.src = src;
@@ -969,8 +1111,18 @@ const Player = {
     if (t.live && !quiet) Radio.click(t);
     if (autoplay) this.play(); else { this.loading = false; UI.state(); }
   },
+  async pickEmbed(t, yid) {
+    if (Embed.broken) return '';
+    const ok = id => id && !this.avoid.has('embed:' + id);
+    if (ok(yid)) return yid;
+    if (!t._altsFetched) {
+      t._altsFetched = true;
+      try { t._alts = (await YT.songs(`${t.title} ${t.artist}`)).map(x => x.sid).filter(id => id !== yid).slice(0, 4); } catch (e) { t._alts = []; }
+    }
+    return (t._alts || []).find(ok) || '';
+  },
   async play() {
-    this.wantPlay = true;
+    this.wantPlay = true; this.userPaused = false;
     try {
       if (this.ctx && this.ctx.state !== 'running') await this.ctx.resume();
       await this.el.play();
@@ -978,14 +1130,15 @@ const Player = {
       if (e && e.name === 'NotAllowedError') { this.loading = false; UI.state(); if (!document.hidden) toast('Tap play to start'); }
     }
   },
-  userPause() { this.wantPlay = false; this.el.pause(); },
-  route(fx) {
-    if (fx && !this.ensureFx()) fx = false;
-    const target = fx ? this.fx : this.plain;
+  userPause() { this.wantPlay = false; this.userPaused = true; this.el.pause(); },
+  route(kind) {
+    if (kind === 'fx' && !this.ensureFx()) kind = 'plain';
+    const target = kind === 'fx' ? this.fx : kind === 'embed' ? Embed : this.plain;
     if (target !== this.el) {
-      const old = this.el; this.el = target; target.volume = this.vol;
+      const old = this.el; this.el = target; try { target.volume = this.vol; } catch (e) { }
       old.pause(); old.removeAttribute('src'); try { old.load(); } catch (e) { }
     }
+    $('#np').classList.toggle('video', kind === 'embed');
   },
   ensureFx() {
     if (this.fx) return true;
@@ -1018,7 +1171,9 @@ const Player = {
     if (!this.cur) return;
     if (this.loading && this.wantPlay) {
       this.ltok++; this.wantPlay = false; this.loading = false; this.loaded = false;
-      this.resumeAt = this.el.currentTime || this.pendingSeek || 0; this.el.pause(); UI.state(); return;
+      this.resumeAt = this.el.currentTime || this.pendingSeek || 0;
+      if (this.el === Embed) Embed.stop(); else this.el.pause();
+      UI.state(); return;
     }
     if (!this.loaded || this.waitOnline) return this.load(true, this.resumeAt, true);
     if (this.el.paused) this.play(); else this.userPause();
@@ -1119,6 +1274,7 @@ const Player = {
     const t = this.cur, a = this.el; if (!t || !this.loaded) return;
     if (this.waitOnline) { if (navigator.onLine) { this.waitOnline = false; this.load(this.wantPlay, this.resumeAt || 0, true); } return; }
     if (!this.wantPlay || !navigator.onLine) return;
+    if (a === Embed && Embed.needTap) return;
     const now = Date.now();
     if (this.loading) {
       if (a.getAttribute('src') && now - this.srcAt > 25000 && a.readyState < 3) { this.loading = false; this.fail(); }
@@ -1131,11 +1287,11 @@ const Player = {
     const t = this.cur; if (!t) return;
     const pos = t.live ? 0 : (this.el.currentTime || 0);
     const yid = ytIdOf(t);
-    if (yid && !this.isBlob) { Streams.drop(yid); if (this.via && this.via !== 'direct') this.avoid.add(this.via); }
+    if (yid && !this.isBlob && this.el !== Embed) { Streams.drop(yid); if (this.via && this.via !== 'direct') this.avoid.add(this.via); }
     this.load(true, pos, true);
   },
   setVol(v, silent) {
-    this.vol = clamp(v, 0, 1); this.plain.volume = this.vol; if (this.fx) this.fx.volume = this.vol;
+    this.vol = clamp(v, 0, 1); this.plain.volume = this.vol; if (this.fx) this.fx.volume = this.vol; Embed.volume = this.vol;
     S.settings.volume = this.vol; if (!silent) save();
   },
   setRate(r) { this.rate = r; if (this.cur && !this.cur.live) this.el.playbackRate = r; toast(`Speed ${r}×`); },
@@ -1232,10 +1388,11 @@ const UI = {
     const a = Player.el, t = Player.cur; if (!t) return;
     const cur = Player.loaded ? a.currentTime : Player.resumeAt;
     const dur = Player.loaded && isFinite(a.duration) && a.duration ? a.duration : (t.duration || 0);
-    if (t.live) $('#m-prog').style.width = '0';
+    if (t.live) { $('#m-prog').style.width = '0'; const mt = $('#m-time'); if (mt) mt.textContent = 'LIVE'; }
     else {
       const p = dur ? clamp(cur / dur, 0, 1) : 0;
       $('#m-prog').style.width = (p * 100) + '%';
+      const mt = $('#m-time'); if (mt) mt.textContent = dur ? `${fmt(cur)} / ${fmt(dur)}` : '';
       if (!seeking) {
         const s = $('#np-seek'); s.value = Math.round(p * 1000); s.style.setProperty('--p', (p * 100) + '%');
         $('#np-cur').textContent = fmt(cur); $('#np-rem').textContent = '-' + fmt(Math.max(0, dur - cur));
@@ -1261,6 +1418,10 @@ const UI = {
     });
   },
   timerBtn() { $('#np-btimer').classList.toggle('on', !!(Player.sleepAt || Player.sleepEnd)); },
+  tapHint(on) {
+    $('#np').classList.toggle('needtap', !!on);
+    if (on) { openNP(); toast('Tap the video once to start — your browser needs one tap'); }
+  },
 };
 let toastT;
 function toast(m) { const t = $('#toast'); if (!t) return; t.textContent = m; t.classList.add('on'); clearTimeout(toastT); toastT = setTimeout(() => t.classList.remove('on'), 2400); }
@@ -1270,7 +1431,8 @@ const TABS = [['home', 'Home', 'home'], ['explore', 'Explore', 'explore'], ['sea
 function buildShell() {
   $('#tabs').innerHTML = `<div class="brand"><img src="icons/icon-192.png" alt="">${TITLE}</div>` +
     TABS.map(([k, l, ic]) => `<button class="tab" data-tab="${k}">${I[ic]}<span>${l}</span></button>`).join('');
-  $('#mini').innerHTML = `<img class="m-art" id="m-art" alt=""><div class="m-txt"><div class="m-t" id="m-t">Not Playing</div><div class="m-s" id="m-s"></div></div>
+  $('#mini').innerHTML = `<span class="m-aw"><img class="m-art" id="m-art" alt=""><span class="m-ring"></span></span><div class="m-txt"><div class="m-t" id="m-t">Not Playing</div><div class="m-s" id="m-s"></div></div>
+    <span class="m-time" id="m-time"></span>
     <button class="ib m-prev" data-a="prev" aria-label="Previous">${I.prev}</button>
     <button class="ib" id="m-pp" data-a="toggle" aria-label="Play">${I.play}</button>
     <button class="ib" data-a="next" aria-label="Next">${I.next}</button><div class="m-prog" id="m-prog"></div>`;
@@ -1282,7 +1444,7 @@ function buildShell() {
       <div class="np-from"><span>Playing from</span><b id="np-from"></b></div>
       <button class="np-ib" data-a="npmore" aria-label="More options">${I.more}</button></div>
     <div class="np-stage">
-      <div class="np-art"><img id="np-img" alt=""></div>
+      <div class="np-art"><img id="np-img" alt=""><div id="ytbox"><div id="ytp"></div></div><p class="np-tap">Tap the video to start playing</p></div>
       <div class="np-panel" id="np-lyr"></div>
       <div class="np-panel" id="np-q"></div>
     </div>
@@ -1556,7 +1718,7 @@ async function mediaSource(t) {
   let yid = ytIdOf(t);
   if (!yid && t.source === 'deezer') { const m = await YT.match(t); if (m) { yid = t.ytId = m.sid; } }
   if (!yid) throw new Error('no source');
-  return Streams.get(yid);
+  return Streams.get(yid, new Set(), NATIVE ? 30000 : 15000);
 }
 async function fetchMedia(url, mime) {
   let clen = 0; try { clen = +new URL(url, location.href).searchParams.get('clen') || 0; } catch (e) { }
@@ -1599,7 +1761,9 @@ async function download(t, quiet) {
     $$('.row[data-id]').filter(r => r.dataset.id === t.id).forEach(r => { const m = r.querySelector('.more'); if (m && !r.querySelector('.dlm')) m.insertAdjacentHTML('beforebegin', `<span class="dlm">${I.dlok}</span>`); });
     return true;
   } catch (e) {
-    console.warn(e); if (!quiet) toast(`Couldn’t download “${t.title}” right now`); return false;
+    console.warn(e);
+    if (!quiet) toast(NATIVE ? `Couldn’t download “${t.title}” right now` : 'Downloads need a working audio mirror right now. They always work in the desktop and Android apps.');
+    return false;
   } finally { dlActive.delete(t.id); }
 }
 async function downloadMany(tracks) {
@@ -1742,9 +1906,11 @@ async function testSources() {
   let tr = null;
   try { mem.delete('ys:top hits ' + YEAR); const r = await YT.songs('top hits ' + YEAR); tr = r[0]; lines.push(`Search: working (${r.length} songs)`); } catch (e) { lines.push('Search: not responding'); }
   if (tr) {
-    try { Streams.drop(tr.sid); const s = await Streams.get(tr.sid); lines.push(`Streaming: working via ${s.via.replace(/^(piped|inv):https?:\/\//, '')}`); }
-    catch (e) { lines.push('Streaming: not responding'); }
+    try { Streams.drop(tr.sid); const s = await Streams.get(tr.sid, new Set(), 12000); lines.push(`Audio streams: working via ${s.via.replace(/^(piped|inv):https?:\/\//, '')}`); }
+    catch (e) { lines.push('Audio streams: busy (songs play through the YouTube player instead)'); }
   }
+  try { await Embed.ensure(); lines.push('YouTube player: ready (plays every song YouTube allows)'); } catch (e) { lines.push('YouTube player: blocked (ad blocker or network)'); }
+  lines.push(`Audio mirrors: ${MirrorHealth.ok() ? 'in use when they respond' : 'busy, skipped for now'}`);
   try { mem.delete('au:tr:week'); const a = await Audius.trending(); lines.push(`Audius: ${a.length ? 'working' : 'empty'}`); } catch (e) { lines.push('Audius: not responding'); }
   try { const r = await Radio.top(); lines.push(`Radio: ${r.length ? 'working' : 'empty'}`); } catch (e) { lines.push('Radio: not responding'); }
   actionSheet({ head: `<div class="sh col"><div class="m-t">Music sources</div><div class="m-s pre">${esc(lines.join('\n'))}</div></div>`, acts: [], cancel: 'Done' });
@@ -1774,11 +1940,12 @@ function render() {
   $$('.tab').forEach(b => { const on = b.dataset.tab === nav.tab; b.classList.toggle('on', on); b.setAttribute('aria-current', on ? 'page' : 'false'); });
 }
 function softRender() { const v = $('#view'); const st = v.scrollTop; render(); v.scrollTop = st; }
+function enter() { const v = $('#view'); v.classList.remove('enter'); void v.offsetWidth; v.classList.add('enter'); }
 function go(v, params = {}) {
   const st = nav.stacks[nav.tab]; st[st.length - 1].scroll = $('#view').scrollTop;
-  st.push({ v, ...params }); history.pushState({ v: 1 }, ''); render();
+  st.push({ v, ...params }); history.pushState({ v: 1 }, ''); render(); enter();
 }
-function popView() { const st = nav.stacks[nav.tab]; if (st.length > 1) { st.pop(); render(); } }
+function popView() { const st = nav.stacks[nav.tab]; if (st.length > 1) { st.pop(); render(); enter(); } }
 function switchTab(t) {
   if (!nav.stacks[t]) return;
   const v = $('#view'); const cur = nav.stacks[nav.tab]; cur[cur.length - 1].scroll = v.scrollTop;
@@ -1786,7 +1953,7 @@ function switchTab(t) {
     if (cur.length > 1) { cur.length = 1; cur[0].scroll = 0; }
     else { v.scrollTo({ top: 0, behavior: 'smooth' }); if (t === 'search') setTimeout(() => { const i = $('#sq'); if (i) i.focus(); }, 50); return; }
   }
-  nav.tab = t; render();
+  nav.tab = t; render(); enter();
 }
 function restoreScroll() { const e = cv(); if (e.scroll) { const v = $('#view'); if (v.scrollTop < e.scroll) v.scrollTop = e.scroll; } }
 function fill(sel, tok, promise, fn) {
@@ -1928,6 +2095,7 @@ const KINDS = {
   artist: { title: 'Artist', load: e => Audius.userTracks(e.id) },
   rtag: { title: 'Stations', icon: 'radio', load: e => Radio.tag(e.g) },
 };
+const viaLabel = v => !v ? 'Nothing played yet' : v === 'embed' ? 'YouTube player' : v === 'direct' ? 'Direct audio' : v === 'saved' ? 'Downloaded file' : v === 'preview' ? 'Preview' : v === 'radio' ? 'Live radio' : v === 'audius' ? 'Audius' : 'Audio mirror';
 const greeting = () => { const h = new Date().getHours(); return h < 5 ? 'Late night listening' : h < 12 ? 'Good morning' : h < 17 ? 'Good afternoon' : 'Good evening'; };
 async function quickPicks() {
   const seed = S.history.find(t => t.source === 'yt' || t.ytId);
@@ -1942,6 +2110,7 @@ function renderHome(e, tok) {
     return html + (off.length ? sec('Available offline', rowsHTML(off, reg(off, { from: 'Offline' }), { dur: true })) : emptyState({ icon: 'download', t: 'Nothing saved offline', d: 'Next time you’re online, download songs to keep them here.' }));
   }
   const langs = myLangs();
+  html += `<div class="chips pg">${langs.map(L => `<button class="chip" data-a="lang" data-l="${esc(L)}">${esc(L)}</button>`).join('')}<button class="chip ghost" data-a="langs">${I.plus}Languages</button></div>`;
   if (S.history.length) { const r = S.history.slice(0, 16); html += sec('Recently played', cardsHTML(r, reg(r, { from: 'Recently played' })), { moreK: 'history' }); }
   html += slot('h-qp', 'Quick picks', 'rows', 'Songs picked for you');
   html += '<div id="h-ytm"></div>';
@@ -2079,8 +2248,14 @@ async function runSearch(e) {
       if (tok !== sTok) return;
       const songs = tr.status === 'fulfilled' ? tr.value : [];
       const artists = ar.status === 'fulfilled' ? ar.value : [];
+      const k = songs.length ? reg(songs, { from: `Search: ${q}` }) : '';
+      if (songs.length) {
+        const t0 = songs[0];
+        html += `<div class="sub-h">Top result</div><div class="topres" data-a="play" data-l="${k}" data-i="0" data-id="${esc(t0.id)}"><img src="${esc(artOf(t0, true))}" alt="">
+          <div class="tr-tx"><b>${esc(t0.title)}</b><span>Song · ${esc(t0.artist)}</span></div><button class="btn sm" data-a="play" data-l="${k}" data-i="0">${I.play}Play</button></div>`;
+      }
       if (artists.length) html += `<div class="sub-h">Artists</div><div class="hs">${artists.slice(0, 10).map(collCard).join('')}</div>`;
-      if (songs.length) html += `<div class="sub-h">Songs</div>` + rowsHTML(songs, reg(songs, { from: `Search: ${q}` }), { dur: true });
+      if (songs.length) html += `<div class="sub-h">Songs</div>` + rowsHTML(songs, k, { dur: true });
       if (!songs.length && tr.status === 'rejected') {
         const au = await Audius.search(q).catch(() => []); if (tok !== sTok) return;
         html += `<div class="note">${I.pulse}<span>The YouTube mirrors are busy right now, so here are free full songs instead. Try again in a minute for everything else.</span></div>`;
@@ -2222,11 +2397,12 @@ function renderSettings() {
       li({ icon: 'radio', color: '#ff375f', label: 'Region', ctl: `<select class="sel" data-set="country" aria-label="Region">${COUNTRIES.map(([c, n]) => `<option value="${c}" ${s.country === c ? 'selected' : ''}>${n}</option>`).join('')}</select>` }),
       'Autoplay keeps the music going with similar songs when your queue runs out.') +
     grp('Music sources',
-      li({ icon: 'pulse', color: '#ff3b30', label: 'YouTube Music engine', value: engine }) +
+      li({ icon: 'pulse', color: '#ff3b30', label: 'Catalog', value: engine }) +
+      `<div class="li"><div class="lb"><span class="lx">Playback</span><span class="lv" id="lastvia">${esc(viaLabel(Player.via))}</span></div></div><div class="pad"><div class="seg">${[['auto', 'Automatic'], ['player', 'YouTube player'], ['audio', 'Audio only']].map(([k, l]) => `<button data-a="engine" data-e="${k}" class="${s.engine === k ? 'on' : ''}">${l}</button>`).join('')}</div></div>` +
       li({ label: 'Mirror in use', value: mirror, small: false }) +
       li({ label: 'Test music sources', a: 'testsrc', chev: true }) +
       li({ label: 'Custom mirror', value: s.mirror ? s.mirror.replace(/^https?:\/\//, '') : 'None', a: 'setmirror', chev: true }),
-      NATIVE ? 'The app talks to YouTube Music directly and falls back to public mirrors if needed.' : 'In a browser, Tune Tune streams through free public mirrors and switches automatically when one is busy. The desktop and Android apps connect to YouTube Music directly, which is the most reliable.') +
+      'Automatic uses the fastest audio source and switches to the official YouTube player whenever audio sources are busy, so songs always play. Audio only enables the equalizer and downloads but needs working mirrors in a browser. The desktop and Android apps get audio directly from YouTube Music.') +
     grp('Storage',
       li({ icon: 'download', color: '#30d158', label: 'Downloaded', value: String(S.downloads.length), a: 'go', extra: 'data-v="coll" data-k="downloads"', chev: true }) +
       li({ icon: 'folder', color: '#8e8e93', label: 'On This Device', value: String(S.locals.length), a: 'go', extra: 'data-v="coll" data-k="locals"', chev: true }) +
@@ -2309,6 +2485,7 @@ const Actions = {
   accent(el, d) { S.settings.accent = d.c; save(); applyTheme(); softRender(); },
   quality(el, d) { S.settings.quality = d.q; Streams.c.clear(); save(); softRender(); toast(`Streaming quality: ${el.textContent}`); },
   langs() { langPicker(false); },
+  engine(el, d) { S.settings.engine = d.e; save(); softRender(); toast(d.e === 'player' ? 'Songs play through the official YouTube player' : d.e === 'audio' ? 'Audio only — equalizer and downloads on' : 'Automatic playback'); },
   lpick(el, d) { if (!pickSel) return; if (pickSel.has(d.l)) pickSel.delete(d.l); else pickSel.add(d.l); el.classList.toggle('on', pickSel.has(d.l)); },
   lpdone() {
     const l = pickSel ? [...pickSel] : []; S.settings.langs = l.length ? l : ['English']; pickSel = null; save(); closeSheet();
@@ -2470,7 +2647,7 @@ function init() {
     navigator.serviceWorker.register('sw.js').catch(() => { });
   }
   window.TuneTune = { version: VER, engine: () => (IT.ok ? 'direct' : 'mirrors') };
-  if (window.__TT_TEST__) window.TuneTune._ = { Player, Streams, Mirrors, IT, YT, S, nav, cv, Actions, itShelves, mem };
+  if (window.__TT_TEST__) window.TuneTune._ = { Player, Streams, Mirrors, IT, YT, S, nav, cv, Actions, itShelves, mem, Embed, MirrorHealth };
 }
 try { init(); }
 catch (err) {
