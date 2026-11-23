@@ -714,3 +714,50 @@ kbd{font:600 12px ui-monospace,Menlo,monospace;padding:2px 6px;border-radius:5px
 #np-img.ld,#np .np-art #np-img.ld{opacity:1}
 #np.video .np-art #np-img{opacity:0}
 #np .np-art.settle #np-img{opacity:.5}
+
+/* ---------- v1.1: YouTube songs sit in the album deck as a square ---------- */
+#ytbox{width:min(80cqw,96cqh);height:min(80cqw,96cqh);aspect-ratio:1/1;border-radius:12px;
+  transform:translate3d(calc(-50% + var(--sw,0px)),-50%,0);transition:opacity .35s,transform .55s cubic-bezier(.3,1.25,.5,1);z-index:2}
+#ytbox iframe,#ytbox #ytp{position:absolute;top:0;left:50%;height:100%;width:177.78%;transform:translateX(-50%);border:0;pointer-events:none}
+#np .np-art.swiping #ytbox{transition:none}
+@media (min-width:900px){#ytbox{width:min(86cqw,100cqh);height:min(86cqw,100cqh)}}
+
+/* ---------- menus: blurred background, centred card on bigger screens ---------- */
+.bd{background:rgba(0,0,0,.38);-webkit-backdrop-filter:blur(16px) saturate(1.3);backdrop-filter:blur(16px) saturate(1.3)}
+@media (min-width:700px) and (min-height:560px){
+  .sp{left:50%;right:auto;width:440px;max-width:calc(100vw - 32px);top:50%;bottom:auto;margin:0;max-height:84vh;opacity:0;transform:translate(-50%,-46%) scale(.94);transition:transform .38s cubic-bezier(.32,.72,0,1),opacity .25s}
+  #sheet.open .sp{opacity:1;transform:translate(-50%,-50%) scale(1)}
+  .sg{box-shadow:0 30px 80px rgba(0,0,0,.35)}
+}
+.sp:has(.eq),.sp:has(.guide){max-width:620px}
+@media (min-width:700px) and (min-height:560px){.sp:has(.eq),.sp:has(.guide){width:580px}}
+.sg.eq{padding:18px 20px}
+
+/* ---------- scrolling rows leave room to see the next option ---------- */
+.chips,.hs,.cg{scroll-padding-inline:40px;scroll-behavior:smooth}
+.chips{scroll-padding-inline:48px}
+
+/* ---------- own-server guide, streak, install nudge ---------- */
+.guide .fsub{text-align:left;margin:0 0 12px}
+.steps{margin:0 0 14px;padding-left:22px;display:grid;gap:10px;font-size:15px;line-height:1.45}
+.steps a{color:var(--accent);font-weight:600}
+.steps .cw{display:flex;align-items:center;justify-content:center;gap:8px;width:100%;margin-top:8px}
+.steps .cw .ic{width:18px;height:18px}
+#relayst{min-height:18px;margin:8px 0 0}
+.streak{display:inline-block;margin-left:8px;padding:3px 10px;border-radius:12px;background:color-mix(in srgb,var(--accent) 16%,transparent);color:var(--accent);font-size:13px;font-weight:700;vertical-align:2px}
+.nudge{display:flex;align-items:center;gap:12px;margin:4px var(--pad) 18px;padding:12px 12px 12px 14px;border-radius:16px;background:var(--fill)}
+.nudge-ic{flex:none;width:42px;height:42px;border-radius:11px;display:grid;place-items:center;color:#fff;background:linear-gradient(135deg,var(--accent),#bf5af2)}
+.nudge-ic .ic{width:22px;height:22px}
+.nudge-t{flex:1;min-width:0;display:flex;flex-direction:column;gap:2px}
+.nudge-t b{font-size:15px}.nudge-t span{font-size:13px;color:var(--text2)}
+.nudge .fb{flex:none;width:auto;padding:0 16px;height:36px}
+.nudge-x{flex:none;width:30px;height:30px;display:grid;place-items:center;color:var(--text2)}
+.nudge-x .ic{width:16px;height:16px}
+#np.needtap #ytbox iframe,#np.needtap #ytbox #ytp{pointer-events:auto}
+/* desktop: side albums stay inside the art column (never over the lyrics) */
+@media (min-width:900px){
+  #np .np-art #np-img,#ytbox{width:min(72cqw,100cqh);height:min(72cqw,100cqh)}
+  #np .np-art .dk{width:calc(min(72cqw,100cqh) * .62);height:calc(min(72cqw,100cqh) * .62)}
+  #np .np-art .dk-prev{--dx:calc(-50cqw + min(72cqw,100cqh) * .31)}
+  #np .np-art .dk-next{--dx:calc(50cqw - min(72cqw,100cqh) * .31)}
+}

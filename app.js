@@ -7,7 +7,7 @@
 
 const TITLE = 'Tune Tune';
 const APP = 'TuneTune';
-const VER = '1.1.0';
+const VER = '1.1';
 const KEY = 'tunetune.v1';
 const YEAR = new Date().getFullYear();
 const IS_IOS = /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
@@ -789,7 +789,7 @@ async function firstOk(fns) {
   return [];
 }
 /* ---- JioSaavn: full songs up to 320 kbps with album art — plays in any browser (lock screen too), no YouTube involved ---- */
-const SAAVN_DEFAULT = [{ base: 'https://saavn.dev/api', shape: 'A' }, { base: 'https://saavn.me', shape: 'B' }, { base: 'https://jiosaavn-api-privatecvc2.vercel.app', shape: 'B' }];
+const SAAVN_DEFAULT = [{ base: 'https://saavn.sumit.co/api', shape: 'A' }, { base: 'https://saavn.dev/api', shape: 'A' }, { base: 'https://saavn.me', shape: 'B' }, { base: 'https://jiosaavn-api-privatecvc2.vercel.app', shape: 'B' }];
 const decodeEnt = x => String(x || '').replace(/&(quot|amp|#039|#39|apos|lt|gt);/g, (m, k) => ({ quot: '"', amp: '&', '#039': "'", '#39': "'", apos: "'", lt: '<', gt: '>' }[k]));
 const https = u => String(u || '').replace(/^http:/, 'https:');
 const SvC = {
@@ -932,6 +932,7 @@ function parseLoose(txt) {
   txt = String(txt || '').trim(); const i = txt.search(/[[{]/); if (i < 0) return null;
   try { return JSON.parse(txt.slice(i)); } catch (e) { return null; }
 }
+const WORKER_CODE = "// Tune Tune music server \u2014 paste into a free Cloudflare Worker and press Deploy\nconst ALLOW = /(^|\\.)(jiosaavn\\.com|saavncdn\\.com|saavn\\.com)$/;\nconst CORS = {\n  'Access-Control-Allow-Origin': '*',\n  'Access-Control-Allow-Methods': 'GET, HEAD, OPTIONS',\n  'Access-Control-Allow-Headers': '*',\n  'Access-Control-Expose-Headers': 'Content-Length, Content-Range, Accept-Ranges, Content-Type',\n};\nexport default {\n  async fetch(req) {\n    if (req.method === 'OPTIONS') return new Response(null, { headers: CORS });\n    const target = new URL(req.url).searchParams.get('url');\n    if (!target) return new Response('Tune Tune relay is running', { headers: CORS });\n    let t;\n    try { t = new URL(target); } catch (e) { return new Response('Bad link', { status: 400, headers: CORS }); }\n    if (!ALLOW.test(t.hostname)) return new Response('Not allowed', { status: 403, headers: CORS });\n    const h = {\n      'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0 Safari/537.36',\n      'Accept': '*/*', 'Accept-Language': 'en-IN,en;q=0.9', 'Referer': 'https://www.jiosaavn.com/',\n    };\n    const range = req.headers.get('Range');\n    if (range) h['Range'] = range;\n    if (t.hostname.endsWith('jiosaavn.com')) h['Cookie'] = 'gdpr_acceptance=true; DL=english';\n    const media = t.hostname.endsWith('saavncdn.com');\n    const r = await fetch(t.toString(), { method: req.method, headers: h, cf: { cacheTtl: media ? 86400 : 300, cacheEverything: true } });\n    const out = new Headers(r.headers);\n    for (const k in CORS) out.set(k, CORS[k]);\n    out.delete('set-cookie');\n    return new Response(r.body, { status: r.status, headers: out });\n  },\n};\n";
 const JSA = {
   via: '', fails: new Map(), deadUntil: 0,
   init() { try { this.via = localStorage.getItem('tunetune.jsvia') || ''; this.deadUntil = +localStorage.getItem('tunetune.jsdead') || 0; } catch (e) { } },
@@ -1235,7 +1236,7 @@ const Embed = {
         const vars = { autoplay: 1, controls: 0, disablekb: 1, fs: 0, iv_load_policy: 3, playsinline: 1, rel: 0 };
         if (/^https?:/.test(location.origin)) vars.origin = location.origin;
         let host = $('#ytp'); if (!host) { const box = $('#ytbox'); box.innerHTML = '<div id="ytp"></div>'; }
-        this.player = new YTA.Player('ytp', { width: '100%', height: '100%', playerVars: vars, events: {
+        this.player = new YTA.Player('ytp', { width: '100%', height: '100%', host: 'https://www.youtube-nocookie.com', playerVars: vars, events: {
           onReady: () => { this.ready = true; try { this.player.setVolume(Math.round(this.vol * 100)); } catch (e) { } res(); },
           onStateChange: e => this.onState(e.data),
           onError: e => { this.err = { code: e.data }; this.stopPoll(); this.emit('error'); },
@@ -1665,6 +1666,7 @@ const Player = {
     }
     if (!src) return this.skipAfterFail(t);
     this.isBlob = blob;
+    if (!blob && S.settings.eqOn && !IS_IOS && S.settings.proxy && /saavncdn\.com/.test(src)) src = JSA.relays()[0].wrap(src);
     let host = ''; try { host = new URL(src, location.href).host; } catch (e) { }
     const fx = !!(S.settings.eqOn && !IS_IOS && !t.live && this.via !== 'preview' && (blob || !this.badCors.has(host)));
     let fadeFrom = null;
@@ -1748,7 +1750,7 @@ const Player = {
     this.wid[0].gain.value = (1 + k) / 2; this.wid[1].gain.value = (1 - k) / 2; this.wid[2].gain.value = (1 - k) / 2; this.wid[3].gain.value = (1 + k) / 2;
   },
   reroute() {
-    const t = this.cur; if (!t || !this.loaded) return;
+    const t = this.cur; if (!t || !this.loaded || this.el === Embed || this.via === 'embed') return;
     this.load(!this.el.paused, t.live ? 0 : (this.el.currentTime || 0), true);
   },
   toggle() {
@@ -2485,7 +2487,7 @@ async function fetchMediaAny(url, mime) {
   try { return await fetchMedia(url, mime); }
   catch (e) {
     if (/googlevideo|\/api\/stream/.test(url)) throw e;
-    for (const id of uniq([JSA.via, 'codetabs', 'allorigins', 'corsproxy'])) {
+    for (const id of uniq([S.settings.proxy ? 'custom' : '', JSA.via, 'codetabs', 'allorigins', 'corsproxy'].filter(Boolean))) {
       const p = JSA.relays().find(x => x.id === id && !x.unwrap && x.id !== 'direct'); if (!p) continue;
       try { const r = await fetchT(p.wrap(url), {}, 120000); if (!r.ok) continue; const b = await r.blob(); if (b.size > 50000) return new Blob([b], { type: /mp4|m4a/.test(url) ? 'audio/mp4' : (b.type || 'audio/mpeg') }); } catch (x) { }
     }
@@ -2679,15 +2681,45 @@ async function importBackup(file) {
   } catch (e) { toast('That file isn’t a Tune Tune backup'); }
 }
 async function share(t) {
-  const url = t.source === 'saavn' ? `https://www.jiosaavn.com/search/song/${enc(t.title + ' ' + t.artist)}` : t.source === 'yt' ? `https://music.youtube.com/watch?v=${t.sid}` : t.source === 'audius' && t.permalink ? 'https://audius.co' + t.permalink : (t.live && t.home) || location.href.split('#')[0];
-  const text = `${t.title} — ${t.artist}`;
+  const app = /^https?:/.test(location.origin) ? location.origin + location.pathname : '';
+  const url = app && !t.local && t.source !== 'local' && !t.live ? `${app}?play=${enc((t.title + ' ' + (t.artist || '')).trim())}${t.source === 'podcast' ? '&pod=1' : ''}` : t.source === 'saavn' ? `https://www.jiosaavn.com/search/song/${enc(t.title + ' ' + t.artist)}` : t.source === 'yt' ? `https://music.youtube.com/watch?v=${t.sid}` : (t.live && t.home) || location.href.split('#')[0];
+  const text = `🎧 ${t.title} — ${t.artist}\nListen free on Tune Tune`;
   try { if (navigator.share) { await navigator.share({ title: t.title, text, url }); return; } } catch (e) { if (e.name === 'AbortError') return; }
   try { await navigator.clipboard.writeText(`${text} ${url}`); toast('Link copied'); } catch (e) { toast(text); }
+}
+async function openShared() {
+  let q = '', pod = false; try { const u = new URL(location.href); q = u.searchParams.get('play') || ''; pod = u.searchParams.has('pod'); if (q) { u.searchParams.delete('play'); u.searchParams.delete('pod'); history.replaceState(history.state, '', u.pathname + u.search + u.hash); } } catch (e) { }
+  if (!q || pod) { if (q) { switchTab('search'); setTimeout(() => { const i = $('#sq'); if (i) { i.value = q; searchInput(q); } }, 80); } return; }
+  let r = []; try { r = await firstOk([() => Saavn.songs(q), () => YT.songs(q)]); } catch (e) { }
+  const t = r && r[0]; if (!t) { switchTab('search'); setTimeout(() => { const i = $('#sq'); if (i) { i.value = q; searchInput(q); } }, 80); return; }
+  actionSheet({ head: `<div class="sh col"><img src="${esc(artOf(t, true))}" alt="" style="width:120px;height:120px;border-radius:12px"><b>${esc(t.title)}</b><div class="m-s">${esc(t.artist)} · shared with you</div></div>`,
+    acts: [{ label: 'Play now', icon: 'play', fn: () => { Player.playList(r.slice(0, 20), 0, 'Shared with you'); setTimeout(openNP, 250); } }, { label: 'Play Next', icon: 'playNext', fn: () => Player.playNext(t) }] });
+}
+function streak() {
+  const d = S.stats.days || {}; let n = 0; const day = new Date();
+  if (!((d[dayKey(day)] || 0) >= 60)) day.setDate(day.getDate() - 1);
+  while ((d[dayKey(day)] || 0) >= 60) { n++; day.setDate(day.getDate() - 1); }
+  return n;
+}
+function openServerGuide() {
+  const cur = (S.settings.proxy || '').replace('/?url={url}', '');
+  openSheet(`<div class="sg form guide"><b class="ft">Your own free music server</b>
+    <p class="fsub">Shared public servers keep getting blocked. A free server in your own Cloudflare account makes JioSaavn work: full songs without ads, downloads, and the equalizer. About 2 minutes, no card needed.</p>
+    <ol class="steps">
+      <li>Open <a href="https://dash.cloudflare.com/sign-up" target="_blank" rel="noopener">dash.cloudflare.com</a> and make a free account.</li>
+      <li>Go to <b>Workers &amp; Pages</b> → <b>Create</b> → <b>Create Worker</b>. Name it <b>tunetune</b> and press <b>Deploy</b>.</li>
+      <li>Press <b>Edit code</b>, delete everything, paste the server code, then press <b>Deploy</b>.<button class="fb cw" data-a="copyworker">${I.copy} Copy server code</button></li>
+      <li>Copy your worker’s address (like <i>tunetune.yourname.workers.dev</i>) and paste it below.</li>
+    </ol>
+    <input class="tin" id="relayin" placeholder="https://tunetune.yourname.workers.dev" value="${esc(cur)}" autocomplete="off" autocapitalize="off" spellcheck="false">
+    <p class="fsub" id="relayst"></p>
+    <div class="fbtns">${S.settings.proxy ? '<button class="fb" data-a="relayclear">Remove</button>' : '<button class="fb" data-a="sclose">Later</button>'}<button class="fb pri" data-a="relaysave">Test &amp; Save</button></div></div>`);
 }
 async function testSources() {
   toast('Testing music sources…'); BYPASS = true; setTimeout(() => { BYPASS = false; }, 20000);
   const lines = [];
   lines.push(`Engine: ${IT.ok ? 'YouTube Music direct' : 'public mirrors'}`);
+  try { JSA.reset(); lines.push('JioSaavn relays: ' + (await JSA.diagnose()).join(' · ')); } catch (e) { }
   let tr = null;
   try { mem.delete('ys:top hits ' + YEAR); const r = await YT.songs('top hits ' + YEAR); tr = r[0]; lines.push(`Search: working (${r.length} songs)`); } catch (e) { lines.push('Search: not responding'); }
   if (tr) {
@@ -3002,7 +3034,10 @@ async function quickPicks() {
   return YT.langTop(myLangs()[0]);
 }
 function renderHome(e, tok) {
-  let html = header('Home', { right: nbBtn('go', 'gear', 'Settings', 'data-v="settings"') }) + `<p class="greet">${greeting()}</p>`;
+  const stk = streak();
+  let html = header('Home', { right: nbBtn('go', 'gear', 'Settings', 'data-v="settings"') }) + `<p class="greet">${greeting()}${stk >= 2 ? ` <span class="streak" title="Days in a row you listened">🔥 ${stk}-day streak</span>` : ''}</p>`;
+  const standalone = matchMedia('(display-mode: standalone)').matches || navigator.standalone;
+  if (!standalone && !S.noInstall && Object.keys(S.stats.plays || {}).length >= 3 && (deferredInstall || IS_IOS)) html += `<div class="nudge"><div class="nudge-ic">${I.music}</div><div class="nudge-t"><b>Get the Tune Tune app</b><span>${IS_IOS ? 'Tap Share, then “Add to Home Screen”' : 'Opens instantly and plays from your lock screen'}</span></div>${IS_IOS ? '' : '<button class="fb pri" data-a="install">Install</button>'}<button class="nudge-x" data-a="noinstall" aria-label="Dismiss">${I.x}</button></div>`;
   if (!navigator.onLine) {
     html += `<div class="note">${I.wifiOff}<span>You’re offline. Downloads and music on this device still play.</span></div>`;
     const off = [...S.downloads, ...S.locals];
@@ -3398,7 +3433,7 @@ function renderAdvanced() {
       sLi({ label: 'Use YouTube’s player as a last resort', hint: 'Only for songs no clean source has. Can show ads and pauses when locked.', ctl: sSw('ytPlayer', s.ytPlayer) }) +
       sLi({ label: 'JioSaavn server', value: s.saavn ? s.saavn.replace(/^https?:\/\//, '') : 'Automatic', a: 'setsaavn', chev: true }) +
       sLi({ label: 'JioSaavn status', value: Saavn.best ? 'Working · ' + Saavn.best.replace(/^https?:\/\//, '') : Saavn.down() ? 'Busy — retrying soon' : 'Ready' }) +
-      sLi({ label: 'Custom relay', hint: 'Optional, for advanced users', value: s.proxy ? 'Set' : 'Automatic', a: 'setproxy', chev: true }),
+      sLi({ label: 'Your own music server', hint: 'Free · makes JioSaavn work: clean songs, no ads, downloads, EQ', value: s.proxy ? 'Connected' : 'Set up', a: 'setproxy', chev: true }),
       'Songs play as clean audio from JioSaavn (up to 320 kbps). Lyrics: LRCLIB · Podcasts: Apple Podcasts directory · Radio: Radio Browser.') +
     sGrp('Playback engine', sSeg('engine', [['auto', 'Automatic'], ['player', 'YouTube player'], ['audio', 'Audio only']], s.engine) +
       sLi({ label: 'Last song played via', value: viaLabel(Player.via) }) + sLi({ label: 'Catalog', value: engine }) + sLi({ label: 'Mirror in use', value: mirror }) +
@@ -3549,11 +3584,25 @@ const Actions = {
     if (v && !/^https:\/\/[^\s]+$/.test(v)) return toast('Enter a full https:// address');
     S.settings.saavn = v.replace(/\/+$/, ''); Saavn.fails.clear(); Saavn.best = null; mem.clear(); PC.clear(); save(); softRender(); toast(v ? 'Saved' : 'Using automatic servers');
   },
-  async setproxy() {
-    const v = await ask('Custom relay', 'Optional CORS relay, e.g. https://my-relay.example.com/?url={url}', S.settings.proxy || '', 'Save');
-    if (v === null) return; if (v && !/^https:\/\//.test(v)) return toast('Enter a full https:// address');
-    S.settings.proxy = v; JSA.reset(); mem.clear(); save(); softRender(); toast(v ? 'Saved' : 'Using automatic relays');
+  setproxy() { openServerGuide(); },
+  copyworker() { copyText(WORKER_CODE, 'Server code copied — paste it in Cloudflare'); },
+  async relaysave() {
+    const inp = $('#relayin'); let v = (inp && inp.value || '').trim(); const st = $('#relayst');
+    if (!v) return toast('Paste your worker address first');
+    if (!/^https?:\/\//.test(v)) v = 'https://' + v;
+    const base = v.includes('{url}') ? v : v.replace(/[?#].*$/, '').replace(/\/+$/, '') + '/?url={url}';
+    if (st) st.textContent = 'Testing your server…';
+    const old = S.settings.proxy; S.settings.proxy = base; JSA.reset();
+    try {
+      const j = await JSA.attempt(JSA.relays()[0], 'https://www.jiosaavn.com/api.php?' + new URLSearchParams({ __call: 'autocomplete.get', query: 'anirudh', _format: 'json', _marker: '0', api_version: '4', ctx: 'web6dot0' }));
+      if (!j) throw new Error('no reply');
+      JSA.setVia('custom'); save(); mem.clear(); if (st) st.textContent = '✓ Working! JioSaavn songs now play clean, with downloads and the equalizer.';
+      toast('Your music server works'); setTimeout(() => { closeSheet(); softRender(); }, 1400);
+    } catch (e) {
+      S.settings.proxy = old; save(); if (st) st.textContent = '✗ Couldn’t reach JioSaavn through it (' + String(e.message || e).slice(0, 40) + '). Check you pasted the code and pressed Deploy, then try again.';
+    }
   },
+  relayclear() { S.settings.proxy = ''; save(); JSA.reset(); if (JSA.via === 'custom') JSA.setVia(''); closeSheet(); toast('Removed your music server'); softRender(); },
   async setapk() { const v = await ask('Android app link', 'https://github.com/you/repo/releases/latest/download/TuneTune.apk', S.settings.apkUrl || '', 'Save'); if (v === null) return; S.settings.apkUrl = v; save(); softRender(); },
   copysrv(el, d) { copyText(d.u, 'Address copied'); },
   clearcache() { PC.clear(); mem.clear(); Streams.c.clear(); toast('Cache cleared'); },
@@ -3565,6 +3614,7 @@ const Actions = {
   copylyr() { copyLyrics(); },
   skipb2() { Player.seek(Player.el.currentTime - skipSecs(-1)); }, skipf2() { Player.seek(Player.el.currentTime + skipSecs(1)); },
   keys() { showKeys(); },
+  noinstall() { S.noInstall = 1; save(); softRender(); },
   eqreset() { Object.assign(S.settings, { eq: PRESETS.Flat.slice(), eqPreset: 'Flat', eqPre: 0, eqBass: 0, eqTreble: 0, eqLoud: false, eqWidth: 1 }); save(); Player.applyEq(); const b = $('#eqbox'); if (b) b.innerHTML = eqInner(); toast('Equalizer reset'); },
   drivex() { const d = $('#drive'); if (!d) return; clearInterval(d._clock); try { d._lock && d._lock.release(); } catch (e) { } d.classList.remove('on'); setTimeout(() => d.remove(), 300); },
   voice() { voiceSearch(); },
@@ -3605,7 +3655,7 @@ const Actions = {
     });
   },
   install() {
-    if (deferredInstall) { deferredInstall.prompt(); deferredInstall = null; }
+    if (deferredInstall) { deferredInstall.prompt(); deferredInstall = null; S.noInstall = 1; save(); setTimeout(() => { if (cv().v === 'home') softRender(); }, 1500); }
     else toast(IS_IOS ? 'Tap Share, then Add to Home Screen' : 'Open your browser menu and choose Install app');
   },
   reload() { mem.clear(); IT.failAt = 0; render(); },
@@ -3619,12 +3669,37 @@ const Actions = {
 let deferredInstall = null;
 addEventListener('beforeinstallprompt', e => { e.preventDefault(); deferredInstall = e; });
 let suppressMini = 0, suppressRow = 0;
+const HSEL = '.chips,.hs,.cg,.seg';
+function scrollSnap() { return $$(HSEL).map(el => ({ el, x: el.scrollLeft, c: el.className })); }
+function scrollRestore(snap) {
+  const now = $$(HSEL); if (now.length !== snap.length) return;
+  now.forEach((el, i) => { const o = snap[i]; if (el !== o.el && el.className === o.c && o.x) { el.style.scrollBehavior = 'auto'; el.scrollLeft = o.x; el.style.scrollBehavior = ''; } });
+}
+function selOf(el) {
+  const q = v => (window.CSS && CSS.escape ? CSS.escape(v) : String(v).replace(/["\\]/g, '\\$&'));
+  const d = el.dataset; const parts = Object.keys(d).filter(k => k !== 'fb').map(k => `[data-${k.replace(/[A-Z]/g, m => '-' + m.toLowerCase())}="${q(d[k])}"]`);
+  return parts.length ? el.tagName.toLowerCase() + parts.join('') : '';
+}
+function reveal(el) {
+  if (!el || !el.isConnected) return; const sc = el.closest(HSEL + ',.sg,.np-panel'); if (!sc) return;
+  const r = el.getBoundingClientRect(), b = sc.getBoundingClientRect();
+  const hidden = r.left < b.left + 4 || r.right > b.right - 4 || r.top < b.top + 2 || r.bottom > b.bottom - 2;
+  if (hidden) try { el.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'nearest' }); } catch (e) { }
+}
 document.addEventListener('click', e => {
   if (Date.now() - suppressMini < 450 && e.target.closest('#mini')) { e.preventDefault(); return; }
   if (Date.now() - suppressRow < 600 && e.target.closest('[data-l][data-i]')) { e.preventDefault(); return; }
   const tab = e.target.closest('[data-tab]'); if (tab) { switchTab(tab.dataset.tab); return; }
   const el = e.target.closest('[data-a]'); if (!el) return;
-  const A = Actions[el.dataset.a]; if (A) { e.preventDefault(); A(el, el.dataset, e); }
+  const A = Actions[el.dataset.a]; if (!A) return;
+  e.preventDefault();
+  let snap = null, sel = '';
+  try { if (el.closest(HSEL + ',.sg')) { snap = scrollSnap(); sel = selOf(el); reveal(el); } } catch (x) { snap = null; }
+  A(el, el.dataset, e);
+  if (snap) {
+    try { scrollRestore(snap); } catch (x) { }
+    requestAnimationFrame(() => { try { scrollRestore(snap); if (!el.isConnected && sel) { const n = document.querySelector(sel); if (n) reveal(n); } } catch (x) { } });
+  }
 });
 document.addEventListener('contextmenu', e => {
   const c = e.target.closest('[data-l][data-i]'); if (!c || e.target.closest('#np')) return;
@@ -3756,7 +3831,7 @@ function likeBurst() {
 }
 function bindGestures() {
   const art = $('#np-deck'); let px = null, py = 0, pdx = 0, pt = 0, horiz = false, dMoved = 0, lastTap = 0;
-  art.addEventListener('pointerdown', e => { if (e.target.closest('#ytbox') || (e.pointerType === 'mouse' && e.button !== 0)) return; px = e.clientX; py = e.clientY; pdx = 0; dMoved = 0; pt = Date.now(); horiz = false; });
+  art.addEventListener('pointerdown', e => { if ((e.target.closest('#ytbox') && $('#np').classList.contains('needtap')) || (e.pointerType === 'mouse' && e.button !== 0)) return; px = e.clientX; py = e.clientY; pdx = 0; dMoved = 0; pt = Date.now(); horiz = false; });
   art.addEventListener('pointermove', e => {
     if (px === null) return; const dx = e.clientX - px, dy = e.clientY - py; dMoved = Math.max(dMoved, Math.abs(dx), Math.abs(dy));
     if (!horiz && Math.abs(dx) > 10 && Math.abs(dx) > Math.abs(dy) * 1.2) { horiz = true; art.classList.add('swiping'); try { art.setPointerCapture(e.pointerId); } catch (x) { } }
@@ -3766,7 +3841,7 @@ function bindGestures() {
     if (px === null) return; px = null; art.classList.remove('swiping');
     if (!horiz) {
       art.style.setProperty('--sw', '0px');
-      if (dMoved < 10 && e.type === 'pointerup' && e.target.id === 'np-img') { if (Date.now() - lastTap < 320) { lastTap = 0; likeBurst(); } else lastTap = Date.now(); }
+      if (dMoved < 10 && e.type === 'pointerup' && (e.target.id === 'np-img' || e.target.closest('#ytbox'))) { if (Date.now() - lastTap < 320) { lastTap = 0; likeBurst(); } else lastTap = Date.now(); }
       return;
     }
     suppressDeck = Date.now();
@@ -3835,6 +3910,7 @@ function init() {
     save();
   }
   if (S.schema === 'r1') { S.schema = 'r2'; S.settings.ytPlayer = true; save(); }
+  setTimeout(() => { openShared().catch(() => { }); }, 600);
   JSA.init();
   applyTheme();
   buildShell();
@@ -3856,7 +3932,7 @@ function init() {
     navigator.serviceWorker.register('sw.js').catch(() => { });
   }
   window.TuneTune = { version: VER, engine: () => (IT.ok ? 'direct' : 'mirrors') };
-  if (window.__TT_TEST__) window.TuneTune._ = { JSA, DES, Saavn, Player, Streams, Mirrors, IT, YT, S, nav, cv, Actions, itShelves, mem, Embed, MirrorHealth };
+  if (window.__TT_TEST__) window.TuneTune._ = { JSA, DES, Saavn, Player, Streams, Mirrors, IT, YT, S, nav, cv, Actions, itShelves, mem, Embed, MirrorHealth, download, share };
 }
 try { init(); }
 catch (err) {
