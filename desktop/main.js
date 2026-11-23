@@ -1,6 +1,8 @@
 /* Tune Tune desktop (Windows, macOS, Linux)
    Talks to YouTube Music directly, keeps playing in the tray, and stops the OS from suspending playback. */
-const { app, BrowserWindow, session, Tray, Menu, nativeImage, powerSaveBlocker, shell } = require('electron');
+const { app, BrowserWindow, session, Tray, Menu, nativeImage, powerSaveBlocker, shell, ipcMain } = require('electron');
+const fs = require('fs');
+const HomeServer = require('./server.js');
 const path = require('path');
 
 const ROOT = path.join(__dirname, '..');
@@ -9,7 +11,17 @@ const UA = {
   IOS: 'com.google.ios.youtube/20.10.4 (iPhone16,2; U; CPU iOS 18_3_2 like Mac OS X;)',
   ANDROID: 'com.google.android.youtube/20.10.38 (Linux; U; Android 14) gzip',
 };
-let win = null, tray = null, quitting = false;
+let win = null, tray = null, quitting = false, home = null;
+const PREFS = () => path.join(app.getPath('userData'), 'home-server.json');
+const prefs = () => { try { return JSON.parse(fs.readFileSync(PREFS(), 'utf8')); } catch (e) { return { enabled: true, port: 8686 }; } };
+function setHome(on) {
+  const p = prefs(); p.enabled = on; try { fs.writeFileSync(PREFS(), JSON.stringify(p)); } catch (e) { }
+  if (on && !home) home = HomeServer.start({ root: ROOT, port: p.port || 8686, version: app.getVersion(), onError: () => { home = null; } });
+  if (!on && home) { home.stop(); home = null; }
+  buildTrayMenu();
+}
+ipcMain.handle('tt:server', () => ({ enabled: !!home, port: home ? home.port : (prefs().port || 8686), addresses: home ? home.addresses() : [] }));
+ipcMain.handle('tt:server-set', (e, on) => { setHome(!!on); return { enabled: !!home, addresses: home ? home.addresses() : [] }; });
 
 app.commandLine.appendSwitch('autoplay-policy', 'no-user-gesture-required');
 if (!app.requestSingleInstanceLock()) app.quit();
@@ -40,16 +52,24 @@ function createTray() {
     const img = nativeImage.createFromPath(path.join(ROOT, 'icons', 'icon-192.png')).resize({ width: 18, height: 18 });
     tray = new Tray(img);
     tray.setToolTip('Tune Tune');
-    const send = js => win && win.webContents.executeJavaScript(js).catch(() => {});
-    tray.setContextMenu(Menu.buildFromTemplate([
+    buildTrayMenu();
+    tray.on('click', () => { if (win.isVisible()) win.hide(); else { win.show(); win.focus(); } });
+  } catch (e) { tray = null; }
+}
+function buildTrayMenu() {
+  if (!tray) return;
+  const send = js => win && win.webContents.executeJavaScript(js).catch(() => {});
+  const addr = home ? home.addresses()[0] : '';
+  tray.setContextMenu(Menu.buildFromTemplate([
       { label: 'Show Tune Tune', click: () => { win.show(); win.focus(); } },
       { label: 'Play / Pause', click: () => send("document.querySelector('#m-pp')&&document.querySelector('#m-pp').click()") },
       { label: 'Next', click: () => send("document.querySelector('#mini [data-a=next]')&&document.querySelector('#mini [data-a=next]').click()") },
       { type: 'separator' },
+      { label: 'Share music to phones & tablets', type: 'checkbox', checked: !!home, click: m => setHome(m.checked) },
+      ...(addr ? [{ label: `Open on your phone: ${addr}`, enabled: false }] : []),
+      { type: 'separator' },
       { label: 'Quit', click: () => { quitting = true; app.quit(); } },
     ]));
-    tray.on('click', () => { if (win.isVisible()) win.hide(); else { win.show(); win.focus(); } });
-  } catch (e) { tray = null; }
 }
 
 app.whenReady().then(() => {
@@ -75,8 +95,9 @@ app.whenReady().then(() => {
   });
   createWindow();
   createTray();
+  if (prefs().enabled !== false) setHome(true);
   powerSaveBlocker.start('prevent-app-suspension');
   app.on('activate', () => { if (win) win.show(); else createWindow(); });
 });
-app.on('before-quit', () => { quitting = true; });
+app.on('before-quit', () => { quitting = true; if (home) home.stop(); });
 app.on('window-all-closed', () => { if (process.platform !== 'darwin') app.quit(); });

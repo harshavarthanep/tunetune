@@ -1,6 +1,6 @@
 /* Tune Tune service worker — keeps the app shell available offline.
    Bump CACHE when you change files so phones pick up the new version. */
-const CACHE = 'tunetune-v3.0.0';
+const CACHE = 'tunetune-v3.1.0';
 const SHELL = ['./', './index.html', './styles.css', './app.js', './manifest.webmanifest',
   './icons/icon-192.png', './icons/icon-512.png', './icons/apple-touch-icon.png', './icons/maskable-512.png'];
 
