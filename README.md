@@ -1,86 +1,58 @@
-# Tune Tune
+# Tune Tune 2.0
 
-A free music player with an iOS-style interface. Runs in any modern browser and installs as an app on Android, iPhone, iPad, Windows, Mac and Linux. No account, no ads, no subscription, no build step.
+A free music player with the YouTube Music catalog, 40 language collections, live radio, synced lyrics, an equalizer and offline downloads. No account, no API keys, no ads.
 
-## What's inside
+## Why v1 showed a blank screen
 
-| File | What it does |
-|---|---|
-| `index.html` | App shell |
-| `styles.css` | iOS-style design (light/dark, phone/tablet/desktop layouts) |
-| `app.js` | Everything else: music sources, player, equalizer, lyrics, library |
-| `sw.js` | Service worker so the app opens offline |
-| `manifest.webmanifest` | Makes it installable |
-| `icons/` | App icons |
+v1 declared a variable called `top`, which every browser already reserves (`window.top`). Browsers refuse to run a script with that clash, so nothing loaded. v2 runs entirely inside its own private scope, so no browser name can ever collide with it again.
+
+## Three ways to run it
+
+| | How music is fetched | Best for |
+|---|---|---|
+| **Desktop app** (Windows / Mac / Linux) | Talks to YouTube Music directly from your own internet connection | Most reliable. Full YouTube Music home, albums, charts, moods & genres |
+| **Android app** (APK) | Same direct engine as desktop | Phone use with the direct engine |
+| **Website / PWA** (GitHub Pages) | Free public YouTube mirrors (Piped and Invidious), switched automatically | Any device, nothing to install |
+
+Browsers block websites from calling YouTube directly, which is why the website version uses mirrors. The desktop and Android apps don't have that limit.
+
+### Website (GitHub Pages)
+1. Upload everything in this folder to a GitHub repo (for example `TuneTune`).
+2. Settings → Pages → Deploy from branch → `main` / root.
+3. Open `https://<username>.github.io/TuneTune/`. On Android Chrome: menu → *Install app*. On iPhone Safari: Share → *Add to Home Screen*.
+
+### Desktop and Android apps (built free by GitHub)
+1. Push this folder to GitHub (the `.github/workflows/build-apps.yml` file must be included).
+2. Open the repo's **Actions** tab → **Build apps** → **Run workflow**.
+3. After about 10 minutes, open the finished run and download from **Artifacts**:
+   `TuneTune-Windows` (.exe installer), `TuneTune-macOS` (.dmg), `TuneTune-Linux` (.AppImage), `TuneTune-Android` (.apk).
+
+To run the desktop app on your own PC instead: install Node.js, then in this folder run `npm install` and `npm start`.
+
+**First launch notes:** Windows shows "Windows protected your PC" (click *More info → Run anyway*) and macOS needs right-click → *Open*, because the apps aren't code-signed. On Android, allow "Install unknown apps" for your browser or file manager.
+
+## What keeps the music playing
+- Every song has three stream sources (direct → Piped mirrors → Invidious). If one fails mid-song, the next takes over from the same second.
+- A watchdog restarts a frozen stream after 15 seconds, and resumes automatically when the internet comes back.
+- The next song's stream is fetched while the current one plays, so tracks change instantly even with the screen off.
+- When your queue ends, Autoplay adds related songs (YouTube Music radio) 45 seconds before the end.
+- Unavailable songs are skipped. If every source is down, it stops after 6 tries with a clear message instead of looping.
+- Desktop app: closing the window keeps it playing in the system tray, and the OS isn't allowed to suspend it.
+- Settings → Music sources → **Test music sources** shows exactly what's working.
 
 ## Features
-
-**Listening**
-- Full-length songs streamed free from Audius (millions of tracks from independent artists)
-- Trending this week, Fresh Underground, trending playlists, 16 genres
-- Top Hits Worldwide chart from Deezer (30-second previews), with one-tap "Find on YouTube Music" and "Find on Spotify"
-- Live radio: thousands of stations worldwide, by country ("Near You") and by genre, including Bollywood, Tamil and Hindi
-- Your own files: add MP3, M4A, FLAC, WAV or OGG from the device (reads title, artist and cover art)
-
-**Player**
-- Apple Music-style Now Playing with blurred artwork background, swipe down to close
-- Time-synced lyrics (tap a line to jump there) from LRCLIB
-- Queue: Play Next, Add to Queue, drag to reorder, remove, clear
-- Shuffle, repeat all / repeat one, Autoplay similar songs when the queue ends
-- 10-band equalizer with 15 presets
-- Sleep timer (with fade-out, or "when this song ends"), playback speed 0.5×–2×
-- Background play plus lock-screen, headphone and car controls (Media Session API)
-- Resumes where you left off after closing the app
-- Keyboard: Space play/pause, ← → seek 10s, Shift+← → previous/next, L favorite, / search
-
-**Library**
-- Favorites, playlists (create, rename, delete, add from any song), saved stations, history
-- Downloads for offline play (stored privately inside the app), "Download all" for playlists
-- Unified search across songs, artists, chart hits, radio and your library
-- Backup export/import (JSON)
-- Light, dark or automatic theme, 9 accent colours
-
-## Put it online (GitHub Pages)
-
-1. Create a new public repo, for example `TuneTune`.
-2. Upload every file and the `icons` folder to the repo root.
-3. Settings → Pages → Source: *Deploy from a branch* → `main` / root → Save.
-4. Open `https://<your-username>.github.io/TuneTune/` after a minute.
-
-It must be served over HTTPS (GitHub Pages does this) for install, background play and the service worker. Opening `index.html` straight from your disk will not load music.
-
-To test locally: `npx serve .` then open `http://localhost:3000`.
-
-**Updating:** after changing files, bump `CACHE` in `sw.js` (for example `tunetune-v1.0.1`) so installed copies refresh.
-
-## Install as an app
-
-- **Android / Chrome / Edge:** open the site → menu → *Install app*.
-- **iPhone / iPad:** open in Safari → Share → *Add to Home Screen*.
-- **Play Store APK / Windows Store:** paste your GitHub Pages URL into <https://www.pwabuilder.com> and download the Android or Windows package.
-
-## Where the music comes from
-
-| Source | Used for | Notes |
-|---|---|---|
-| [Audius API](https://docs.audius.org) | Full songs, trending, artists, playlists, downloads | Free and open; artists choose to share their music there |
-| [Deezer API](https://developers.deezer.com) | Worldwide chart and search | 30-second previews only |
-| [Radio Browser](https://www.radio-browser.info) | Live radio | Only HTTPS streams are listed |
-| [LRCLIB](https://lrclib.net) | Synced lyrics | Community lyrics library |
-| [jsmediatags](https://github.com/aadsm/jsmediatags) | Reading tags from your own files | Loaded only when you add files |
-
-**Why not YouTube Music or Spotify streaming?** Neither offers a public way for other apps to stream or download their full catalog. Apps that do it rely on YouTube's private internal API, which breaks YouTube's terms of service, gets apps pulled from stores, and stops working whenever Google changes it. Tune Tune links out to them instead ("Find on YouTube Music / Spotify"), so it stays safe to publish and keep online.
-
-## Customising
-
-- **Name:** change `TITLE` at the top of `app.js`, plus `<title>` in `index.html` and `name` in `manifest.webmanifest`.
-- **Default colour:** `accent` in `DEFAULTS.settings` in `app.js` and `--accent` in `styles.css`.
-- **Genres / radio categories / countries:** the `GENRES`, `RTAGS` and `COUNTRIES` lists in `app.js`.
-- **EQ presets:** `PRESETS` in `app.js`.
+- Home: quick picks based on what you play, top songs and playlists for your languages, worldwide chart (played in full), live radio, free indie music
+- Explore: charts, 40 languages (each with top songs, new releases, romance, party, melodies, throwback, sad, devotional, artists), moods, genres; plus YouTube Music's own moods & genres in the apps
+- Search: songs, albums, artists, playlists, radio, free music and your library, with suggestions as you type
+- Player: synced lyrics, queue with drag to reorder, shuffle, repeat, Start Radio, 10-band EQ with 15 presets, sleep timer, speed, lock-screen/headphone controls
+- Library: favorites, playlists (save any YouTube playlist to your library), downloads with "Download all", Save to Device as a music file, device music import, history, backup/restore
+- Streaming quality: High, Normal or Data saver
 
 ## Good to know
+- Public mirrors are run by volunteers and are sometimes busy; the website switches between them automatically. For a mirror you control, add a self-hosted Piped or Invidious address under Settings → Music sources → Custom mirror.
+- This uses YouTube's unofficial interfaces, which goes against YouTube's terms. It's fine as a personal app, but Google can change things at any time; the app then falls back to mirrors, Audius and radio while you update it.
+- The Android app plays in the background, but Android's lock-screen media controls come from Chrome. If you want those, also install the website version from Chrome.
+- iPhone: use the website (Add to Home Screen). Apple doesn't allow installing apps outside the App Store without a paid developer account.
 
-- The equalizer works on downloads, device files and most Audius streams. If a stream's server blocks it, the song plays normally without EQ. Live radio and previews always play without EQ.
-- Some radio stations go offline; the app tells you and moves on.
-- On iPhone, the volume slider is hidden because iOS only allows the hardware buttons to change volume.
-- Downloads live in the browser's storage. Clearing site data in the browser removes them.
+## Files
+`index.html`, `styles.css`, `app.js` — the app · `sw.js`, `manifest.webmanifest` — offline + install · `icons/` · `desktop/` — desktop app shell · `capacitor.config.json` — Android app config · `package.json` — build setup · `.github/workflows/build-apps.yml` — free app builds

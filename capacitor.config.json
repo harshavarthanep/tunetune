@@ -1,0 +1,8 @@
+{
+  "appId": "com.h24creationz.tunetune",
+  "appName": "Tune Tune",
+  "webDir": "www",
+  "server": { "androidScheme": "https" },
+  "android": { "allowMixedContent": true, "backgroundColor": "#000000" },
+  "plugins": { "CapacitorHttp": { "enabled": true } }
+}
