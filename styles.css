@@ -1410,3 +1410,83 @@ html.crown #view .row,html.crown .np-panel .qrow{scroll-snap-align:start}
 html.crown .np-panel{scroll-snap-type:y proximity}
 /* Ready offline card: the text opens the list */
 .saved-card .sc-t{cursor:pointer}
+
+/* ================= v1.1: logo, opening, polish ================= */
+.tt-logo{display:block;width:100%;height:100%;overflow:visible}
+.home-logo{display:inline-flex;width:30px;height:30px;color:var(--accent);margin-left:4px}
+@media (min-width:900px) and (min-height:561px){.home-logo{display:none}}
+/* opening: the logo assembles, then the screen opens from the centre */
+#splash{background:none!important;overflow:hidden}
+#splash .sp-half{position:absolute;left:0;right:0;height:50.5%;background:var(--bg);transition:transform .62s cubic-bezier(.7,0,.2,1)}
+#splash .sp-half.top{top:0}#splash .sp-half.bot{bottom:0}
+#splash .sp-in{position:relative;z-index:2;gap:12px;transition:transform .55s cubic-bezier(.5,0,.2,1),opacity .4s}
+#splash .sp-logo{width:96px;height:96px;color:var(--accent);filter:drop-shadow(0 10px 30px color-mix(in srgb,var(--accent) 45%,transparent))}
+#splash .sp-logo img{display:none}
+.sp-mark .lg-a1{stroke-dasharray:40;stroke-dashoffset:40;animation:lgDraw .32s .05s cubic-bezier(.3,.7,.2,1) forwards}
+.sp-mark .lg-a2{stroke-dasharray:46;stroke-dashoffset:46;animation:lgDraw .3s .22s cubic-bezier(.3,.7,.2,1) forwards}
+.sp-mark .lg-b1{stroke-dasharray:38;stroke-dashoffset:-38;animation:lgDraw .32s .14s cubic-bezier(.3,.7,.2,1) forwards}
+.sp-mark .lg-b2{stroke-dasharray:40;stroke-dashoffset:40;animation:lgDraw .3s .32s cubic-bezier(.3,.7,.2,1) forwards}
+.sp-mark .lg-n{transform-origin:26.5px 71px;transform:scale(0);animation:lgPop .42s .42s cubic-bezier(.3,1.7,.5,1) forwards}
+@keyframes lgDraw{to{stroke-dashoffset:0}}
+@keyframes lgPop{to{transform:scale(1)}}
+#splash .sp-word{font-size:24px;opacity:0;animation:spIn .45s .5s ease both;color:var(--text);-webkit-text-fill-color:var(--text)}
+#splash.open .sp-half.top{transform:translateY(-100%)}
+#splash.open .sp-half.bot{transform:translateY(100%)}
+#splash.open .sp-in{transform:scale(1.35);opacity:0}
+#splash.out{opacity:1;visibility:visible}
+html.still #splash{display:none}
+/* heart: pops and turns red */
+#np-like.liked .ic{color:#ff375f;fill:#ff375f}
+.heartpop{animation:heartPop .65s cubic-bezier(.3,1.6,.5,1)}
+@keyframes heartPop{0%{transform:scale(1)}25%{transform:scale(.7)}55%{transform:scale(1.28)}100%{transform:scale(1)}}
+/* sleep timer pill + ticking clock */
+.slpill{display:none;align-items:center;gap:4px;margin-left:6px;padding:2px 8px 2px 5px;border-radius:10px;font:700 10.5px/1.5 inherit;font-variant-numeric:tabular-nums;color:inherit;background:rgba(255,255,255,.16);vertical-align:middle}
+.slpill.on{display:inline-flex}
+.slpill .ic{width:13px;height:13px}
+#np-btimer.on .ic,.slpill.on .ic,#dv-sleep.on .ic{animation:tick 1s steps(2) infinite}
+@keyframes tick{50%{transform:rotate(8deg)}}
+@media (min-width:900px){#np-btimer.on{background:var(--accent);color:#fff}.slpill{font-size:12px;padding:3px 10px 3px 6px}}
+/* Party Mode: everything rests when the music is paused */
+#party.paused .p-disc img{animation-play-state:paused}
+#party.paused .p-glow{opacity:.5}
+/* pop-ups sit above Car Mode and Party Mode; no rubber-band gap */
+#sheet{z-index:150}#toast{z-index:200}
+.sg{overscroll-behavior:contain}
+.sg.eq,.sg.aq{overscroll-behavior:none}
+/* iPhone: no double-tap zoom anywhere */
+html,body{touch-action:manipulation}
+/* lyrics: clean toolbar (no shade), aligned in one row */
+#ly-tools{background:none!important}
+#ly-tools .lyb{box-shadow:0 2px 10px rgba(0,0,0,.18)}
+/* landscape phones: big, steady album art; lyrics/queue start near the top */
+@media (orientation:landscape) and (max-height:560px){
+  #np .np-art{--S:min(40vw,calc(100vh - var(--sat) - var(--sabx) - 36px));--D:calc(50cqw - min(40vw,calc(100vh - var(--sat) - var(--sabx) - 36px)) * .3)}
+  #np-lyr{padding:22vh 6px 30vh}
+  #view{padding-right:max(12px,var(--sar))}
+  #view.narrow > *{margin-right:max(8px,var(--sar))}
+}
+/* settings & lists keep a comfortable margin on phones */
+@media (max-width:899px){
+  #view.narrow .grp,#view.narrow .grp-t,#view.narrow .grp-f,#view.narrow .pad{margin-left:max(16px,var(--sal));margin-right:max(16px,var(--sar))}
+}
+/* tabs: a small bounce when tapped */
+.tab:active .ic{transform:scale(.86);transition:transform .1s}
+.tab.on .ic{animation:tabIn .38s cubic-bezier(.3,1.6,.5,1)}
+@keyframes tabIn{0%{transform:scale(.8)}60%{transform:scale(1.12)}100%{transform:scale(1)}}
+/* haptic scroll: lists glide, then settle with a small bump */
+html.crown #view,html.crown .np-panel,html.crown .hs{scroll-behavior:smooth}
+.land{animation:land .38s cubic-bezier(.3,1.5,.5,1)}
+@keyframes land{0%{transform:translateY(0)}35%{transform:translateY(-3px)}100%{transform:none}}
+/* ready offline card */
+.sc-ic{flex:none;width:34px;height:34px;border-radius:10px;display:grid;place-items:center;color:#fff;background:linear-gradient(135deg,var(--accent),#bf5af2)}
+.sc-ic .ic{width:19px;height:19px}
+.dlpill .ic{stroke-width:2.4}
+/* streak easter egg */
+#confetti{position:fixed;inset:0;width:100%;height:100%;z-index:180;pointer-events:none}
+.streak{cursor:pointer;transition:transform .15s}
+.streak:active{transform:scale(.92)}
+body.partying .greet .streak{animation:heartPop .6s infinite}
+/* queue + / trash buttons line up */
+.qbtns{align-items:center}
+.qib{flex:none;padding:0}
+.q-h{align-items:center}

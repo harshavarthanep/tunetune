@@ -8,9 +8,11 @@
 const TITLE = 'Tune Tune';
 const APP = 'TuneTune';
 const VER = '1.1';
+const LOGO_MARK = '<g fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path class="lg-a1" d="M16 24H52" stroke-width="11"/><path class="lg-a2" d="M34 24V66" stroke-width="11"/><path class="lg-b1" d="M50 44H84" stroke-width="11"/><path class="lg-b2" d="M67 44V80" stroke-width="11"/></g><circle class="lg-n" cx="26.5" cy="71" r="10.5" fill="currentColor"/>';
+const logoSvg = (cls = '') => `<svg class="tt-logo ${cls}" viewBox="0 0 100 100" aria-hidden="true">${LOGO_MARK}</svg>`;
 // ✏️ OPTIONAL — paste your music-server address between the quotes (e.g. 'https://tunetune.yourname.workers.dev')
 // so EVERYONE who opens your website gets clean, ad-free JioSaavn audio with no setup.
-const BUILT_IN_SERVER = '';
+const BUILT_IN_SERVER = 'https://tunetune.harshavarthan-e.workers.dev';
 // ✏️ Links shown in Settings → More from H24 Creationz
 const PRODUCTS_URL = 'https://harshavarthanep.github.io/products/';
 const GITHUB_URL = 'https://github.com/harshavarthanep';
@@ -216,6 +218,7 @@ const I = {
   sparkle: svg(P('M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8zM19 16l.8 2.2L22 19l-2.2.8L19 22l-.8-2.2L16 19l2.2-.8z', 1.7)),
   edit: svg(P('M4 20h4L19 9l-4-4L4 16zM14 6l4 4', 1.8)),
   pin: svg(P('M9 3h6l-1 6 3 3v2H7v-2l3-3zM12 14v7', 1.8)),
+  offline: svg(P('M12 3v9.5M8 8.8l4 3.7 4-3.7', 2) + P('M5 15.5c1.6 2.3 4.1 3.7 7 3.7s5.4-1.4 7-3.7', 2)),
   wave: svg(P('M4 10v4M8 6v12M12 3v18M16 7v10M20 10v4', 2.2)),
   eye: svg(P('M2.5 12S6 5.5 12 5.5 21.5 12 21.5 12 18 18.5 12 18.5 2.5 12 2.5 12z', 1.8) + P('M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6z', 1.8)),
   user2: svg(P('M12 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8zM4.5 20.5c1-3.8 4-5.5 7.5-5.5s6.5 1.7 7.5 5.5', 1.9)),
@@ -1389,6 +1392,7 @@ const Embed = {
   play() { try { if (this.player && this.id) this.player.playVideo(); } catch (e) { } return Promise.resolve(); },
   pause() { try { if (this.player && this.state !== 2 && this.state !== 0) this.player.pauseVideo(); } catch (e) { } },
   stop() { this.stopPoll(); clearTimeout(this.tapT); this.needTap = false; UI.tapHint(false); this.srcAttr = ''; this.id = ''; this.state = -1; try { this.player && this.player.stopVideo(); } catch (e) { } },
+  release() { this.stop(); try { this.player && this.player.destroy(); } catch (e) { } this.player = null; this.ready = false; this.readyP = null; const box = document.getElementById('ytbox'); if (box) box.innerHTML = '<div id="ytp"></div>'; },
   getAttribute(n) { return n === 'src' ? this.srcAttr : null; },
   removeAttribute() { this.stop(); },
   load() { },
@@ -1490,16 +1494,19 @@ function clickSound(kind) {
   if (!S.settings.tapSound) return;
   try {
     const C = window.AudioContext || window.webkitAudioContext; if (!C) return;
-    fbCtx = fbCtx || new C(); if (fbCtx.state !== 'running') fbCtx.resume().catch(() => { });
-    const t0 = fbCtx.currentTime, o = fbCtx.createOscillator(), g = fbCtx.createGain();
-    const f = kind === 'tick' ? 2400 : kind === 'done' ? 880 : 1500, dur = kind === 'tick' ? 0.018 : kind === 'done' ? 0.12 : 0.035, vol = kind === 'tick' ? 0.05 : 0.08;
-    o.type = kind === 'done' ? 'sine' : 'triangle'; o.frequency.setValueAtTime(f, t0); if (kind === 'done') o.frequency.exponentialRampToValueAtTime(f * 1.5, t0 + dur);
-    g.gain.setValueAtTime(vol, t0); g.gain.exponentialRampToValueAtTime(0.0001, t0 + dur);
-    o.connect(g); g.connect(fbCtx.destination); o.start(t0); o.stop(t0 + dur + 0.02);
+    if (!fbCtx || fbCtx.state === 'closed' || fbCtx.state === 'interrupted') { try { fbCtx && fbCtx.close(); } catch (e) { } fbCtx = new C(); }
+    if (fbCtx.state !== 'running') fbCtx.resume().catch(() => { });
+    const now = fbCtx.currentTime;
+    const note = (f, at, dur, vol, type = 'sine') => { const o = fbCtx.createOscillator(), g = fbCtx.createGain(); o.type = type; o.frequency.setValueAtTime(f, now + at); g.gain.setValueAtTime(0.0001, now + at); g.gain.exponentialRampToValueAtTime(vol, now + at + 0.004); g.gain.exponentialRampToValueAtTime(0.0001, now + at + dur); o.connect(g); g.connect(fbCtx.destination); o.start(now + at); o.stop(now + at + dur + 0.03); };
+    if (kind === 'tick') { note(3200, 0, 0.014, 0.035, 'triangle'); }
+    else if (kind === 'done') { note(1046.5, 0, 0.16, 0.07); note(1568, 0.07, 0.22, 0.06); }
+    else { note(1318.5, 0, 0.06, 0.06); note(2637, 0, 0.03, 0.02, 'triangle'); }
   } catch (e) { }
 }
 function feedback(kind = 'tap') { if (S.settings.haptics !== false) Haptic.tap(kind === 'done' ? 18 : kind === 'tick' ? 4 : 9); clickSound(kind); }
-let crownPos = new WeakMap(), crownAt = 0;
+let crownPos = new WeakMap(), crownAt = 0, crownEnd = 0;
+document.addEventListener('scroll', e => { if (!S.settings.crown) return; const el = e.target === document ? document.scrollingElement : e.target; if (!el || !el.classList) return; clearTimeout(crownEnd); crownEnd = setTimeout(() => { el.classList.remove('land'); void el.offsetWidth; el.classList.add('land'); feedback('tick'); setTimeout(() => el.classList.remove('land'), 420); }, 140); }, { passive: true, capture: true });
+document.addEventListener('visibilitychange', () => { if (!document.hidden && fbCtx && fbCtx.state !== 'running') fbCtx.resume().catch(() => { fbCtx = null; }); });
 document.addEventListener('scroll', e => {
   if (!S.settings.crown) return; const el = e.target === document ? document.scrollingElement : e.target; if (!el || !el.classList) return;
   const horiz = el.matches && el.matches('.hs,.cg,.chips');
@@ -1849,7 +1856,7 @@ const Player = {
     }
     if (!src) return this.skipAfterFail(t);
     this.isBlob = blob;
-    const wantFx = (S.settings.eqOn && !IS_IOS) || Party.react();
+    const wantFx = !!S.settings.eqOn || Party.react();
     if (!blob && wantFx && (S.settings.proxy || SITE.server) && /saavncdn\.com/.test(src)) src = JSA.relays()[0].wrap(src);
     let host = ''; try { host = new URL(src, location.href).host; } catch (e) { }
     const fx = !!(wantFx && !t.live && this.via !== 'preview' && (blob || !this.badCors.has(host)));
@@ -1910,6 +1917,7 @@ const Player = {
     if (target !== this.el) {
       const old = this.el; this.el = target; try { target.volume = target === Embed ? this.vol : clamp(this.vol * (this.norm || 1), 0, 1); } catch (e) { }
       old.pause(); old.removeAttribute('src'); try { old.load(); } catch (e) { }
+      if (old === Embed) Embed.release();
     }
     $('#np').classList.toggle('video', kind === 'embed');
   },
@@ -2233,7 +2241,8 @@ const UI = {
     const t = Player.cur; const on = !!(t && isLiked(t.id)); const b = $('#np-like'); if (!b) return;
     const was = b.getAttribute('aria-pressed') === 'true';
     b.innerHTML = on ? I.heartFill : I.heart; b.setAttribute('aria-pressed', String(on));
-    if (on && !was) { b.classList.remove('pop'); void b.offsetWidth; b.classList.add('pop'); }
+    b.classList.toggle('liked', on);
+    if (on && !was) { b.classList.remove('pop', 'heartpop'); void b.offsetWidth; b.classList.add('heartpop'); setTimeout(() => b.classList.remove('heartpop'), 700); }
     const dl = $('#dv-like'); if (dl) dl.innerHTML = on ? I.heartFill : I.heart;
   },
   state() {
@@ -2251,6 +2260,7 @@ const UI = {
     if (NativeMS && Player.cur) { const st = playing || busy ? 'playing' : 'paused'; if (st !== this.lastNative) { this.lastNative = st; nms('setPlaybackState', { playbackState: st }); } }
     $('#np').classList.toggle('pod', !!(Player.cur && Player.cur.source === 'podcast'));
     const qb = $('#np-qb'); if (qb) { const h = Player.cur ? badgeHTML(Player.cur) : ''; if (qb.dataset.h !== h) { qb.dataset.h = h; qb.innerHTML = h; const x = qInfo(Player.cur); qb.className = 'qbadge t-' + x.tier; } }
+    const sp = $('#np-slp'); if (sp) { const on = !!(Player.sleepAt || Player.sleepEnd); sp.classList.toggle('on', on); if (on) { const left = Player.sleepEnd ? 'End of song' : fmt(Math.max(0, (Player.sleepAt - Date.now()) / 1000)); const lb = sp.querySelector('span'); if (lb.textContent !== left) lb.textContent = left; } }
     const et = $('#np-eqt'); if (et) { const on = S.settings.eqOn && !IS_IOS && Player.cur && !Player.cur.live; const txt = on ? eqName() : ''; if (et.dataset.t !== txt + (Player.el === Player.fx)) { et.dataset.t = txt + (Player.el === Player.fx); et.innerHTML = on ? `${I.eq}${esc(txt)}` : ''; et.classList.toggle('na', on && Player.el !== Player.fx); et.title = on && Player.el !== Player.fx ? 'Equalizer isn’t available for this song' : 'Equalizer: ' + txt; } }
     const aq = $('#aqbox'); if (aq) { const k = (Player.cur && Player.cur.id) + '|' + Player.quality + '|' + Player.via + '|' + S.settings.eqOn; if (aq.dataset.k !== k) { aq.dataset.k = k; setHTML(aq, aqInner()); } }
   },
@@ -2346,23 +2356,22 @@ function toast(m, act) {
 const PARTY_STYLES = [['disco', 'Disco'], ['waves', 'Waves'], ['lasers', 'Lasers'], ['rings', 'Rings'], ['calm', 'Calm']];
 const Party = {
   on: false, raf: 0, tr: null, lastBeat: 0, avg: 0.2, lastTorch: 0, lastBuzz: 0, hue: 0, t0: 0, kick: 0, flash: 0, buf: null, lock: null, dots: null,
-  react() { return this.on; },
+  react() { return false; },
   real() { return !!(Player.an && Player.el === Player.fx && Player.loaded && !Player.el.paused); },
   open() {
     if (this.on || !Player.cur) return; this.on = true; this.t0 = performance.now();
     const st = S.settings; st.partyStyle = st.partyStyle || 'disco';
     const d = document.createElement('div'); d.id = 'party';
     d.innerHTML = `<canvas id="pcv"></canvas><div class="p-glow"></div>
-      <div class="p-top"><button class="p-x" data-a="partyx" aria-label="Exit Party Mode">${I.chevDown}</button><span class="p-tag" id="p-tag"></span><button class="p-x" data-a="partyx" aria-label="Close Party Mode">${I.x}</button></div>
+      <div class="p-top"><button class="p-x" data-a="partymin" aria-label="Minimise">${I.chevDown}</button><span class="p-tag" id="p-tag"></span><button class="p-x" data-a="partyx" aria-label="Close Party Mode">${I.x}</button></div>
       <div class="p-mid"><div class="p-disc" id="p-disc"><img id="p-art" alt=""><span class="p-hole"></span></div>
         <div class="p-t" id="p-t"></div><div class="p-a" id="p-a"></div></div>
       <div class="p-ctl"><button data-a="prev" aria-label="Previous">${I.prev}</button><button class="big" data-a="toggle" id="p-pp" aria-label="Play or pause">${I.pause}</button><button data-a="next" aria-label="Next">${I.next}</button></div>
       <div class="p-styles">${PARTY_STYLES.map(([k, l]) => `<button class="pchip ${st.partyStyle === k ? 'on' : ''}" data-a="pstyle" data-s="${k}">${l}</button>`).join('')}</div>
-      <div class="p-opts">${!IS_IOS && navigator.mediaDevices && navigator.mediaDevices.getUserMedia && !IS_DESKTOP ? `<button class="popt" data-a="ptorch" id="p-torch">${I.torch}Torch</button>` : ''}${navigator.vibrate || IS_IOS ? `<button class="popt ${S.settings.partyBuzz ? 'on' : ''}" data-a="pbuzz" id="p-buzz">${I.pulse}Vibrate</button>` : ''}</div>`;
+      <div class="p-opts">${!IS_IOS && navigator.mediaDevices && navigator.mediaDevices.getUserMedia && !IS_DESKTOP ? `<button class="popt" data-a="ptorch" id="p-torch">${I.torch}Torch</button>` : ''}${navigator.vibrate ? `<button class="popt ${S.settings.partyBuzz ? 'on' : ''}" data-a="pbuzz" id="p-buzz">${I.pulse}Vibrate</button>` : ''}</div>`;
     document.body.appendChild(d); requestAnimationFrame(() => d.classList.add('on'));
     this.ui(); this.size(); addEventListener('resize', this.onResize = () => this.size());
     try { if (navigator.wakeLock) navigator.wakeLock.request('screen').then(l => { this.lock = l; }).catch(() => { }); } catch (e) { }
-    if (this.react() && Player.loaded && Player.el !== Embed && Player.el !== Player.fx) Player.reroute();
     if (Player.filters.length) Player.applyEq();
     if (!S.partySeen) { S.partySeen = 1; save(); setTimeout(() => toast('Flashing lights — pick “Calm” for gentle colours', { ms: 4500 }), 900); }
     const loop = now => { if (!this.on) return; this.frame(now); this.raf = requestAnimationFrame(loop); };
@@ -2380,7 +2389,7 @@ const Party = {
     const t = Player.cur, d = $('#party'); if (!t || !d) return;
     const a = $('#p-art'), u = artOf(t, true); if (a.getAttribute('src') !== u) { delete a.dataset.fb; a.src = u; }
     $('#p-t').textContent = t.title; $('#p-a').textContent = t.artist;
-    $('#p-pp').innerHTML = Player.loaded && !Player.el.paused ? I.pause : I.play;
+    const playing = Player.loaded && !Player.el.paused; $('#p-pp').innerHTML = playing ? I.pause : I.play; d.classList.toggle('paused', !playing);
     $('#p-tag').textContent = Player.el === Embed ? 'Lights follow the beat' : this.real() ? 'Lights react to the music' : 'Lights follow the beat';
   },
   size() { const c = $('#pcv'); if (!c) return; const r = Math.min(2, devicePixelRatio || 1) * (innerWidth * innerHeight > 1.5e6 ? 0.6 : 0.8); c.width = Math.round(innerWidth * r); c.height = Math.round(innerHeight * r); this.dots = null; },
@@ -2418,10 +2427,11 @@ const Party = {
       const m = H.reduce((a, b) => a + b, 0) / H.length, sd = Math.sqrt(H.reduce((a, b) => a + (b - m) * (b - m), 0) / H.length);
       if (L.flux > m + 1.45 * sd && L.flux > 0.012 && now - this.lastBeat > 240) { this.lastBeat = now; this.beat(now); }
     } else if (L.bass > this.avg * 1.28 && L.bass > 0.32 && now - this.lastBeat > 290) { this.lastBeat = now; this.beat(now); }
-    this.kick *= 0.88; this.flash *= 0.85; this.hue = (this.hue + (calm ? 0.15 : 0.25 + L.bass * 1.2 + this.mel * 2.2)) % 360;
+    const still = !(Player.loaded && !Player.el.paused); this.tq = (this.tq || 0) + (still ? 0 : 16);
+    this.kick *= 0.88; this.flash *= 0.85; if (!still) this.hue = (this.hue + (calm ? 0.15 : 0.25 + L.bass * 1.2 + this.mel * 2.2)) % 360;
     const disc0 = document.getElementById('p-disc'); if (disc0) disc0.style.setProperty('--k', String((1 + this.kick * (calm ? 0.02 : 0.07) + L.bass * 0.03).toFixed(3)));
     const c = $('#pcv'); if (!c) return; const g = c.getContext && c.getContext('2d'); if (!g) return;
-    const W = c.width, H = c.height;
+    const W = c.width, H = c.height; const tt = this.tq / 1000;
     const hsl = (h, sat, l, a) => `hsla(${(h % 360 + 360) % 360},${sat}%,${l}%,${a})`;
     g.globalCompositeOperation = 'source-over';
     const bg = g.createLinearGradient(0, 0, W, H); bg.addColorStop(0, hsl(this.hue + 220, 60, 6 + L.bass * 6, 1)); bg.addColorStop(1, hsl(this.hue + 300, 70, 4 + L.mid * 6, 1));
@@ -2432,7 +2442,7 @@ const Party = {
     if (style === 'disco' || calm) {
       const n = calm ? 4 : 6;
       for (let i = 0; i < n; i++) {
-        const a = t * (calm ? 0.12 : 0.45) + i * (Math.PI * 2 / n), x = cx + Math.cos(a) * W * 0.36, y = cy + Math.sin(a * 1.3) * H * 0.3;
+        const a = tt * (calm ? 0.12 : 0.45) + i * (Math.PI * 2 / n), x = cx + Math.cos(a) * W * 0.36, y = cy + Math.sin(a * 1.3) * H * 0.3;
         const r = R * (calm ? 0.55 : 0.32 + L.bass * 0.25), gr = g.createRadialGradient(x, y, 0, x, y, r);
         gr.addColorStop(0, hsl(this.hue + i * (360 / n), 95, 60, calm ? 0.28 : 0.38 + L.mid * 0.3)); gr.addColorStop(1, hsl(this.hue + i * 60, 90, 50, 0));
         g.fillStyle = gr; g.beginPath(); g.arc(x, y, r, 0, Math.PI * 2); g.fill();
@@ -2440,18 +2450,18 @@ const Party = {
       if (!calm) {
         if (!this.dots) this.dots = Array.from({ length: 70 }, () => ({ x: Math.random(), y: Math.random(), s: 0.4 + Math.random(), p: Math.random() * 6 }));
         for (const d2 of this.dots) {
-          const x = ((d2.x + t * 0.03 * d2.s) % 1) * W, y = d2.y * H, tw = 0.5 + 0.5 * Math.sin(t * 6 * d2.s + d2.p);
+          const x = ((d2.x + tt * 0.03 * d2.s) % 1) * W, y = d2.y * H, tw = 0.5 + 0.5 * Math.sin(tt * 6 * d2.s + d2.p);
           g.fillStyle = hsl(this.hue + d2.p * 40, 100, 80, 0.15 + tw * L.high * 0.9); g.beginPath(); g.arc(x, y, R * 0.006 * (1 + d2.s), 0, Math.PI * 2); g.fill();
         }
       }
     } else if (style === 'waves') {
       for (let k = 0; k < 6; k++) {
-        g.beginPath(); const amp = H * (0.04 + L.mid * 0.16) * (1 - k * 0.1), base = H * (0.25 + k * 0.11);
-        for (let x = 0; x <= W; x += 6) { const y = base + Math.sin(x / W * Math.PI * (2 + k * 0.6) + t * (1.2 + k * 0.3)) * amp + Math.sin(x / W * 13 + t * 3) * amp * L.high * 0.4; x ? g.lineTo(x, y) : g.moveTo(x, y); }
+        g.beginPath(); const amp = H * (0.035 + L.mid * 0.22 + this.kick * 0.03) * (1 - k * 0.1), base = H * (0.22 + k * 0.12);
+        for (let x = 0; x <= W; x += 5) { const y = base + Math.sin(x / W * Math.PI * (2 + k * 0.6) + tt * (1.2 + k * 0.3)) * amp + Math.sin(x / W * 11 + tt * 2.4) * amp * (0.2 + L.high * 0.5); x ? g.lineTo(x, y) : g.moveTo(x, y); }
         g.strokeStyle = hsl(this.hue + k * 40, 95, 60, 0.35 + L.bass * 0.4); g.lineWidth = R * (0.004 + L.bass * 0.01); g.stroke();
       }
     } else if (style === 'lasers') {
-      const n = 10, ox = [W * 0.1, W * 0.9], sweep = Math.sin(t * 0.9) * 0.6;
+      const n = 10, ox = [W * 0.1, W * 0.9], sweep = Math.sin(tt * 0.9) * 0.6;
       for (const o of ox) for (let i = 0; i < n; i++) {
         const a = -Math.PI / 2 + (i - n / 2) * 0.09 + sweep * (o < cx ? 1 : -1);
         g.strokeStyle = hsl(this.hue + i * 18 + (o < cx ? 0 : 160), 100, 60, 0.12 + L.high * 0.55); g.lineWidth = R * 0.004;
@@ -2460,8 +2470,8 @@ const Party = {
     } else if (style === 'rings') {
       const spec = L.spec, N = 72, base = (this.discR || R * 0.2) * 1.12;
       for (let i = 0; i < N; i++) {
-        const v = spec ? spec[2 + Math.floor(i * 1.6)] / 255 : (0.3 + 0.7 * Math.abs(Math.sin(t * 3 + i * 0.4))) * (0.4 + L.bass * 0.6);
-        const a = (i / N) * Math.PI * 2 + t * 0.2, r1 = base + R * 0.02, r2 = r1 + R * (0.02 + v * 0.18);
+        const v = spec ? spec[2 + Math.floor(i * 1.6)] / 255 : (0.3 + 0.7 * Math.abs(Math.sin(tt * 3 + i * 0.4))) * (0.4 + L.bass * 0.6);
+        const a = (i / N) * Math.PI * 2 + tt * 0.2, r1 = base + R * 0.02, r2 = r1 + R * (0.02 + v * 0.18);
         g.strokeStyle = hsl(this.hue + i * 5, 95, 62, 0.75); g.lineWidth = R * 0.008;
         g.beginPath(); g.moveTo(cx + Math.cos(a) * r1, cy + Math.sin(a) * r1); g.lineTo(cx + Math.cos(a) * r2, cy + Math.sin(a) * r2); g.stroke();
       }
@@ -2489,13 +2499,9 @@ const TABS = [['home', 'Home', 'home'], ['explore', 'Explore', 'explore'], ['sea
 function splash() {
   if (!S.settings.motion || document.getElementById('splash')) return;
   const d = document.createElement('div'); d.id = 'splash';
-  const nm = (S.settings.name || '').trim();
-  d.innerHTML = `<div class="sp-in"><div class="sp-logo"><span class="sp-ring"></span><span class="sp-ring r2"></span><span class="sp-ring r3"></span><img src="icons/icon-192.png" alt=""></div>
-    <div class="sp-bars" aria-hidden="true">${'<i></i>'.repeat(7)}</div>
-    <b class="sp-word">${[...TITLE].map((c, i) => `<span style="--i:${i}">${c === ' ' ? '&nbsp;' : esc(c)}</span>`).join('')}</b>
-    <small class="sp-tag">${nm ? `Welcome back, ${esc(nm)}` : TAGLINE}</small></div>`;
+  d.innerHTML = `<div class="sp-half top"></div><div class="sp-half bot"></div><div class="sp-in"><div class="sp-logo">${logoSvg('sp-mark')}</div><b class="sp-word">${esc(TITLE)}</b></div>`;
   document.body.appendChild(d);
-  setTimeout(() => d.classList.add('out'), 950); setTimeout(() => d.remove(), 1500);
+  setTimeout(() => d.classList.add('open'), 820); setTimeout(() => d.remove(), 1500);
 }
 function buildShell() {
   $('#tabs').innerHTML = `<div class="brand"><img src="icons/icon-192.png" alt="">${TITLE}</div>` +
@@ -2521,7 +2527,7 @@ function buildShell() {
     <div class="np-meta"><div class="np-tt"><div class="np-t" id="np-t"></div><span class="dlbadge" id="np-dl">${I.dlok}</span><div class="np-a" id="np-a" data-a="npartist"></div></div>
       <button class="np-ib" id="np-party" data-a="party" aria-label="Party Mode">${I.disco}</button><button class="np-ib" id="np-share" data-a="npshare" aria-label="Share">${I.share}</button><button class="np-ib" id="np-like" data-a="nplike" aria-label="Favorite">${I.heart}</button></div>
     <div class="scrub"><input class="rng" id="np-seek" type="range" min="0" max="1000" step="1" value="0" aria-label="Seek">
-      <div class="times"><span id="np-cur">0:00</span><span class="livepill">● LIVE</span><span class="qbadge" id="np-qb" data-a="aq" role="button" tabindex="0" aria-label="Audio quality"></span><button class="eqtag" id="np-eqt" data-a="eq" aria-label="Equalizer"></button><button class="dlpill" id="np-dlq" data-a="dlinfo" aria-label="Offline status">${I.dlok}<span></span></button><span id="np-rem">-0:00</span></div></div>
+      <div class="times"><span id="np-cur">0:00</span><span class="livepill">● LIVE</span><span class="qbadge" id="np-qb" data-a="aq" role="button" tabindex="0" aria-label="Audio quality"></span><button class="eqtag" id="np-eqt" data-a="eq" aria-label="Equalizer"></button><button class="dlpill" id="np-dlq" data-a="dlinfo" aria-label="Offline status">${I.offline}<span></span></button><button class="slpill" id="np-slp" data-a="sleep" aria-label="Sleep timer">${I.timer}<span></span></button><span id="np-rem">-0:00</span></div></div>
     <div class="ctrl">
       <button class="np-ib c-s" id="np-shuf" data-a="shuffle" aria-label="Shuffle">${I.shuffle}</button>
       <button class="np-ib c-k" data-a="skipb" aria-label="Skip back">${skipIcon(S.settings.podBack || 15, true)}</button>
@@ -2693,13 +2699,14 @@ function renderQueue() {
   }
 }
 let qd = null;
-document.addEventListener('touchmove', e => { if (qd) e.preventDefault(); }, { passive: false });
+const qdBlock = e => { if (qd) e.preventDefault(); };
 document.addEventListener('pointerdown', e => {
   const h = e.target.closest && e.target.closest('.qh'); if (!h) return;
   const row = h.closest('.qrow'); if (!row) return; e.preventDefault(); qStart(row, e, h);
 });
 function qStart(row, e, capEl) {
   const list = $('#qlist'); if (!row || !list || qd) return;
+  document.addEventListener('touchmove', qdBlock, { passive: false });
   const rows = $$('#qlist .qrow'), idx = rows.indexOf(row);
   const step = rows.length > 1 ? Math.abs(rows[1].offsetTop - rows[0].offsetTop) || row.offsetHeight : row.offsetHeight;
   const sc = $('#np-q');
@@ -2730,6 +2737,7 @@ document.addEventListener('pointermove', e => { if (qd && e.pointerId === qd.id)
 function endDrag(e, cancel) {
   if (!qd || e.pointerId !== qd.id) return;
   const { idx, to, row, step } = qd; (window.cancelAnimationFrame || clearTimeout)(qd.raf); qd = null;
+  document.removeEventListener('touchmove', qdBlock, { passive: false });
   const fin = !cancel ? to : idx;
   row.style.transition = 'transform .22s cubic-bezier(.2,.9,.25,1), box-shadow .22s'; row.style.transform = `translateY(${(fin - idx) * step}px)`; row.classList.add('settle');
   if (!cancel && to !== idx) {
@@ -3042,7 +3050,7 @@ function langPicker(first) {
 const fmtDb = v => (v > 0 ? '+' : '') + (+v).toFixed(Number.isInteger(+v) ? 0 : 1);
 function eqStatus() {
   const s = S.settings;
-  if (IS_IOS) return ['off', 'iPhone and iPad stop sound processing when the screen locks, so the equalizer is off there.'];
+  if (IS_IOS && s.eqOn && Player.el === Player.fx) return ['ok', 'Active on this song. On iPhone the equalizer works while Tune Tune is open — music may pause when the screen locks.'];
   if (!s.eqOn) return ['off', 'Turn it on to shape the sound.'];
   if (!Player.cur || !Player.loaded) return ['ok', 'Ready — it applies as soon as a song plays.'];
   if (Player.el === Embed) return ['warn', 'Not active on this song: it plays through YouTube’s player, which doesn’t allow sound changes.'];
@@ -3691,7 +3699,7 @@ const LABELS = { advanced: 'Advanced', home: 'Home', explore: 'Explore', search:
 function header(title, o = {}) {
   const st = nav.stacks[nav.tab]; const back = st.length > 1;
   const prev = back ? (LABELS[st[st.length - 2].v] || st[st.length - 2].title || 'Back') : '';
-  return `<div class="nb"><div class="nb-l">${back ? `<button class="nb-back" data-a="back">${I.chevL}<span>${esc(prev)}</span></button>` : ''}</div>
+  return `<div class="nb"><div class="nb-l">${back ? `<button class="nb-back" data-a="back">${I.chevL}<span>${esc(prev)}</span></button>` : (o.left || '')}</div>
     <div class="nb-t">${esc(title)}</div><div class="nb-r">${o.right || ''}</div></div>${o.noLarge ? '' : `<h1 class="lt">${esc(title)}</h1>`}`;
 }
 const nbBtn = (a, ic, label, extra = '') => `<button class="nb-btn" data-a="${a}" aria-label="${esc(label)}" ${extra}>${I[ic]}</button>`;
@@ -3924,7 +3932,7 @@ async function quickPicks() {
 function renderHome(e, tok) {
   const stk = streak();
   const nm = (S.settings.name || '').trim();
-  let html = header('Home', { right: nbBtn('go', 'gear', 'Settings', 'data-v="settings"') }) + `<p class="greet">${greeting()}${nm ? ', ' + esc(nm) : ''}${stk >= 2 ? ` <span class="streak" title="Days in a row you listened">🔥 ${stk}-day streak</span>` : ''}</p>`;
+  let html = header('Home', { right: nbBtn('go', 'gear', 'Settings', 'data-v="settings"'), left: `<span class="home-logo">${logoSvg()}</span>` }) + `<p class="greet">${greeting()}${nm ? ', ' + esc(nm) : ''}${stk >= 2 ? ` <span class="streak" data-a="streakparty" role="button" tabindex="0" title="Days in a row you listened">🔥 ${stk}-day streak</span>` : ''}</p>`;
   const standalone = matchMedia('(display-mode: standalone)').matches || navigator.standalone;
   if (!standalone && !S.noInstall && Object.keys(S.stats.plays || {}).length >= 3 && (deferredInstall || IS_IOS)) html += `<div class="nudge"><div class="nudge-ic">${I.music}</div><div class="nudge-t"><b>Get the Tune Tune app</b><span>${IS_IOS ? 'Tap Share, then “Add to Home Screen”' : 'Opens instantly and plays from your lock screen'}</span></div>${IS_IOS ? '' : '<button class="fb pri" data-a="install">Install</button>'}<button class="nudge-x" data-a="noinstall" aria-label="Dismiss">${I.x}</button></div>`;
   if (!navigator.onLine) {
@@ -3935,7 +3943,7 @@ function renderHome(e, tok) {
   }
   setTimeout(warmLangs, 2500);
   const sv = (S.cached || []).filter(t => S.settings.mixPods || t.source !== 'podcast');
-  if (S.settings.savedCard !== false && sv.length >= 3) html += `<div class="saved-card"><div class="sc-arts">${sv.slice(0, 3).map(t => `<img src="${esc(artOf(t))}" alt="">`).join('')}</div><div class="sc-t" data-a="go" data-v="coll" data-k="saved" role="button" tabindex="0"><b>Ready offline ›</b><span>Your last ${plural(sv.length, 'song')} — plays without internet</span></div><button class="np-ib" data-a="savedplay" aria-label="Play in order">${I.play}</button><button class="np-ib" data-a="savedshuf" aria-label="Shuffle">${I.shuffle}</button></div>`;
+  if (S.settings.savedCard !== false && sv.length >= 3) html += `<div class="saved-card"><span class="sc-ic">${I.offline}</span><div class="sc-arts">${sv.slice(0, 3).map(t => `<img src="${esc(artOf(t))}" alt="">`).join('')}</div><div class="sc-t" data-a="go" data-v="coll" data-k="saved" role="button" tabindex="0"><b>Ready offline ›</b><span>Your last ${plural(sv.length, 'song')} — plays without internet</span></div><button class="np-ib" data-a="savedplay" aria-label="Play in order">${I.play}</button><button class="np-ib" data-a="savedshuf" aria-label="Shuffle">${I.shuffle}</button></div>`;
   const sug = langSuggest(); if (sug) html += `<div class="lang-sug"><span>You’ve been listening to a lot of <b>${esc(sug)}</b> music</span><button class="fb pri" data-a="addlang" data-l="${esc(sug)}">Add ${esc(sug)}</button><button class="nudge-x" data-a="nolang" data-l="${esc(sug)}" aria-label="Dismiss">${I.x}</button></div>`;
   const langs = myLangs();
   html += `<div class="chips pg">${langs.map(L => `<button class="chip" data-a="lang" data-l="${esc(L)}">${esc(L)}</button>`).join('')}<button class="chip ghost" data-a="langs">${I.plus}Languages</button></div>`;
@@ -4289,14 +4297,14 @@ function renderSettings() {
       sLi({ icon: 'download', color: '#0a84ff', label: 'Preload next song', hint: 'No gaps or buffering between songs', ctl: sSw('preload', s.preload) }) +
       (IS_IOS ? '' : `<div class="li"><div class="lb"><span class="lx">Crossfade<small class="lh">Blend the end of one song into the next</small></span><span class="lv" id="v-crossfade">${+s.crossfade ? s.crossfade + ' s' : 'Off'}</span></div></div><div class="pad"><input class="slider" type="range" min="0" max="12" step="1" value="${+s.crossfade || 0}" data-set="crossfade" style="--p:${((+s.crossfade || 0) / 12) * 100}%" aria-label="Crossfade seconds"></div>`)) +
     sGrp('Playback',
-      sLi({ icon: 'eq', color: '#ff9f0a', label: 'Equalizer', value: IS_IOS ? 'Not on iPhone' : s.eqOn ? eqName() : 'Off', a: 'eq', chev: true }) +
+      sLi({ icon: 'eq', color: '#ff9f0a', label: 'Equalizer', value: s.eqOn ? eqName() : 'Off', a: 'eq', chev: true }) +
       (!IS_IOS && eqPins().length ? `<div class="pad"><div class="chips eqpins">${eqPins().filter(n => eqFind(n)).map(n => `<button class="chip ${s.eqOn && eqName() === n ? 'on' : ''}" data-a="eqp" data-n="${esc(n)}">${I.pin}${esc(n)}</button>`).join('')}</div></div>` : '') +
       sLi({ icon: 'infinity', color: '#30d158', label: 'Autoplay similar songs', ctl: sSw('autoplay', s.autoplay) }) +
       sLi({ label: 'Resume after calls', hint: 'Music continues by itself when a phone call or alarm ends', ctl: sSw('autoResume', S.settings.autoResume !== false) }) +
       sLi({ label: 'Mix podcasts with songs', hint: 'Off keeps podcasts and songs in separate queues', ctl: sSw('mixPods', !!S.settings.mixPods) }) +
       (IS_CAP || window.ttDesktop ? sLi({ label: 'Remind me after 3 days away', hint: 'A gentle notification if you haven’t listened for a while', ctl: sSw('remind3', S.settings.remind3 !== false) }) + '' : '') +
-      sLi({ label: 'Click sounds', hint: 'A soft tick when you tap, like, add or delete', ctl: sSw('tapSound', !!S.settings.tapSound) }) +
-      sLi({ label: 'Crown-style scrolling', hint: 'Lists snap into place with a tick as you scroll, like an Apple Watch', ctl: sSw('crown', !!S.settings.crown) }) +
+      sLi({ label: 'Tap sounds', hint: 'Soft musical sounds when you tap, like, add, delete, play or pause', ctl: sSw('tapSound', !!S.settings.tapSound) }) +
+      sLi({ label: 'Haptic scroll', hint: 'Lists glide and settle on each item with a gentle tick and bump', ctl: sSw('crown', !!S.settings.crown) }) +
       sLi({ label: 'Car Mode in landscape', hint: 'Phones switch to big Car Mode controls when turned sideways', ctl: sSw('landCar', S.settings.landCar) }) +
       sLi({ icon: 'timer', color: '#5e5ce6', label: 'Sleep Timer', value: timerVal, a: 'sleep', chev: true }) +
       sLi({ icon: 'speed', color: '#0a84ff', label: 'Music speed', value: Player.rate + '×', a: 'speed', chev: true }) +
@@ -4545,6 +4553,20 @@ const Actions = {
   lyrmode(el, d) { S.settings.lyrMode = d.m; save(); renderLyrics(); if (d.m === 'en') lyrTranslate(); },
   skipb2() { Player.seek(Player.el.currentTime - skipSecs(-1)); }, skipf2() { Player.seek(Player.el.currentTime + skipSecs(1)); },
   keys() { showKeys(); },
+  streakparty() {
+    if (document.getElementById('confetti')) return; feedback('done');
+    const c = document.createElement('canvas'); c.id = 'confetti'; document.body.appendChild(c);
+    const g = c.getContext && c.getContext('2d'); if (!g) { c.remove(); return; }
+    const W = c.width = innerWidth * (devicePixelRatio || 1), H = c.height = innerHeight * (devicePixelRatio || 1), k = devicePixelRatio || 1;
+    const cols = ['#ff375f', '#ff9f0a', '#ffd60a', '#30d158', '#0a84ff', '#bf5af2', '#fff'];
+    const parts = []; for (const ox of [0.08, 0.92]) for (let i = 0; i < 90; i++) { const a = (ox < 0.5 ? -60 : -120) * Math.PI / 180 + (Math.random() - 0.5) * 0.9, sp = (9 + Math.random() * 11) * k; parts.push({ x: W * ox, y: H * 0.95, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp, r: (3 + Math.random() * 5) * k, c: cols[i % cols.length], rot: Math.random() * 6, vr: (Math.random() - 0.5) * 0.4, sh: i % 3 }); }
+    let t0 = performance.now(); document.body.classList.add('partying');
+    const step = now => { const t = (now - t0) / 1000; g.clearRect(0, 0, W, H);
+      g.globalAlpha = Math.max(0, 0.35 - t * 0.1); for (let i = 0; i < 5; i++) { const x = W / 2 + Math.cos(t * 1.6 + i * 1.26) * W * 0.4, y = H * 0.35 + Math.sin(t * 2 + i) * H * 0.2, gr = g.createRadialGradient(x, y, 0, x, y, W * 0.45); gr.addColorStop(0, cols[i]); gr.addColorStop(1, 'transparent'); g.fillStyle = gr; g.fillRect(0, 0, W, H); }
+      g.globalAlpha = 1; for (const p of parts) { p.vy += 0.32 * k; p.vx *= 0.99; p.x += p.vx; p.y += p.vy; p.rot += p.vr; g.save(); g.translate(p.x, p.y); g.rotate(p.rot); g.fillStyle = p.c; if (p.sh === 0) g.fillRect(-p.r, -p.r / 2, p.r * 2, p.r); else { g.beginPath(); g.arc(0, 0, p.r * 0.7, 0, 7); g.fill(); } g.restore(); }
+      if (t < 3.4) requestAnimationFrame(step); else { c.remove(); document.body.classList.remove('partying'); } };
+    requestAnimationFrame(step); toast('🔥 Keep the streak going!');
+  },
   dlinfo() {
     const t = Player.cur; if (!t) return; const dl = isDl(t.id);
     toast(dl ? 'Downloaded · plays without internet' : 'Saved for offline · plays without internet', { label: dl ? 'View' : 'Offline Mix', ms: 5000, fn: () => { if (dl) { closeNP(); setTimeout(() => go('coll', { k: 'downloads', title: 'Downloaded' }), 380); } else playOffline('mix'); } });
@@ -4572,6 +4594,7 @@ const Actions = {
   offmix() { playOffline('mix'); },
   party() { Party.fromNP = npOpen; if (npOpen) closeNP(); setTimeout(() => Party.open(), npOpen ? 380 : 0); },
   partyx() { Party.close(); if (Player.cur) setTimeout(openNP, 120); },
+  partymin() { Party.close(); if (npOpen) closeNP(); },
   partyfs() { try { if (document.fullscreenElement) document.exitFullscreen(); else document.documentElement.requestFullscreen(); } catch (e) { toast('Full screen isn’t available here'); } },
   pstyle(el, d) { S.settings.partyStyle = d.s; save(); $$('#party .pchip').forEach(b => b.classList.toggle('on', b.dataset.s === d.s)); if (d.s === 'calm') toast('Calm: gentle colours, no flashing'); },
   ptorch() { Party.torch(); },
