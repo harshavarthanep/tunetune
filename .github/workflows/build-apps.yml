@@ -1,0 +1,113 @@
+# Builds every Tune Tune app for free on GitHub and publishes them together as a Release.
+# Start it from your repo: Actions tab → "Build apps" → Run workflow   (or push a tag like v1.1.0)
+# Afterwards the files are at:  https://github.com/<you>/<repo>/releases/latest
+#   TuneTune-Android.apk                    Android phones & tablets
+#   TuneTune-Windows-Setup-x64.exe          Windows (Intel & AMD) installer
+#   TuneTune-Windows-Setup-arm64.exe        Windows on ARM (Surface, Snapdragon laptops)
+#   TuneTune-Windows-Portable.exe           Windows, no install — run from anywhere / USB
+#   TuneTune-Mac.dmg  /  TuneTune-Mac.zip   macOS (Apple silicon and Intel)
+#   TuneTune-Linux-x86_64.AppImage          Linux (any distro, Intel & AMD)
+#   TuneTune-Linux-arm64.AppImage           Linux on ARM (Raspberry Pi 4/5 64-bit, etc.)
+#   TuneTune-Linux-amd64.deb / -arm64.deb   Ubuntu, Debian, Mint, Pop!_OS
+#   TuneTune-Linux-x64.tar.gz               Portable Linux folder
+name: Build apps
+on:
+  workflow_dispatch:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: write
+
+jobs:
+  android:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+      - run: npm install
+      - run: npm run android:prepare
+      - run: npx cap add android
+      - run: npm run android:setup
+      - run: npx cap sync android
+      - name: Use the fixed signing key (so updates install over the old app)
+        run: |
+          mkdir -p ~/.android
+          cp build/debug.keystore ~/.android/debug.keystore
+          keytool -list -keystore ~/.android/debug.keystore -storepass android >/dev/null 2>&1 || { echo "Keystore unreadable, using a fresh one"; rm -f ~/.android/debug.keystore; }
+      - name: Build APK
+        working-directory: android
+        run: chmod +x gradlew && ./gradlew assembleDebug --no-daemon
+      - run: cp android/app/build/outputs/apk/debug/app-debug.apk TuneTune-Android.apk
+      - uses: actions/upload-artifact@v4
+        with:
+          name: TuneTune-Android
+          path: TuneTune-Android.apk
+
+  desktop:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            args: --win
+          - os: macos-latest
+            args: --mac
+          - os: ubuntu-latest
+            args: --linux
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - run: npm install
+      - run: npx electron-builder ${{ matrix.args }} --publish never
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: false
+      - uses: actions/upload-artifact@v4
+        with:
+          name: TuneTune-${{ runner.os }}
+          path: |
+            dist/*.exe
+            dist/*.dmg
+            dist/*.zip
+            dist/*.AppImage
+            dist/*.deb
+            dist/*.tar.gz
+            !dist/*.blockmap
+            !dist/*-unpacked/**
+          if-no-files-found: ignore
+
+  release:
+    needs: [android, desktop]
+    if: always() && (needs.android.result == 'success' || needs.desktop.result == 'success')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: out
+          merge-multiple: true
+      - run: ls -la out
+      - uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ startsWith(github.ref, 'refs/tags/') && github.ref_name || format('build-{0}', github.run_number) }}
+          name: Tune Tune ${{ startsWith(github.ref, 'refs/tags/') && github.ref_name || format('(build {0})', github.run_number) }}
+          make_latest: true
+          body: |
+            ## Download Tune Tune
+            | Device | File |
+            |---|---|
+            | **Android** | `TuneTune-Android.apk` — open it on your phone (allow "Install unknown apps" once) |
+            | **Windows (Intel / AMD)** | `TuneTune-Windows-Setup-x64.exe` · no-install: `TuneTune-Windows-Portable.exe` |
+            | **Windows on ARM** | `TuneTune-Windows-Setup-arm64.exe` |
+            | **Mac (Apple silicon & Intel)** | `TuneTune-Mac.dmg` — first launch: right-click the app → **Open** |
+            | **Linux** | `TuneTune-Linux-x86_64.AppImage` · Debian/Ubuntu: `TuneTune-Linux-amd64.deb` · ARM: `-arm64` files |
+            | **iPhone / iPad** | Open the website in Safari → Share → **Add to Home Screen** |
+          files: out/*
