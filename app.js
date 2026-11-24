@@ -211,7 +211,7 @@ const I = {
   info: svg(P('M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18zM12 11v6M12 7.5v.5', 2)),
   expand: svg(P('M14 4h6v6M10 20H4v-6M20 4l-7 7M4 20l7-7', 2)),
   translate: svg(P('M4 5h9M8.5 3v2M6 5c.6 3 2.6 5.6 5 7M11 5c-.8 3.6-3.3 6.6-6.5 8.5M13 20l4-9 4 9M14.4 17h5.2', 1.8)),
-  disco: `<svg class="ic disco" viewBox="0 0 24 24" aria-hidden="true"><defs><radialGradient id="dbg" cx="38%" cy="32%" r="75%"><stop offset="0" stop-color="#fff"/><stop offset=".45" stop-color="#c9d2e3"/><stop offset="1" stop-color="#59627a"/></radialGradient><clipPath id="dbc"><circle cx="12" cy="13" r="8"/></clipPath></defs><path d="M12 1v4" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/><circle cx="12" cy="13" r="8" fill="url(#dbg)"/><g clip-path="url(#dbc)" stroke="rgba(40,48,70,.55)" stroke-width=".7" fill="none"><path d="M4 9.5h16M4 13h16M4 16.5h16"/><g class="db-mer"><path d="M2 5v16M6 5v16M10 5v16M14 5v16M18 5v16M22 5v16M26 5v16"/></g></g><circle class="db-glint" cx="9" cy="10" r="1.3" fill="#fff"/></svg>`,
+  disco: `<svg class="ic disco" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M11 1.8v3.4"/><circle cx="11" cy="13.6" r="7.4"/><path d="M3.8 11.2h14.4M3.6 14.6h14.8M5 17.9h12" opacity=".55"/><g class="db-mer" opacity=".55"><path d="M8.2 6.8c-1.8 4-1.8 9.6 0 13.6M13.8 6.8c1.8 4 1.8 9.6 0 13.6M11 6.2v14.8"/></g><path class="db-spark" d="M19.6 2.6v3.6M17.8 4.4h3.6" stroke-width="1.6"/><path class="db-spark s2" d="M21.2 9.4v1.8M20.3 10.3h1.8" stroke-width="1.4"/></svg>`,
   torch: svg(P('M8 3h8l-1.5 5h-5zM9.5 8h5v4l-1 9h-3l-1-9zM12 12v3', 1.8)),
   sparkle: svg(P('M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8zM19 16l.8 2.2L22 19l-2.2.8L19 22l-.8-2.2L16 19l2.2-.8z', 1.7)),
   edit: svg(P('M4 20h4L19 9l-4-4L4 16zM14 6l4 4', 1.8)),
@@ -859,7 +859,9 @@ const SvC = {
       for (const sh of inst.shape === '?' ? ['A', 'B'] : [inst.shape]) {
         const path = sh === 'A' ? pathA : pathB; if (!path) continue;
         try {
-          const j = await getJSON(inst.base + path, 6000);
+          let j;
+          try { j = await getJSON(inst.base + path, 6000); }
+          catch (e0) { const px = S.settings.proxy || SITE.server || normServer(BUILT_IN_SERVER); if (!px || e0.status) throw e0; j = await getJSON(px.replace('{url}', enc(inst.base + path)), 7000); }
           if (!j || j.success === false || (j.status && String(j.status).toUpperCase() !== 'SUCCESS') || j.data == null) throw softErr('no data');
           this.best = inst.base; this.fails.delete(inst.base);
           return { data: j.data, shape: sh };
@@ -1000,12 +1002,17 @@ async function loadSiteConfig() {
     if (!S.settings.proxy) { JSA.reset(); JSA.setVia('custom'); mem.clear(); }
   } catch (e) { }
 }
-const WORKER_CODE = "// Tune Tune music server \u2014 paste into a free Cloudflare Worker and press Deploy\nconst ALLOW = /(^|\\.)(jiosaavn\\.com|saavncdn\\.com|saavn\\.com)$/;\nconst CORS = {\n  'Access-Control-Allow-Origin': '*',\n  'Access-Control-Allow-Methods': 'GET, HEAD, OPTIONS',\n  'Access-Control-Allow-Headers': '*',\n  'Access-Control-Expose-Headers': 'Content-Length, Content-Range, Accept-Ranges, Content-Type',\n};\nexport default {\n  async fetch(req) {\n    if (req.method === 'OPTIONS') return new Response(null, { headers: CORS });\n    const target = new URL(req.url).searchParams.get('url');\n    if (!target) return new Response('Tune Tune relay is running', { headers: CORS });\n    let t;\n    try { t = new URL(target); } catch (e) { return new Response('Bad link', { status: 400, headers: CORS }); }\n    if (!ALLOW.test(t.hostname)) return new Response('Not allowed', { status: 403, headers: CORS });\n    const h = {\n      'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0 Safari/537.36',\n      'Accept': '*/*', 'Accept-Language': 'en-IN,en;q=0.9', 'Referer': 'https://www.jiosaavn.com/',\n    };\n    const range = req.headers.get('Range');\n    if (range) h['Range'] = range;\n    if (t.hostname.endsWith('jiosaavn.com')) h['Cookie'] = 'gdpr_acceptance=true; DL=english';\n    const media = t.hostname.endsWith('saavncdn.com');\n    const r = await fetch(t.toString(), { method: req.method, headers: h, cf: { cacheTtl: media ? 86400 : 300, cacheEverything: true } });\n    const out = new Headers(r.headers);\n    for (const k in CORS) out.set(k, CORS[k]);\n    out.delete('set-cookie');\n    return new Response(r.body, { status: r.status, headers: out });\n  },\n};\n";
+const WORKER_CODE = "// Tune Tune music server \u2014 paste into a free Cloudflare Worker and press Deploy\nconst ALLOW = /(^|\\.)(jiosaavn\\.com|saavncdn\\.com|saavn\\.com|shnwaz\\.dev|sumit\\.co|saavn\\.dev|saavn\\.me)$/;\nconst CORS = {\n  'Access-Control-Allow-Origin': '*',\n  'Access-Control-Allow-Methods': 'GET, HEAD, OPTIONS',\n  'Access-Control-Allow-Headers': '*',\n  'Access-Control-Expose-Headers': 'Content-Length, Content-Range, Accept-Ranges, Content-Type',\n};\nexport default {\n  async fetch(req) {\n    if (req.method === 'OPTIONS') return new Response(null, { headers: CORS });\n    const target = new URL(req.url).searchParams.get('url');\n    if (!target) return new Response('Tune Tune relay is running', { headers: CORS });\n    let t;\n    try { t = new URL(target); } catch (e) { return new Response('Bad link', { status: 400, headers: CORS }); }\n    if (!ALLOW.test(t.hostname)) return new Response('Not allowed', { status: 403, headers: CORS });\n    const h = {\n      'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0 Safari/537.36',\n      'Accept': '*/*', 'Accept-Language': 'en-IN,en;q=0.9', 'Referer': 'https://www.jiosaavn.com/',\n    };\n    const range = req.headers.get('Range');\n    if (range) h['Range'] = range;\n    if (t.hostname.endsWith('jiosaavn.com')) h['Cookie'] = 'gdpr_acceptance=true; DL=english';\n    const media = t.hostname.endsWith('saavncdn.com');\n    const r = await fetch(t.toString(), { method: req.method, headers: h, cf: { cacheTtl: media ? 86400 : 300, cacheEverything: true } });\n    const out = new Headers(r.headers);\n    for (const k in CORS) out.set(k, CORS[k]);\n    out.delete('set-cookie');\n    return new Response(r.body, { status: r.status, headers: out });\n  },\n};\n";
 const JSA = {
   via: '', fails: new Map(), deadUntil: 0,
-  init() { try { this.via = localStorage.getItem('tunetune.jsvia') || ''; this.deadUntil = +localStorage.getItem('tunetune.jsdead') || 0; } catch (e) { } },
+  init() { try { this.via = localStorage.getItem('tunetune.jsvia') || ''; this.deadUntil = (S.settings.proxy || BUILT_IN_SERVER) ? 0 : (+localStorage.getItem('tunetune.jsdead') || 0); } catch (e) { } },
   bad(p) { return Date.now() - (this.fails.get(p.id) || 0) < 10 * 60e3; },
-  dead() { this.deadUntil = Date.now() + 10 * 60e3; try { localStorage.setItem('tunetune.jsdead', String(this.deadUntil)); } catch (e) { } },
+  dead() {
+    const own = !!(S.settings.proxy || SITE.server || BUILT_IN_SERVER);
+    this.deadUntil = Date.now() + (own ? 45e3 : 10 * 60e3);
+    try { if (own) localStorage.removeItem('tunetune.jsdead'); else localStorage.setItem('tunetune.jsdead', String(this.deadUntil)); } catch (e) { }
+    if (own && !this.warned && !document.hidden) { this.warned = 1; setTimeout(() => toast('Your music server isn’t answering — songs use backups for now', { label: 'Check', ms: 6000, fn: () => go('advanced') }), 1500); }
+  },
   async attempt(p, url) {
     const r = await fetchT(p.wrap(url), {}, p.id === 'direct' ? 4000 : 7000);
     if (!r.ok) throw new Error('HTTP ' + r.status);
@@ -1789,6 +1796,11 @@ const Player = {
       } catch (e) {
         if (tok !== this.ltok) return;
         warn('stream', e);
+        if (!t.svRetry && t.source !== 'local' && !t.live && t.source !== 'podcast') {
+          t.svRetry = 1; JSA.reset(); try { SvC.fails && SvC.fails.clear(); } catch (x) { }
+          try { const m = await Saavn.match(t); if (tok !== this.ltok) return; if (m) { t.svSu = Saavn.urls(m); return this.load(autoplay, startAt, true); } } catch (x) { }
+          if (tok !== this.ltok) return;
+        }
         if (!document.hidden) toast(`Can’t play “${t.title}” — moving on`);
         return this.skipAfterFail(t);
       }
