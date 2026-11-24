@@ -293,6 +293,21 @@ const isDl = id => String(id).startsWith('lc:') || S.downloads.some(t => t.id ==
 const LANG_CODES = { en: 'English', hi: 'Hindi', ta: 'Tamil', te: 'Telugu', ml: 'Malayalam', kn: 'Kannada', pa: 'Punjabi', bn: 'Bengali', mr: 'Marathi', gu: 'Gujarati', or: 'Odia', as: 'Assamese', ur: 'Urdu',
   si: 'Sinhala', ne: 'Nepali', ko: 'Korean', ja: 'Japanese', zh: 'Chinese', es: 'Spanish', pt: 'Portuguese', fr: 'French', de: 'German', it: 'Italian', ar: 'Arabic', tr: 'Turkish', ru: 'Russian',
   id: 'Indonesian', ms: 'Malay', th: 'Thai', vi: 'Vietnamese', fil: 'Filipino', tl: 'Filipino', fa: 'Persian', sw: 'Swahili', el: 'Greek', nl: 'Dutch', pl: 'Polish', uk: 'Ukrainian', he: 'Hebrew', af: 'Afrikaans' };
+const IOS_STANDALONE = IS_IOS && (navigator.standalone || matchMedia('(display-mode: standalone)').matches);
+function iosHeal() {
+  if (!IOS_STANDALONE) return;
+  const app = document.getElementById('app'), v = document.getElementById('view'); if (!app) return;
+  const st = v ? v.scrollTop : 0;
+  app.style.display = 'none'; void app.offsetHeight; app.style.display = '';
+  if (v) v.scrollTop = st; try { window.scrollTo(0, 0); } catch (e) { }
+}
+if (IOS_STANDALONE) {
+  document.addEventListener('focusout', e => { if (e.target && e.target.matches && e.target.matches('input,textarea')) setTimeout(iosHeal, 350); });
+  addEventListener('orientationchange', () => setTimeout(iosHeal, 500));
+  document.addEventListener('visibilitychange', () => { if (!document.hidden) setTimeout(iosHeal, 250); });
+  addEventListener('pageshow', () => setTimeout(iosHeal, 250));
+  setTimeout(iosHeal, 1500);
+}
 function deviceLangs() {
   const out = []; for (const l of (navigator.languages && navigator.languages.length ? navigator.languages : [navigator.language || 'en'])) { const n = LANG_CODES[String(l).toLowerCase().split('-')[0]]; if (n && !out.includes(n)) out.push(n); }
   if (!out.length) out.push('English'); return out;
@@ -2576,7 +2591,12 @@ function lyrTick(cur, force) {
 function renderQueue() {
   const box = $('#np-q'); const c = Player.cur; if (!c) { box.innerHTML = ''; return; }
   const up = Player.queue.slice(Player.i + 1);
-  box.innerHTML = `<div class="qchips">
+  const pOff = Math.max(0, Player.i - 50), prev = Player.queue.slice(pOff, Player.i);
+  const keepTop = box.dataset.cur === c.id ? box.scrollTop : null;
+  box.innerHTML = `${prev.length ? `<div class="q-h qprev-h"><div><b>Previously Played</b><small>${plural(prev.length, 'song')} · tap one to play it again</small></div></div>
+    <div id="qprev">${prev.map((t, k) => { const qi = pOff + k; return `<div class="qrow qprev" data-a="qjump" data-q="${qi}" role="button" tabindex="0"><img src="${esc(artOf(t))}" alt="" class="${t.live ? 'logo' : ''}" loading="lazy">
+      <div class="qt"><div>${esc(t.title)}</div><div class="s">${esc(t.artist)}</div></div></div>`; }).join('')}</div>` : ''}
+    <div class="qchips">
       <button class="qchip ${Player.shuffle ? 'on' : ''}" data-a="shuffle">${I.shuffle}Shuffle</button>
       <button class="qchip ${Player.repeat !== 'off' ? 'on' : ''}" data-a="repeat">${Player.repeat === 'one' ? I.repeat1 : I.repeat}Repeat</button>
       <button class="qchip ${S.settings.autoplay ? 'on' : ''}" data-a="autoplay">${I.infinity}Autoplay</button></div>
@@ -2586,31 +2606,74 @@ function renderQueue() {
     <div class="q-h"><div><b>Playing Next</b><small>${up.length ? plural(up.length, 'song') : 'Nothing queued'}${Player.from ? ' from ' + esc(Player.from) : ''}</small></div>${up.length ? '<div class="qbtns"><button data-a="qsave">Save</button><button data-a="qclear">Clear</button></div>' : ''}</div>
     <div id="qlist">${up.map((t, k) => {
       const qi = Player.i + 1 + k;
-      return `<div class="qrow" data-q="${qi}"><img src="${esc(artOf(t))}" alt="" class="${t.live ? 'logo' : ''}" loading="lazy">
+      return `<div class="qrow qnext" data-q="${qi}"><img src="${esc(artOf(t))}" alt="" class="${t.live ? 'logo' : ''}" loading="lazy">
         <div class="qt" data-a="qjump" data-q="${qi}"><div>${esc(t.title)}</div><div class="s">${esc(t.artist)}</div></div>
         <button class="np-ib qx" data-a="qrm" data-q="${qi}" aria-label="Remove from queue">${I.minus}</button>
         <span class="qh" aria-label="Drag to reorder">${I.grip}</span></div>`;
     }).join('')}</div>
     ${!up.length && S.settings.autoplay && !c.live ? '<p class="qnote">Autoplay keeps going with similar songs when this one ends.</p>' : ''}`;
+  revealImgs();
+  if (keepTop !== null) box.scrollTop = keepTop;
+  else {
+    box.dataset.cur = c.id; const pr = box.querySelectorAll('.qprev'); const peek = pr.length ? pr[Math.max(0, pr.length - 2)] : null; const ch = box.querySelector('.qchips');
+    const go = () => { const tgt = peek || ch; if (tgt) box.scrollTop = Math.max(0, tgt.offsetTop - (peek ? 34 : 6)); };
+    go(); (window.requestAnimationFrame || (f => setTimeout(f, 16)))(go);
+  }
 }
-let qd = null;
+let qd = null, qLp = null, qLpAt = 0;
+document.addEventListener('pointerdown', e => {
+  const row0 = e.target.closest && e.target.closest('#qlist .qrow'); if (!row0 || e.target.closest('.qh,.qx')) return;
+  const sx = e.clientX, sy = e.clientY, ev = e; clearTimeout(qLp);
+  qLp = setTimeout(() => { qLp = null; qLpAt = Date.now(); qStart(row0, ev, row0); }, 330);
+  const cancel = m => { if (m.type !== 'pointermove' || Math.abs(m.clientX - sx) > 8 || Math.abs(m.clientY - sy) > 8) { clearTimeout(qLp); qLp = null; off(); } };
+  const off = () => { removeEventListener('pointermove', cancel); removeEventListener('pointerup', cancel); removeEventListener('pointercancel', cancel); };
+  addEventListener('pointermove', cancel); addEventListener('pointerup', cancel); addEventListener('pointercancel', cancel);
+}, true);
+document.addEventListener('click', e => { if (Date.now() - qLpAt < 700 && e.target.closest && e.target.closest('#np-q')) { e.preventDefault(); e.stopPropagation(); } }, true);
+document.addEventListener('touchmove', e => { if (qd) e.preventDefault(); }, { passive: false });
 document.addEventListener('pointerdown', e => {
   const h = e.target.closest && e.target.closest('.qh'); if (!h) return;
-  const row = h.closest('.qrow'); e.preventDefault();
-  qd = { row, y0: e.clientY, id: e.pointerId }; row.classList.add('drag');
-  try { h.setPointerCapture(e.pointerId); } catch (err) { }
+  const row = h.closest('.qrow'); if (!row) return; e.preventDefault(); qStart(row, e, h);
 });
-document.addEventListener('pointermove', e => { if (qd && e.pointerId === qd.id) qd.row.style.transform = `translateY(${e.clientY - qd.y0}px)`; });
+function qStart(row, e, capEl) {
+  const list = $('#qlist'); if (!row || !list || qd) return;
+  const rows = $$('#qlist .qrow'), idx = rows.indexOf(row);
+  const step = rows.length > 1 ? Math.abs(rows[1].offsetTop - rows[0].offsetTop) || row.offsetHeight : row.offsetHeight;
+  const sc = $('#np-q');
+  qd = { row, rows, idx, to: idx, y0: e.clientY, y: e.clientY, id: e.pointerId, step, sc, st0: sc ? sc.scrollTop : 0 };
+  row.classList.add('drag'); list.classList.add('dragging'); buzz();
+  try { capEl.setPointerCapture(e.pointerId); } catch (err) { }
+  const tick = () => {
+    if (!qd) return;
+    const b = qd.sc && qd.sc.getBoundingClientRect();
+    if (b) { if (qd.y < b.top + 70) qd.sc.scrollTop -= 9; else if (qd.y > b.bottom - 70) qd.sc.scrollTop += 9; }
+    qDragAt(qd.y); qd.raf = requestAnimationFrame(tick);
+  };
+  qd.raf = (window.requestAnimationFrame || (f => setTimeout(f, 16)))(tick);
+}
+function qDragAt(y) {
+  if (!qd) return;
+  const dy = y - qd.y0 + ((qd.sc ? qd.sc.scrollTop : 0) - qd.st0);
+  qd.row.style.transform = `translateY(${dy}px) scale(1.02)`;
+  const to = clamp(qd.idx + Math.round(dy / qd.step), 0, qd.rows.length - 1);
+  if (to === qd.to) return; qd.to = to; buzz();
+  qd.rows.forEach((r, k) => {
+    if (r === qd.row) return; let sh = 0;
+    if (qd.idx < to && k > qd.idx && k <= to) sh = -qd.step; else if (qd.idx > to && k >= to && k < qd.idx) sh = qd.step;
+    r.style.transform = sh ? `translateY(${sh}px)` : '';
+  });
+}
+document.addEventListener('pointermove', e => { if (qd && e.pointerId === qd.id) { qd.y = e.clientY; qDragAt(e.clientY); } });
 function endDrag(e, cancel) {
   if (!qd || e.pointerId !== qd.id) return;
-  const { row } = qd; qd = null;
-  if (cancel) return renderQueue();
-  const rows = $$('#qlist .qrow').filter(r => r !== row);
-  const pos = rows.filter(r => { const b = r.getBoundingClientRect(); return b.top + b.height / 2 < e.clientY; }).length;
-  const from = +row.dataset.q; const up = Player.queue.slice(Player.i + 1);
-  const t = up.splice(from - Player.i - 1, 1)[0];
-  if (t) { up.splice(pos, 0, t); Player.queue = Player.queue.slice(0, Player.i + 1).concat(up); }
-  renderQueue();
+  const { idx, to, row, step } = qd; (window.cancelAnimationFrame || clearTimeout)(qd.raf); qd = null;
+  const fin = !cancel ? to : idx;
+  row.style.transition = 'transform .22s cubic-bezier(.2,.9,.25,1), box-shadow .22s'; row.style.transform = `translateY(${(fin - idx) * step}px)`; row.classList.add('settle');
+  if (!cancel && to !== idx) {
+    const up = Player.queue.slice(Player.i + 1); const t = up.splice(idx, 1)[0];
+    if (t) { up.splice(to, 0, t); Player.queue = Player.queue.slice(0, Player.i + 1).concat(up); UI.deck(); buzz(); }
+  }
+  setTimeout(renderQueue, 230);
 }
 document.addEventListener('pointerup', e => endDrag(e, false));
 document.addEventListener('pointercancel', e => endDrag(e, true));
@@ -3322,7 +3385,57 @@ async function handleSharedText(txt) {
   if (!q) return toast('Couldn’t find a song in what was shared');
   switchTab('search'); setTimeout(() => { const i = $('#sq'); if (i) { i.value = q; searchInput(q); } }, 80);
 }
+/* ================= native apps: reminders, “Open with”, widget buttons ================= */
+const Native = {
+  cap() { return window.Capacitor && window.Capacitor.isNativePlatform && window.Capacitor.isNativePlatform() ? window.Capacitor : null; },
+  plug(n) { const c = this.cap(); return c && c.Plugins ? c.Plugins[n] : null; },
+  async remind() {
+    if (S.settings.remind3 === false) return;
+    const LN = this.plug('LocalNotifications'); if (!LN) return;
+    try {
+      const p = await LN.checkPermissions(); if (p.display !== 'granted') { if (S.askedNotif) return; S.askedNotif = 1; save(); const r = await LN.requestPermissions(); if (r.display !== 'granted') return; }
+      const nm = String(S.settings.name || '').trim(), t = (Player.cur && !Player.cur.live) ? Player.cur : (S.history || [])[0];
+      await LN.cancel({ notifications: [{ id: 7301 }] }).catch(() => { });
+      await LN.schedule({ notifications: [{ id: 7301, title: nm ? `${nm}, your music misses you 🎧` : 'Your music misses you 🎧',
+        body: t ? `Pick up where you left off — “${t.title}”` : 'New songs in your languages are waiting',
+        schedule: { at: new Date(Date.now() + 3 * 864e5), allowWhileIdle: true }, smallIcon: 'ic_stat_tunetune', iconColor: '#FF375F', extra: { url: 'tunetune://open/resume' } }] });
+    } catch (e) { warn(e); }
+  },
+  async openUrl(url) {
+    url = String(url || '');
+    const m = url.match(/^tunetune:\/\/open\/([\w-]+)/); if (m) return openShortcut(m[1]);
+    if (/^(content|file):/.test(url)) {
+      try {
+        const c = this.cap(); const r = await fetch(c.convertFileSrc(url)); const b = await r.blob();
+        const name = decodeURIComponent(url.split('/').pop().split('?')[0] || 'Song') || 'Song';
+        const before = S.locals.length; await importFiles([new File([b], /\.\w{2,4}$/.test(name) ? name : name + '.mp3', { type: b.type || 'audio/mpeg' })]);
+        const added = S.locals.slice(0, S.locals.length - before); if (added.length) { Player.playList(added, 0, 'On This Device'); setTimeout(openNP, 250); }
+      } catch (e) { toast('Couldn’t open that file'); }
+    }
+  },
+  init() {
+    const App = this.plug('App'), LN = this.plug('LocalNotifications');
+    if (App) {
+      App.addListener('appUrlOpen', d => this.openUrl(d && d.url));
+      if (App.getLaunchUrl) App.getLaunchUrl().then(d => { if (d && d.url) setTimeout(() => this.openUrl(d.url), 900); }).catch(() => { });
+      App.addListener('appStateChange', st => { if (!st.isActive) this.remind(); });
+    }
+    if (LN) LN.addListener('localNotificationActionPerformed', a => { const u = a && a.notification && a.notification.extra && a.notification.extra.url; if (u) this.openUrl(u); });
+    if (LN) setTimeout(() => this.remind(), 20000);
+    const D = window.ttDesktop;
+    if (D && D.onOpenFiles) D.onOpenFiles(async files => {
+      const fl = files.map(f => new File([f.data], f.name, { type: f.type || '' })); const before = S.locals.length;
+      await importFiles(fl); const added = S.locals.slice(0, S.locals.length - before);
+      if (added.length) { Player.playList(added, 0, 'On This Device'); setTimeout(openNP, 250); }
+    });
+    if (D && D.used) { D.used(); addEventListener('focus', () => D.used()); }
+  },
+};
 function openShortcut(k) {
+  if (k === 'home') return switchTab('home');
+  if (k === 'search') return switchTab('search');
+  if (k === 'offline') return playOffline('mix');
+  if (k === 'party') { if (Player.cur) return Actions.party(); return toast('Play a song, then start Party Mode'); }
   if (k === 'liked') return go('coll', { k: 'liked', title: 'Favorite Songs' });
   if (k === 'resume') { if (Player.cur) { Player.toggle(); setTimeout(openNP, 200); } else toast('Nothing to resume yet'); return; }
   if (k === 'drive') { if (Player.cur) openDrive(); else toast('Play something first, then open Driving Mode'); return; }
@@ -4105,6 +4218,7 @@ function renderSettings() {
       sLi({ icon: 'infinity', color: '#30d158', label: 'Autoplay similar songs', ctl: sSw('autoplay', s.autoplay) }) +
       sLi({ label: 'Resume after calls', hint: 'Music continues by itself when a phone call or alarm ends', ctl: sSw('autoResume', S.settings.autoResume !== false) }) +
       sLi({ label: 'Mix podcasts with songs', hint: 'Off keeps podcasts and songs in separate queues', ctl: sSw('mixPods', !!S.settings.mixPods) }) +
+      (IS_CAP || window.ttDesktop ? sLi({ label: 'Remind me after 3 days away', hint: 'A gentle notification if you haven’t listened for a while', ctl: sSw('remind3', S.settings.remind3 !== false) }) + '' : '') +
       sLi({ label: 'Car Mode in landscape', hint: 'Phones switch to big Car Mode controls when turned sideways', ctl: sSw('landCar', S.settings.landCar) }) +
       sLi({ icon: 'timer', color: '#5e5ce6', label: 'Sleep Timer', value: timerVal, a: 'sleep', chev: true }) +
       sLi({ icon: 'speed', color: '#0a84ff', label: 'Music speed', value: Player.rate + '×', a: 'speed', chev: true }) +
@@ -4536,6 +4650,7 @@ document.addEventListener('change', e => {
     const k = t.dataset.set; S.settings[k] = t.type === 'checkbox' ? t.checked : t.type === 'range' ? +t.value : t.value; save(); buzz();
     if (['motion', 'animBg', 'badge'].includes(k)) applyTheme();
     if (k === 'normalize') Player.applyVol();
+    if (k === 'remind3') { if (window.ttDesktop && window.ttDesktop.setRemind) window.ttDesktop.setRemind(t.checked); const LN = Native.plug('LocalNotifications'); if (!t.checked && LN) LN.cancel({ notifications: [{ id: 7301 }] }).catch(() => { }); else Native.remind(); }
     if (k === 'autoplay') toast(t.checked ? 'Autoplay on' : 'Autoplay off');
     if (k === 'country') { mem.clear(); toast(`Region: ${countryName(detectCC())}`); }
   } else if (t.id === 'f-audio') { importFiles(t.files); t.value = ''; }
@@ -4628,8 +4743,8 @@ const Deck = {
       if (dir > 0) { cur.src = nx.getAttribute('src'); pv.src = cs; } else { cur.src = pv.getAttribute('src'); nx.src = cs; }
       cur.classList.add('ld'); this.skip = true; this.set(0, false); move();
       requestAnimationFrame(() => requestAnimationFrame(() => { const x = this.el(); if (x) x.classList.remove('drag'); this.busy = false; }));
-      setTimeout(() => { this.skip = false; this.busy = false; }, 700);
-    }, 430);
+      setTimeout(() => { this.skip = false; this.busy = false; }, 600);
+    }, 360);
   },
   arrive(dir) {
     if (this.skip) { this.skip = false; return; }
@@ -4650,7 +4765,7 @@ function bindGestures() {
   art.addEventListener('pointerdown', e => { if (e.pointerType === 'mouse' && e.button === 0 && !e.target.closest('.yt-pill,#ytbox')) e.preventDefault(); if (e.target.closest('.yt-pill') || (e.target.closest('#ytbox') && ($('#np').classList.contains('needtap') || $('#np').classList.contains('ytfull'))) || (e.pointerType === 'mouse' && e.button !== 0)) return; px = e.clientX; py = e.clientY; pdx = 0; dMoved = 0; pt = Date.now(); horiz = false; });
   art.addEventListener('pointermove', e => {
     if (px === null) return; const dx = e.clientX - px, dy = e.clientY - py; dMoved = Math.max(dMoved, Math.abs(dx), Math.abs(dy));
-    if (!horiz && Math.abs(dx) > 6 && Math.abs(dx) >= Math.abs(dy) && !Deck.busy) { horiz = true; dist = Deck.dist(); px = e.clientX - Math.sign(dx) * 2; try { art.setPointerCapture(e.pointerId); } catch (x) { } }
+    if (!horiz && Math.abs(dx) > 7 && Math.abs(dx) > Math.abs(dy) * 0.9 && !Deck.busy && !$('#np').classList.contains('drag')) { horiz = true; Deck.dragging = true; $('#np').classList.add('deckdrag'); dist = Deck.dist(); px = e.clientX - Math.sign(dx) * 2; try { art.setPointerCapture(e.pointerId); } catch (x) { } }
     if (horiz) {
       pdx = e.clientX - px; let p = clamp(pdx / dist, -1, 1); if ((p < 0 && !Deck.has(1) && !S.settings.autoplay) || (p > 0 && !Deck.has(-1))) p *= 0.25;
       if (!Deck.crossed && Math.abs(pdx) > dist * 0.28) { Deck.crossed = true; buzz(); } else if (Deck.crossed && Math.abs(pdx) < dist * 0.28) Deck.crossed = false;
@@ -4659,7 +4774,7 @@ function bindGestures() {
     }
   });
   const end = e => {
-    if (px === null) return; px = null; Deck.crossed = false; (window.cancelAnimationFrame || clearTimeout)(Deck.raf);
+    if (px === null) return; px = null; Deck.crossed = false; Deck.dragging = false; $('#np').classList.remove('deckdrag'); (window.cancelAnimationFrame || clearTimeout)(Deck.raf);
     if (!horiz) {
       if (dMoved < 10 && e.type === 'pointerup' && (e.target.id === 'np-img' || e.target.closest('#ytbox'))) { if (Date.now() - lastTap < 320) { lastTap = 0; likeBurst(); } else lastTap = Date.now(); }
       return;
@@ -4696,13 +4811,15 @@ function bindGestures() {
   const np = $('#np'); let y0 = null, dy = 0, t0 = 0;
   np.addEventListener('touchstart', e => {
     if (wide() || e.target.closest('.np-panel,input,button') || !e.target.closest('.np-top,.np-art')) { y0 = null; return; }
-    y0 = e.touches[0].clientY; x0 = e.touches[0].clientX; dy = 0; t0 = Date.now();
+    y0 = e.touches[0].clientY; x0 = e.touches[0].clientX; dy = 0; t0 = Date.now(); vdir = null;
   }, { passive: true });
-  let x0 = 0;
+  let x0 = 0, vdir = null;
   np.addEventListener('touchmove', e => {
-    if (y0 === null) return; dy = Math.max(0, e.touches[0].clientY - y0);
-    if (Math.abs(e.touches[0].clientX - x0) > Math.abs(e.touches[0].clientY - y0) * 0.8 && Math.abs(e.touches[0].clientX - x0) > 6) { y0 = null; np.classList.remove('drag'); np.style.transform = ''; return; }
-    if (dy > 4) { np.classList.add('drag'); np.style.transform = `translateY(${dy}px)`; }
+    if (y0 === null) return;
+    const ddx = e.touches[0].clientX - x0, ddy = e.touches[0].clientY - y0;
+    if (!vdir) { if (Math.hypot(ddx, ddy) < 10) return; vdir = ddy > 0 && Math.abs(ddy) > Math.abs(ddx) * 1.3 && !Deck.dragging ? 'v' : 'h'; }
+    if (vdir !== 'v') { y0 = null; return; }
+    dy = Math.max(0, ddy - 10); np.classList.add('drag'); np.style.transform = `translate3d(0,${dy}px,0)`;
   }, { passive: true });
   np.addEventListener('touchend', () => {
     if (y0 === null) return; np.classList.remove('drag'); np.style.transform = '';
@@ -4737,6 +4854,7 @@ function init() {
   S.settings.eqPins = eqPins().filter(n => eqFind(n));
   setTimeout(() => { openShared().catch(() => { }); }, 600);
   if (!navigator.onLine) { document.body.classList.add('offline'); setTimeout(() => { if (!navigator.onLine && S.settings.offlineTips !== false && String(S.settings.name || '').trim()) { offShown = true; offlineNudge(); } }, 1600); }
+  try { Native.init(); } catch (e) { warn(e); }
   loadSiteConfig().then(() => { const add = h => { try { const l = document.createElement('link'); l.rel = 'preconnect'; l.href = h; l.crossOrigin = ''; document.head.appendChild(l); } catch (e) { } };
     const px = S.settings.proxy || SITE.server; if (px) { try { add(new URL(px.replace('{url}', '')).origin); } catch (e) { } } add('https://aac.saavncdn.com'); add('https://c.saavncdn.com'); });
   try { if (navigator.storage && navigator.storage.persist) navigator.storage.persisted().then(p => { if (!p) navigator.storage.persist().catch(() => { }); }).catch(() => { }); } catch (e) { }

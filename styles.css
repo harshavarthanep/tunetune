@@ -747,7 +747,7 @@ kbd{font:600 12px ui-monospace,Menlo,monospace;padding:2px 6px;border-radius:5px
 #np .np-art{touch-action:pan-y;--p:0;--ap:0;--S:min(80cqw,96cqh);--D:calc(50cqw + 6px)}
 @media (min-width:900px) and (min-height:561px){#np .np-art{--S:min(72cqw,100cqh);--D:calc(50cqw - min(72cqw,100cqh) * .31)}}
 #np .np-art #np-img,#np .np-art .dk,#ytbox{position:absolute;left:50%;top:50%;width:var(--S);height:var(--S);margin:calc(var(--S) / -2) 0 0 calc(var(--S) / -2);
-  border-radius:12px;transition:transform .5s cubic-bezier(.22,.9,.28,1),opacity .4s ease,box-shadow .4s;will-change:transform}
+  border-radius:12px;transition:transform .38s cubic-bezier(.25,.95,.3,1),opacity .3s ease,box-shadow .3s;will-change:transform}
 #np .np-art #np-img,#ytbox{z-index:2;transform:translate3d(calc(var(--p) * var(--D)),0,0) scale(calc((1 - .38 * var(--ap)) * var(--sc,1)));box-shadow:0 18px 50px rgba(0,0,0,.4);cursor:grab}
 #np .np-art #np-img{opacity:calc(1 - .45 * var(--ap))}
 #np .np-art .dk{z-index:1;object-fit:cover;opacity:0;pointer-events:none;cursor:pointer;box-shadow:0 12px 30px rgba(0,0,0,.3)}
@@ -1176,3 +1176,33 @@ kbd{white-space:nowrap;display:inline-block}
   #tabs{padding-bottom:26px}
   .tab.tset{border-top:.5px solid var(--sep);border-radius:0 0 10px 10px;padding-top:14px;margin-top:auto}
 }
+
+
+/* ================= v1.1: queue drag & drop like native apps ================= */
+#qlist.dragging .qrow:not(.drag){transition:transform .24s cubic-bezier(.2,.85,.25,1)}
+#qlist.dragging .qrow.drag{transition:box-shadow .2s,background .2s;cursor:grabbing}
+.qrow.drag{z-index:5;background:color-mix(in srgb,var(--accent) 14%,rgba(255,255,255,.18));box-shadow:0 18px 40px rgba(0,0,0,.35),0 0 0 1px rgba(255,255,255,.12);border-radius:12px}
+.qrow.settle{box-shadow:none}
+#qlist .qrow{touch-action:pan-y;user-select:none;-webkit-user-select:none}
+.qh{cursor:grab;touch-action:none}
+/* previously played: softer, clearly tappable */
+.qrow.qprev{opacity:.62;transition:opacity .2s,background .2s;cursor:pointer;padding-left:6px;padding-right:6px}
+.qrow.qprev:hover,.qrow.qprev:active{opacity:1;background:rgba(255,255,255,.08)}
+.qprev-h small{display:block}
+.qcur{border-radius:12px}
+.qcur .qt div:first-child{background:linear-gradient(90deg,var(--accent),#ff9f0a,var(--accent));background-size:200% 100%;-webkit-background-clip:text;background-clip:text;color:transparent;animation:curGlow 3s linear infinite}
+@keyframes curGlow{to{background-position:-200% 0}}
+/* hover: rows light up and a soft shine runs across them (mouse only) */
+@media (hover:hover) and (pointer:fine){
+  .row,.qrow{background-image:linear-gradient(110deg,transparent 35%,rgba(255,255,255,.12) 48%,transparent 62%);background-size:260% 100%;background-position:140% 0;background-repeat:no-repeat}
+  .row:hover,.qrow:hover{background-color:var(--fill);animation:rowShine .9s cubic-bezier(.3,.6,.3,1) forwards;cursor:pointer}
+  #np .qrow:hover{background-color:rgba(255,255,255,.1)}
+  .row:hover .thumb,.qrow:hover img{transform:scale(1.04);transition:transform .25s}
+}
+@keyframes rowShine{from{background-position:140% 0}to{background-position:-40% 0}}
+/* smooth album swipes: pause the moving background while a finger is on the art */
+#np.deckdrag .np-bg,#np.deckdrag .np-bg2{animation-play-state:paused}
+#np.deckdrag .np-art .dk,#np.deckdrag .np-art #np-img{box-shadow:0 10px 28px rgba(0,0,0,.3)}
+/* Apple-style press feedback everywhere */
+button:active,.card:active .cw,.tile:active,.qrow:active{transform:scale(.97);transition:transform .12s}
+.np-ib:active,.np-pp:active,#np-pp:active{transform:scale(.9)}
