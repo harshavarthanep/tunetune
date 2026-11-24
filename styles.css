@@ -1322,3 +1322,36 @@ html{-webkit-text-size-adjust:100%;text-size-adjust:100%}
   .dv-up{display:none}
   .dv-c2 button{width:min(40px,10.5vh);height:min(40px,10.5vh)}
 }
+
+
+/* ================= v1.1: offline pill, iPhone bottom spacing, landscape art ================= */
+.dlbadge{display:none!important}
+.dlpill{display:none;align-items:center;gap:4px;margin-left:6px;padding:2px 8px 2px 3px;border-radius:10px;font:700 10.5px/1.5 inherit;letter-spacing:.3px;text-transform:uppercase;color:#fff;background:rgba(255,255,255,.16);vertical-align:middle}
+.dlpill.on{display:inline-flex}
+.dlpill .ic{width:15px;height:15px;padding:2px;border-radius:50%;background:#1ed760;color:#fff;stroke-width:3;box-sizing:border-box}
+.dlpill.auto .ic{background:#8e8e93}
+/* clearer download marks in lists: solid circle, white arrow */
+.dlm{background:#1ed760!important;color:#fff!important}
+.dlm.auto{background:#8e8e93!important;color:#fff!important}
+.dlm .ic{stroke:#fff}
+/* iPhone: tab bar and player controls sit comfortably above the home indicator */
+:root{--sabx:max(10px,calc(env(safe-area-inset-bottom,0px) - 6px))}
+@media (max-width:899px){
+  .np-in{padding-bottom:calc(var(--sabx) + 6px)}
+  .tab{padding-top:4px}
+}
+/* landscape Car Mode: album art sizes to its own column (never clipped by the notch side) */
+@media (orientation:landscape) and (max-height:560px){
+  .dv-art{container-type:size;--A:min(84cqw,86cqh);--B:calc(var(--A) * .6)}
+  #drive .dv-art #dv-art{width:var(--A);height:var(--A)}
+  #drive .dv-side{width:var(--B);height:var(--B)}
+  #dv-prev{left:calc(50% - var(--A) / 2 - var(--B) * .72)}
+  #dv-next{right:calc(50% - var(--A) / 2 - var(--B) * .72)}
+  #np .np-art{--S:min(90cqw,90cqh)}
+}
+/* the download icon is a filled circle (current colour) with a white arrow → colour the circle, keep the arrow white */
+.dlm{background:transparent!important;color:#1ed760!important;width:17px;height:17px}
+.dlm.auto{background:transparent!important;color:#8e8e93!important}
+.dlm .ic{width:17px;height:17px;stroke:initial}
+.dlpill .ic{background:none;padding:0;color:#1ed760;width:15px;height:15px}
+.dlpill.auto .ic{background:none;color:#a1a1a6}

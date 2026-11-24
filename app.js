@@ -2098,7 +2098,7 @@ const Player = {
   session() {
     if (NativeMS) {
       const H = {
-        play: () => (this.loaded && !this.waitOnline ? this.play() : this.toggle()), pause: () => this.userPause(), stop: () => this.userPause(),
+        play: () => this.remotePlay(), pause: () => this.userPause(), stop: () => this.userPause(),
         previoustrack: () => this.prev(), nexttrack: () => this.next(), seekto: d => this.seek(d && d.seekTime),
         seekbackward: d => this.seek(this.el.currentTime - ((d && d.seekOffset) || 10)), seekforward: d => this.seek(this.el.currentTime + ((d && d.seekOffset) || 10)),
       };
@@ -2106,16 +2106,32 @@ const Player = {
     }
     if (!('mediaSession' in navigator)) return;
     const ms = navigator.mediaSession; const h = (n, f) => { try { ms.setActionHandler(n, f); } catch (e) { } };
-    h('play', () => (this.loaded && !this.waitOnline ? this.play() : this.toggle()));
+    h('play', () => this.remotePlay());
     h('pause', () => this.userPause());
     h('stop', () => this.userPause());
     h('previoustrack', () => this.prev());
     h('nexttrack', () => this.next());
     h('seekto', d => this.seek(d.seekTime));
-    h('seekbackward', d => this.seek(this.el.currentTime - (d.seekOffset || 10)));
-    h('seekforward', d => this.seek(this.el.currentTime + (d.seekOffset || 10)));
+    this.seekBtns(false);
+  },
+  seekBtns(on) {
+    if (!('mediaSession' in navigator) || this._seekOn === on) return; this._seekOn = on;
+    const ms = navigator.mediaSession; const h = (n, f) => { try { ms.setActionHandler(n, f); } catch (e) { } };
+    h('seekbackward', on ? d => this.seek(this.el.currentTime - ((d && d.seekOffset) || +S.settings.podBack || 15)) : null);
+    h('seekforward', on ? d => this.seek(this.el.currentTime + ((d && d.seekOffset) || +S.settings.podFwd || 30)) : null);
+  },
+  remotePlay() {
+    const a = this.el; this.stopIntr && this.stopIntr();
+    if (!this.cur) return;
+    if (!this.loaded || this.waitOnline) return this.toggle();
+    if (a !== Embed && (a.error || !a.currentSrc || a.networkState === 3)) return this.load(true, a.currentTime || this.resumeAt || 0, true);
+    this.wantPlay = true; this.userPaused = false;
+    try { const p = a.play(); if (p && p.catch) p.catch(err => { if (!(err && err.name === 'NotAllowedError') && this.cur) this.load(true, a.currentTime || this.resumeAt || 0, true); }); } catch (e) { }
+    if (this.ctx && this.ctx.state !== 'running') this.ctx.resume().catch(() => { });
+    try { navigator.mediaSession.playbackState = 'playing'; } catch (e) { }
   },
   meta(t) {
+    this.seekBtns(!!(t && t.source === 'podcast'));
     const art = artOf(t, true);
     if (NativeMS) {
       const src = /^https?:/.test(art) ? art.replace('/maxresdefault.jpg', '/hqdefault.jpg') : '';
@@ -2264,7 +2280,8 @@ const UI = {
   },
   dlMark() {
     const t = Player.cur, el = $('#np-dl'), mm = $('#m-dl'); const on = t && t.source !== 'local' && (isDl(t.id) || Offline.has(t.id)); const auto = on && !isDl(t.id);
-    [el, mm].forEach(x => { if (x) { x.classList.toggle('on', !!on); x.classList.toggle('auto', !!auto); x.title = auto ? 'Saved for offline' : 'Downloaded'; } });
+    [el, mm].forEach(x => { if (x) { x.classList.remove('on', 'auto'); } });
+    const q = $('#np-dlq'); if (q) { q.classList.toggle('on', !!on); q.classList.toggle('auto', !!auto); const sp = q.querySelector('span'); if (sp) sp.textContent = auto ? 'Offline' : 'Downloaded'; }
   },
   timerBtn() { $('#np-btimer').classList.toggle('on', !!(Player.sleepAt || Player.sleepEnd)); this.drive(); },
   drive() {
@@ -2469,7 +2486,7 @@ function buildShell() {
     <div class="np-meta"><div class="np-tt"><div class="np-t" id="np-t"></div><span class="dlbadge" id="np-dl">${I.dlok}</span><div class="np-a" id="np-a" data-a="npartist"></div></div>
       <button class="np-ib" id="np-party" data-a="party" aria-label="Party Mode">${I.disco}</button><button class="np-ib" id="np-share" data-a="npshare" aria-label="Share">${I.share}</button><button class="np-ib" id="np-like" data-a="nplike" aria-label="Favorite">${I.heart}</button></div>
     <div class="scrub"><input class="rng" id="np-seek" type="range" min="0" max="1000" step="1" value="0" aria-label="Seek">
-      <div class="times"><span id="np-cur">0:00</span><span class="livepill">● LIVE</span><span class="qbadge" id="np-qb" data-a="aq" role="button" tabindex="0" aria-label="Audio quality"></span><button class="eqtag" id="np-eqt" data-a="eq" aria-label="Equalizer"></button><span id="np-rem">-0:00</span></div></div>
+      <div class="times"><span id="np-cur">0:00</span><span class="livepill">● LIVE</span><span class="qbadge" id="np-qb" data-a="aq" role="button" tabindex="0" aria-label="Audio quality"></span><button class="eqtag" id="np-eqt" data-a="eq" aria-label="Equalizer"></button><button class="dlpill" id="np-dlq" data-a="dlinfo" aria-label="Offline status">${I.dlok}<span></span></button><span id="np-rem">-0:00</span></div></div>
     <div class="ctrl">
       <button class="np-ib c-s" id="np-shuf" data-a="shuffle" aria-label="Shuffle">${I.shuffle}</button>
       <button class="np-ib c-k" data-a="skipb" aria-label="Skip back">${skipIcon(S.settings.podBack || 15, true)}</button>
@@ -4477,6 +4494,10 @@ const Actions = {
   lyrmode(el, d) { S.settings.lyrMode = d.m; save(); renderLyrics(); if (d.m === 'en') lyrTranslate(); },
   skipb2() { Player.seek(Player.el.currentTime - skipSecs(-1)); }, skipf2() { Player.seek(Player.el.currentTime + skipSecs(1)); },
   keys() { showKeys(); },
+  dlinfo() {
+    const t = Player.cur; if (!t) return; const dl = isDl(t.id);
+    toast(dl ? 'Downloaded — plays without internet. Find it in Library → Downloaded.' : 'Saved for offline — one of your last songs kept on this device, so it plays without internet.', { label: dl ? 'View' : 'Offline Mix', ms: 5000, fn: () => { if (dl) { closeNP(); setTimeout(() => go('coll', { k: 'downloads', title: 'Downloaded' }), 380); } else playOffline('mix'); } });
+  },
   savedplay() { playOffline('saved-order'); }, savedshuf() { playOffline('saved'); },
   addlang(el, d) { S.settings.langs = [...myLangs().filter(x => x !== d.l), d.l]; save(); mem.clear(); softRender(); toast(`${d.l} added to your languages`); },
   nolang(el, d) { S.langNo = [...(S.langNo || []), d.l]; save(); softRender(); },
@@ -4781,12 +4802,12 @@ function bindGestures() {
     if (horiz) {
       pdx = e.clientX - px; let p = clamp(pdx / dist, -1, 1); if ((p < 0 && !Deck.has(1) && !S.settings.autoplay) || (p > 0 && !Deck.has(-1))) p *= 0.25;
       if (!Deck.crossed && Math.abs(pdx) > dist * 0.28) { Deck.crossed = true; buzz(); } else if (Deck.crossed && Math.abs(pdx) < dist * 0.28) Deck.crossed = false;
-      const raf = window.requestAnimationFrame || (f => setTimeout(f, 16)), caf = window.cancelAnimationFrame || clearTimeout;
-      caf(Deck.raf); Deck.raf = raf(() => Deck.set(p, false));
+      Deck.pend = p;
+      if (!Deck.raf) Deck.raf = (window.requestAnimationFrame || (f => setTimeout(f, 16)))(() => { Deck.raf = 0; if (Deck.dragging) Deck.set(Deck.pend, false); });
     }
   });
   const end = e => {
-    if (px === null) return; px = null; Deck.crossed = false; Deck.dragging = false; $('#np').classList.remove('deckdrag'); (window.cancelAnimationFrame || clearTimeout)(Deck.raf);
+    if (px === null) return; px = null; Deck.crossed = false; Deck.dragging = false; $('#np').classList.remove('deckdrag'); (window.cancelAnimationFrame || clearTimeout)(Deck.raf); Deck.raf = 0;
     if (!horiz) {
       if (dMoved < 10 && e.type === 'pointerup' && (e.target.id === 'np-img' || e.target.closest('#ytbox'))) { if (Date.now() - lastTap < 320) { lastTap = 0; likeBurst(); } else lastTap = Date.now(); }
       return;
@@ -4797,7 +4818,7 @@ function bindGestures() {
     else if ((pdx > dist * 0.25 || (pdx > 24 && fast)) && Deck.has(-1)) Deck.go(-1);
     else Deck.set(0, true);
   };
-  art.addEventListener('pointerup', end); art.addEventListener('pointercancel', end); art.addEventListener('lostpointercapture', e => { if (px !== null) end(e); });
+  art.addEventListener('pointerup', end); art.addEventListener('pointercancel', end); art.addEventListener('lostpointercapture', e => { if (px !== null && e.target === art) end(e); });
   // press and hold a song or card on touch screens → its menu (iPhone has no right-click)
   let lp = null, lpX = 0, lpY = 0;
   document.addEventListener('pointerdown', e => {
