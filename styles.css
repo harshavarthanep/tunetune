@@ -820,7 +820,7 @@ kbd{font:600 12px ui-monospace,Menlo,monospace;padding:2px 6px;border-radius:5px
 
 /* ---------- v1.1: iPhone bottom spacing (home-indicator strip may overlap padding, like Apple's apps) ---------- */
 :root{--sabx:max(6px,calc(env(safe-area-inset-bottom,0px) - 12px))}
-#tabs{padding-bottom:var(--sabx);height:calc(var(--tab-h) + var(--sabx))}
+@media (max-width:899px) and (min-height:561px),(max-width:899px) and (orientation:portrait){#tabs{padding-top:6px;padding-bottom:var(--sabx);height:calc(var(--tab-h) + var(--sabx))}}
 #mini{bottom:calc(var(--tab-h) + var(--sabx) + 8px)}
 #view{padding-bottom:calc(var(--tab-h) + var(--mini-h) + var(--sabx) + 18px)}
 body:not(.has-track) #view{padding-bottom:calc(var(--tab-h) + var(--sabx) + 14px)}
@@ -1034,7 +1034,6 @@ img.art,img.thumb,img.ch-art,.topres img,.m-art{transition:opacity .25s ease}
   .tab.tset .ic{color:var(--text2)}
   .nb [data-v="settings"]{display:none}
   .nb{height:calc(60px + var(--sat));padding:var(--sat) calc(var(--pad) - 10px) 0}
-  #view{padding-top:6px}
   #mini{left:calc(var(--side) + 24px);right:24px;bottom:18px;border-radius:18px;max-width:1320px;margin:0 auto;box-shadow:0 18px 50px rgba(0,0,0,.28)}
   .grp,.grp-t,.grp-f{margin-left:auto;margin-right:auto;max-width:860px}
   .sec-h,.hs,.cg,.cgrid,.tiles,.rows{scroll-padding-inline:var(--pad)}
@@ -1062,3 +1061,84 @@ img.art,img.thumb,img.ch-art,.topres img,.m-art{transition:opacity .25s ease}
 html.still #splash *{animation:none!important;opacity:1}
 #splash .sp-word{color:var(--text);background:none;-webkit-background-clip:border-box;background-clip:border-box;-webkit-text-fill-color:var(--text)}
 #splash .sp-word span{font-size:inherit;color:inherit;opacity:0;animation:spLetter .5s calc(.2s + var(--i) * .04s) cubic-bezier(.2,1.2,.4,1) both}
+
+
+/* ================= v1.1 polish ================= */
+/* iPhone: tab bar sits low like Apple's, icons and labels close to the bottom */
+:root{--sabx:max(4px,calc(env(safe-area-inset-bottom,0px) - 18px))}
+@media (max-width:899px){
+  :root{--tab-h:50px}
+  .tab{justify-content:flex-start;gap:2px;padding-top:1px}
+  .np-in{padding-bottom:max(8px,var(--sabx))}
+  .np-bot{margin-bottom:0}
+}
+/* desktop: no gap above pages, quieter header */
+@media (min-width:900px) and (min-height:561px){
+  #tabs{height:auto}
+  .nb{height:calc(52px + var(--sat))}
+  .lt{margin-top:0}
+  #view.narrow > *:not(.nb){max-width:860px;margin-left:auto;margin-right:auto}
+  #view.narrow > .lt,#view.narrow > .greet{padding:0 20px}
+  #view.narrow .grp,#view.narrow .grp-t,#view.narrow .grp-f{max-width:none}
+}
+/* quick, quiet page fade */
+#view.enter > *{animation-duration:.2s}
+/* equalizer & audio quality fit an iPhone screen */
+@media (max-width:600px){
+  .sp:has(.eq),.sp:has(.aq){max-height:92vh}
+  .sg.eq,.sg.aq{padding:14px 14px 16px}
+  .sg.eq .eq-h,.sg.aq .aq-h{position:sticky;top:-14px;z-index:3;margin:-14px -14px 10px;padding:14px 14px 10px;background:var(--sheet);-webkit-backdrop-filter:blur(20px);backdrop-filter:blur(20px)}
+  .eq-st{font-size:12.5px;padding:6px 9px;margin-bottom:8px}
+  .eqc{height:72px;margin-bottom:8px}
+  .vs{height:112px}
+  .bands{margin-top:10px}
+  .eqk{grid-template-columns:84px 1fr 50px;font-size:13.5px}
+  .aq-hero{margin:8px 0 4px;padding:10px}
+  .sg.aq .info{display:grid;grid-template-columns:1fr 1fr;column-gap:14px;padding:0}
+  .sg.aq .inf{flex-direction:column;gap:1px;padding:7px 0;font-size:13px}
+  .sg.aq .inf span{font-size:11.5px;color:var(--text2)}
+  .sg.aq .eq-note{font-size:11.5px}
+}
+.eq-ed.del{color:#ff453a}
+/* settings: the real app icon on Install */
+.lic.limg{padding:0;object-fit:cover;background:none;border-radius:8px}
+/* hover: a light sweep across artwork (mouse only) */
+@media (hover:hover) and (pointer:fine){
+  .cw,.art,.tile,.row .thumb,.qart{position:relative;overflow:hidden}
+  .cw::after,.tile::after{content:"";position:absolute;inset:0;z-index:3;pointer-events:none;border-radius:inherit;
+    background:linear-gradient(115deg,transparent 30%,rgba(255,255,255,.38) 47%,rgba(255,255,255,.08) 55%,transparent 70%);background-size:250% 100%;background-position:130% 0;opacity:0}
+  .card:hover .cw::after,.tile:hover::after{animation:sweep .85s cubic-bezier(.3,.6,.3,1) forwards}
+  .card:hover .cw{transform:translateY(-3px);box-shadow:0 14px 30px rgba(0,0,0,.25)}
+  .cw{transition:transform .25s ease,box-shadow .25s ease;border-radius:10px}
+  .row:hover{background:var(--fill)}
+}
+@keyframes sweep{0%{opacity:1;background-position:130% 0}100%{opacity:1;background-position:-30% 0}}
+/* tiles: artwork from the language's own script or an emoji */
+.tdeco{position:absolute;right:-6%;top:-8%;font-style:normal;font-size:clamp(46px,7.5vw,74px);line-height:1;transform:rotate(14deg);opacity:.9;filter:drop-shadow(0 8px 14px rgba(0,0,0,.25));pointer-events:none}
+.tdeco.txt{font-weight:800;color:rgba(255,255,255,.28);right:4%;top:6%;transform:rotate(-8deg);font-size:clamp(40px,6vw,64px);filter:none}
+.tile::before{display:none}
+/* Daily Mix mosaics */
+.mosaic4{position:absolute;inset:0;display:grid;grid-template-columns:1fr 1fr}
+.mosaic4 img{position:static;width:100%;height:100%;object-fit:cover;opacity:.85;mix-blend-mode:normal}
+.mixart .mosaic4 + b,.mixart b{z-index:2}
+.mixart::after{content:"";position:absolute;inset:0;background:linear-gradient(to top,hsla(var(--h),80%,30%,.85),transparent 60%);pointer-events:none}
+.mixini{position:absolute;inset:0;display:grid;place-items:center;font-size:54px;font-weight:800;color:rgba(255,255,255,.85)}
+/* landscape phones: big album art like portrait */
+@media (orientation:landscape) and (max-height:560px){
+  #np .np-art{--S:min(94cqw,94cqh);--D:calc(50cqw - min(94cqw,94cqh) * .3)}
+  .np-in{grid-template-columns:minmax(0,48%) 1fr}
+  #drive .dv-art #dv-art{width:min(38vw,72vh);height:min(38vw,72vh)}
+  #drive .dv-side{width:min(22vw,46vh);height:min(22vw,46vh)}
+  #dv-prev{left:calc(50% - min(38vw,72vh) / 2 - min(22vw,46vh) * .7)}
+  #dv-next{right:calc(50% - min(38vw,72vh) / 2 - min(22vw,46vh) * .7)}
+}
+/* Car Mode album slides like the normal player */
+#dv-artw.in-r #dv-art{animation:dvInR .5s cubic-bezier(.22,.9,.28,1)}
+#dv-artw.in-l #dv-art{animation:dvInL .5s cubic-bezier(.22,.9,.28,1)}
+@keyframes dvInR{from{transform:translateX(55%) scale(.66);opacity:.4}}
+@keyframes dvInL{from{transform:translateX(-55%) scale(.66);opacity:.4}}
+/* Party Mode glow follows the record */
+.p-glow{background:radial-gradient(circle at var(--gx,50%) var(--gy,42%),hsla(calc(var(--h,0) * 1deg),90%,55%,.28),transparent 50%)}
+.tile::after{inset:0;right:0;top:0;width:auto;aspect-ratio:auto;border-radius:inherit;background:none}
+@media (hover:hover) and (pointer:fine){.tile::after{background:linear-gradient(115deg,transparent 30%,rgba(255,255,255,.38) 47%,rgba(255,255,255,.08) 55%,transparent 70%);background-size:250% 100%;background-position:130% 0}}
+.tile{isolation:isolate}

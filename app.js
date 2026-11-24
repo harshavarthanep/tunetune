@@ -12,7 +12,7 @@ const VER = '1.1';
 // so EVERYONE who opens your website gets clean, ad-free JioSaavn audio with no setup.
 const BUILT_IN_SERVER = '';
 // ✏️ Links shown in Settings → More from H24 Creationz
-const PRODUCTS_URL = 'https://harshavarthanep.github.io/h24-products/';
+const PRODUCTS_URL = 'https://harshavarthanep.github.io/products/';
 const GITHUB_URL = 'https://github.com/harshavarthanep';
 const TAGLINE = 'YouTube Music-style search · JioSaavn-quality sound · Apple Music-style design';
 const KEY = 'tunetune.v1';
@@ -1171,7 +1171,11 @@ const YT = {
   },
   collection(c) {
     const main = () => this.collection0(c);
-    if (c.kind !== 'artist') return main();
+    if (c.kind !== 'artist') return main().then(r => { if (r && r.tracks && r.tracks.length) return r; throw softErr('empty'); }).catch(async e => {
+      const name = String(c.title || '').replace(/\s*[-–|].*$/, '').replace(/\b(19|20)\d\d\b/g, '').replace(/so far/i, '').trim(); if (!name) throw e;
+      const tracks = (await this.songs(name + (c.kind === 'album' ? '' : ' songs')).catch(() => [])).slice(0, 50); if (!tracks.length) throw e;
+      return { title: c.title, art: c.art, sub: c.kind === 'album' ? 'Album' : 'Playlist', tracks, shelves: [] };
+    });
     return cached('yca:' + c.id + c.title, 6e5, async () => {
       try { const r = await main(); if (r && r.tracks && r.tracks.length) return r; } catch (e) { }
       const name = String(c.title || '').trim(); if (!name) throw softErr('empty');
@@ -2130,6 +2134,7 @@ const UI = {
     }
     const ni = $('#np-img'); if (ni.getAttribute('src') !== big) { delete ni.dataset.fb; ni.classList.remove('ld'); ni.src = big; } ni.classList.toggle('logo', !!t.live);
     if (dir) Deck.arrive(dir);
+    if (dir && document.getElementById('drive')) { const w = $('#dv-artw'); if (w) { w.classList.remove('in-r', 'in-l'); void w.offsetWidth; w.classList.add(dir > 0 ? 'in-r' : 'in-l'); setTimeout(() => w.classList.remove('in-r', 'in-l'), 520); } }
     this.dlMark();
     clearTimeout(this.artT); this.artT = setTimeout(() => {
       if (!Player.cur || Player.cur.id !== t.id) return;
@@ -2335,7 +2340,8 @@ const Party = {
     const bg = g.createLinearGradient(0, 0, W, H); bg.addColorStop(0, hsl(this.hue + 220, 60, 6 + L.bass * 6, 1)); bg.addColorStop(1, hsl(this.hue + 300, 70, 4 + L.mid * 6, 1));
     g.fillStyle = bg; g.fillRect(0, 0, W, H);
     g.globalCompositeOperation = 'lighter';
-    const cx = W / 2, cy = H * 0.42, R = Math.min(W, H);
+    let cx = W / 2, cy = H * 0.42; const R = Math.min(W, H);
+    const dk = document.getElementById('p-disc'); if (dk) { const r = dk.getBoundingClientRect(), k = W / innerWidth; cx = (r.left + r.width / 2) * k; cy = (r.top + r.height / 2) * k; this.discR = r.width / 2 * k; }
     if (style === 'disco' || calm) {
       const n = calm ? 4 : 6;
       for (let i = 0; i < n; i++) {
@@ -2365,7 +2371,7 @@ const Party = {
         g.beginPath(); g.moveTo(o, H); g.lineTo(o + Math.cos(a) * H * 1.4, H + Math.sin(a) * H * 1.4); g.stroke();
       }
     } else if (style === 'rings') {
-      const spec = L.spec, N = 72, base = R * 0.24;
+      const spec = L.spec, N = 72, base = (this.discR || R * 0.2) * 1.12;
       for (let i = 0; i < N; i++) {
         const v = spec ? spec[2 + Math.floor(i * 1.6)] / 255 : (0.3 + 0.7 * Math.abs(Math.sin(t * 3 + i * 0.4))) * (0.4 + L.bass * 0.6);
         const a = (i / N) * Math.PI * 2 + t * 0.2, r1 = base + R * 0.02, r2 = r1 + R * (0.02 + v * 0.18);
@@ -2375,7 +2381,7 @@ const Party = {
       for (let k = 1; k <= 3; k++) { g.strokeStyle = hsl(this.hue + k * 90, 90, 60, 0.18 * (1 - this.kick * 0.5)); g.lineWidth = R * 0.003; g.beginPath(); g.arc(cx, cy, base * (1 + k * 0.5 + this.kick * 0.15 * k), 0, Math.PI * 2); g.stroke(); }
     }
     if (this.flash > 0.01) { g.globalCompositeOperation = 'source-over'; g.fillStyle = hsl(this.hue + 180, 100, 85, this.flash); g.fillRect(0, 0, W, H); }
-    const gl = document.querySelector('#party .p-glow'); if (gl) gl.style.setProperty('--h', String(Math.round(this.hue)));
+    const gl = document.querySelector('#party .p-glow'); if (gl) { gl.style.setProperty('--h', String(Math.round(this.hue))); gl.style.setProperty('--gx', (cx / W * 100).toFixed(1) + '%'); gl.style.setProperty('--gy', (cy / H * 100).toFixed(1) + '%'); }
   },
   async torch() {
     if (this.tr) { this.torchOff(); toast('Torch off'); return; }
@@ -2402,7 +2408,7 @@ function splash() {
     <b class="sp-word">${[...TITLE].map((c, i) => `<span style="--i:${i}">${c === ' ' ? '&nbsp;' : esc(c)}</span>`).join('')}</b>
     <small class="sp-tag">${nm ? `Welcome back, ${esc(nm)}` : TAGLINE}</small></div>`;
   document.body.appendChild(d);
-  setTimeout(() => d.classList.add('out'), 1150); setTimeout(() => d.remove(), 1800);
+  setTimeout(() => d.classList.add('out'), 950); setTimeout(() => d.remove(), 1500);
 }
 function buildShell() {
   $('#tabs').innerHTML = `<div class="brand"><img src="icons/icon-192.png" alt="">${TITLE}</div>` +
@@ -2931,7 +2937,7 @@ function eqInner() {
   setTimeout(drawEq, 30); setTimeout(() => UI.state(), 0);
   const pins = eqPins(), mine = eqCustom().map(c => c.n), all = [...pins.filter(n => eqFind(n)), ...mine.filter(n => !pins.includes(n)), ...Object.keys(PRESETS).filter(n => !pins.includes(n))];
   const cur = eqName(), pinned = pins.includes(cur), custom = mine.includes(cur) || cur === 'Custom';
-  return `<div class="eq-h"><div><b>Equalizer</b><span class="eq-nm"><small id="eqname">${s.eqOn ? esc(cur) : 'Off'}</small>${s.eqOn ? `<button class="eq-ed" data-a="eqname" aria-label="${custom ? 'Name or rename this sound' : 'Save as your own'}">${I.edit}</button><button class="eq-ed ${pinned ? 'on' : ''}" data-a="eqpin" aria-label="${pinned ? 'Unpin' : 'Pin'}">${I.pin}</button>` : ''}</span></div>
+  return `<div class="eq-h"><div><b>Equalizer</b><span class="eq-nm"><small id="eqname">${s.eqOn ? esc(cur) : 'Off'}</small>${s.eqOn ? `<button class="eq-ed" data-a="eqname" aria-label="${custom ? 'Name or rename this sound' : 'Save as your own'}">${I.edit}</button><button class="eq-ed ${pinned ? 'on' : ''}" data-a="eqpin" aria-label="${pinned ? 'Unpin' : 'Pin'}">${I.pin}</button>${mine.includes(cur) ? `<button class="eq-ed del" data-a="eqdelask" aria-label="Delete this sound">${I.trash}</button>` : ''}` : ''}</span></div>
     <label class="sw"><input type="checkbox" id="eqon" ${s.eqOn ? 'checked' : ''} aria-label="Equalizer on"><span></span></label></div>
     <p class="eq-st ${kind}">${esc(msg)}</p>
     <canvas id="eqc" class="eqc" aria-label="Equalizer response curve"></canvas>
@@ -3361,6 +3367,8 @@ addEventListener('offline', () => {
   if (!offShown && S.settings.offlineTips !== false) { offShown = true; setTimeout(() => { if (!navigator.onLine) offlineNudge(); }, 700); }
 });
 addEventListener('online', () => { document.body.classList.remove('offline'); offShown = false; toast('Back online'); const e = cv(); if (e.v === 'home') softRender(); });
+const normT = t => String((t && t.title) || '').toLowerCase().replace(/\s*[\[(].*?[\])]/g, '').replace(/[^\p{L}\p{N}]+/gu, ' ').trim();
+function dedupeSongs(list) { const seen = new Set(); return list.filter(t => { const k = normT(t) + '|' + String(t.artist || '').toLowerCase().split(/,|&/)[0].trim(); if (!normT(t) || seen.has(k)) return false; seen.add(k); return true; }); }
 function streak() {
   const d = S.stats.days || {}; let n = 0; const day = new Date();
   if (!((d[dayKey(day)] || 0) >= 60)) day.setDate(day.getDate() - 1);
@@ -3424,7 +3432,7 @@ const cv = () => { const s = nav.stacks[nav.tab]; return s[s.length - 1]; };
 let renderTok = 0;
 function render() {
   const e = cv(); const tok = ++renderTok; const v = $('#view');
-  v.classList.remove('scrolled');
+  v.classList.remove('scrolled'); v.classList.toggle('narrow', e.v === 'settings' || e.v === 'advanced');
   let html;
   try { html = (VIEWS[e.v] || VIEWS.home)(e, tok); }
   catch (err) { console.error(err); html = header('Something went wrong', { noLarge: true }) + emptyState({ icon: 'music', t: 'This page couldn’t open', d: String(err && err.message || err), btn: ['reload', 'Try Again'] }); }
@@ -3544,9 +3552,12 @@ function collage(tracks, cls) {
   return `<div class="${cls} collage">${arts.map(a => `<img src="${esc(a)}" alt="">`).join('')}</div>`;
 }
 const myPlCard = p => `<div class="card" data-a="mypl" data-id="${p.id}"><div class="cw">${collage(p.tracks, 'art')}</div><div class="ct">${esc(p.name)}</div><div class="cs">${plural(p.tracks.length, 'song')}</div></div>`;
-const tile = (label, attrs, h, small) => `<div class="tile" style="--h:${h}" ${attrs} role="button" tabindex="0"><span>${esc(label)}${small ? `<small>${esc(small)}</small>` : ''}</span></div>`;
+const TILE_EMOJI = { Comedy: '😂', News: '📰', 'True Crime': '🔍', Business: '💼', Technology: '💻', 'Health & Fitness': '💪', Education: '🎓', 'Society & Culture': '🌍', Sports: '⚽', History: '🏛️', Science: '🔬',
+  Spirituality: '🕉️', 'Kids & Family': '🧸', Arts: '🎨', Music: '🎵', Electronic: '🎛️', 'Hip-Hop': '🎤', Pop: '🎉', 'R&B': '💜', 'Lo-Fi': '☕', Rock: '🎸', Alternative: '🌀', Ambient: '🌌', Jazz: '🎷', Acoustic: '🪕', House: '🏠', Latin: '💃',
+  Classical: '🎻', Devotional: '🪔', World: '🌏', Soundtrack: '🎬', Chill: '🌙', Romance: '❤️', Party: '🪩', Workout: '🏋️', Focus: '🎯', Sleep: '😴', 'Feel good': '😊', Sad: '🌧️', Throwback: '📼', 'Road trip': '🚗', 'Rainy day': '☔', Dance: '💃' };
+const tile = (label, attrs, h, small, deco) => { const d = deco || TILE_EMOJI[label] || ''; return `<div class="tile" style="--h:${h}" ${attrs} role="button" tabindex="0">${d ? `<i class="tdeco${deco ? ' txt' : ''}" aria-hidden="true">${esc(d)}</i>` : ''}<span>${esc(label)}${small ? `<small>${esc(small)}</small>` : ''}</span></div>`; };
 const genreTiles = () => `<div class="tiles">${GENRES.map(([g, h]) => tile(g.replace('/Rap', '').replace('/Soul', ''), `data-a="genre" data-g="${esc(g)}"`, h)).join('')}</div>`;
-const langTiles = () => `<div class="tiles">${LANGS.map(([l, n], i) => tile(l, `data-a="lang" data-l="${esc(l)}"`, (i * 29 + 330) % 360, n !== l ? n : '')).join('')}</div>`;
+const langTiles = () => `<div class="tiles">${LANGS.map(([l, n], i) => tile(l, `data-a="lang" data-l="${esc(l)}"`, (i * 29 + 330) % 360, n !== l ? n : '', (n || l).slice(0, n === l ? 2 : 3))).join('')}</div>`;
 const moodTiles = (n = 99) => `<div class="tiles">${MOODS.slice(0, n).map((m, i) => tile(m, `data-a="mood" data-m="${esc(m)}"`, (i * 41 + 190) % 360)).join('')}</div>`;
 const ytGenreTiles = () => `<div class="tiles">${YT_GENRES.map((g, i) => tile(g, `data-a="mood" data-m="${esc(g)}"`, (i * 53 + 20) % 360)).join('')}</div>`;
 const skCards = (n = 6, round) => `<div class="hs">${Array.from({ length: n }, () => `<div><div class="sk art ${round ? 'round' : ''}"></div><div class="sk" style="height:12px;width:80%;margin-top:9px"></div><div class="sk" style="height:10px;width:55%;margin-top:6px"></div></div>`).join('')}</div>`;
@@ -3691,7 +3702,15 @@ function renderMix(e, tok) {
 function madeForYou() {
   const arts = Stats.artists(8).filter(a => a.seed.source === 'saavn' || ytIdOf(a.seed)).slice(0, 4);
   if (!arts.length) return '';
-  return sec((S.settings.name || '').trim() ? `Made for ${esc(S.settings.name.trim())}` : 'Made for you', `<div class="hs">${arts.map((a, i) => `<div class="card" data-a="mix" data-c="${regc({ kind: 'seed', t: a.seed, title: a.name })}" data-title="Daily Mix ${i + 1}"><div class="cw"><div class="art mixart" style="--h:${(hue(a.name) + i * 60) % 360}"><img src="${esc(artOf(a.seed, true))}" alt=""><b>Daily Mix ${i + 1}</b></div></div><div class="ct">Daily Mix ${i + 1}</div><div class="cs">${esc(a.name)} and more</div></div>`).join('')}
+  const used = new Set();
+  const mosaic = a => {
+    const pics = []; for (const p of Object.values(S.stats.plays)) { const t = p.t; if (!t || !String(t.artist || '').includes(a.name)) continue; const u = artOf(t); if (u && !used.has(u) && !pics.includes(u) && !/^data:/.test(u)) pics.push(u); if (pics.length >= 4) break; }
+    pics.forEach(u => used.add(u));
+    if (pics.length >= 4) return `<div class="mosaic4">${pics.map(u => `<img src="${esc(u)}" alt="">`).join('')}</div>`;
+    if (pics.length) return `<img src="${esc(pics[0])}" alt="">`;
+    return `<span class="mixini">${esc(a.name.split(/\s+/).map(w => w[0]).join('').slice(0, 2).toUpperCase())}</span>`;
+  };
+  return sec((S.settings.name || '').trim() ? `Made for ${esc(S.settings.name.trim())}` : 'Made for you', `<div class="hs">${arts.map((a, i) => `<div class="card" data-a="mix" data-c="${regc({ kind: 'seed', t: a.seed, title: a.name })}" data-title="Daily Mix ${i + 1}"><div class="cw"><div class="art mixart" style="--h:${(hue(a.name) + i * 60) % 360}">${mosaic(a)}<b>Daily Mix ${i + 1}</b></div></div><div class="ct">Daily Mix ${i + 1}</div><div class="cs">${esc(a.name)} and more</div></div>`).join('')}
     <div class="card" data-a="go" data-v="coll" data-k="replay"><div class="cw"><div class="art mixart rp" style="--h:330">${I.bars}<b>Replay</b></div></div><div class="ct">Your Replay</div><div class="cs">Top songs &amp; minutes</div></div></div>`);
 }
 const KINDS = {
@@ -3732,7 +3751,7 @@ function renderHome(e, tok) {
   const langs = myLangs();
   html += `<div class="chips pg">${langs.map(L => `<button class="chip" data-a="lang" data-l="${esc(L)}">${esc(L)}</button>`).join('')}<button class="chip ghost" data-a="langs">${I.plus}Languages</button></div>`;
   if (false) html += `<div class="appcard"><img src="icons/icon-192.png" alt=""><div class="ac-tx"><b>Get Tune Tune for Android</b><span>Ad-free audio that keeps playing with the screen off.</span></div><button class="btn sm" data-a="getapp">Get</button><button class="ac-x" data-a="hideapp" aria-label="Dismiss">${I.x}</button></div>`;
-  if (S.history.length) { const r = S.history.slice(0, 16); html += sec('Recently played', cardsHTML(r, reg(r, { from: 'Recently played', hist: true })), { moreK: 'history' }); }
+  if (S.history.length) { const r = dedupeSongs(S.history).slice(0, 16); html += sec('Recently played', cardsHTML(r, reg(r, { from: 'Recently played', hist: true })), { moreK: 'history' }); }
   const hs = S.settings.homeSections;
   if (hs.mixes) html += madeForYou();
   const cont = contList().slice(0, 4); if (cont.length) html += sec('Continue listening', rowsHTML(cont, reg(cont, { from: 'Continue listening' }), { show: true }), { moreTab: 'podcasts' });
@@ -3986,7 +4005,7 @@ function renderLibrary() {
   html += `<div class="nl">${items.map(([k, l, ic, n]) => `<div class="nli" data-a="go" data-v="coll" data-k="${k}" role="button" tabindex="0">${I[ic]}<div class="nb2"><span>${l}</span><span class="cnt">${n || ''}</span><span class="chev">${I.chevR}</span></div></div>`).join('')}</div>`;
   html += `<div class="nl"><div class="nli" data-a="importpl" role="button" tabindex="0">${I.link}<div class="nb2"><span>Import a YouTube playlist</span><span class="chev">${I.chevR}</span></div></div></div>`;
   if (S.playlists.length) html += sec('Your playlists', `<div class="hs">${S.playlists.map(myPlCard).join('')}</div>`);
-  if (S.history.length) { const r = S.history.slice(0, 12); html += sec('Recently played', cardsHTML(r, reg(r, { from: 'Recently played', hist: true })), { moreK: 'history' }); }
+  if (S.history.length) { const r = dedupeSongs(S.history).slice(0, 12); html += sec('Recently played', cardsHTML(r, reg(r, { from: 'Recently played', hist: true })), { moreK: 'history' }); }
   if (!S.playlists.length && !S.liked.length && !S.history.length) html += emptyState({ icon: 'music', t: 'Your library starts here', d: 'Favorite songs, make playlists, download for offline, or add music files from this device.', btn: ['gosearch', 'Find Music'] });
   return html;
 }
@@ -4060,7 +4079,7 @@ function renderColl(e, tok) {
   });
   return html;
 }
-const sLi = o => `<div class="li" ${o.a ? `data-a="${o.a}" role="button" tabindex="0"` : ''} ${o.extra || ''}>${o.icon ? `<span class="lic" style="background:${o.color || 'var(--accent)'}">${I[o.icon]}</span>` : ''}
+const sLi = o => `<div class="li" ${o.a ? `data-a="${o.a}" role="button" tabindex="0"` : ''} ${o.extra || ''}>${o.img ? `<img class="lic limg" src="${o.img}" alt="">` : o.icon ? `<span class="lic" style="background:${o.color || 'var(--accent)'}">${I[o.icon]}</span>` : ''}
     <div class="lb"><span class="lx ${o.danger ? 'danger' : ''} ${o.small ? 'small' : ''}" ${o.id ? `id="${o.id}"` : ''}>${esc(o.label)}${o.hint ? `<small class="lh">${esc(o.hint)}</small>` : ''}</span>${o.value !== undefined ? `<span class="lv">${esc(o.value)}</span>` : ''}${o.ctl || ''}${o.chev ? `<span class="chev">${I.chevR}</span>` : ''}</div></div>`;
 const sGrp = (t, inner, foot) => `<div class="grp-t">${esc(t)}</div><div class="grp">${inner}</div>${foot ? `<p class="grp-f">${esc(foot)}</p>` : ''}`;
 const sSw = (k, v) => `<label class="sw"><input type="checkbox" data-set="${k}" ${v ? 'checked' : ''}><span></span></label>`;
@@ -4126,12 +4145,11 @@ function renderSettings() {
       (S.downloads.length ? sLi({ label: 'Remove All Downloads', danger: true, a: 'clearDl' }) : '')) +
     (IS_DESKTOP ? sGrp('Home Server', '<div id="srvp"><div class="spin"></div></div>', 'Your iPhone, iPad and other devices can use this computer to play clean, ad-free YouTube Music audio that keeps playing with the screen locked. Keep this app open (it can sit in the tray).')
       : '') +
-    (standalone ? '' : sGrp('App', sLi({ icon: 'plus', color: 'var(--accent)', label: `Install ${TITLE}`, a: 'install', chev: true }),
+    (standalone ? '' : sGrp('App', sLi({ img: 'icons/icon-192.png', label: `Install ${TITLE}`, a: 'install', chev: true }),
       IS_IOS ? 'On iPhone and iPad: tap Share, then Add to Home Screen.' : 'Install for a full-screen app with lock-screen and headphone controls.')) +
     sGrp('More', sLi({ icon: 'gear', color: '#8e8e93', label: 'Advanced', a: 'go', extra: 'data-v="advanced"', chev: true }) +
       sLi({ label: TITLE, hint: TAGLINE, small: false }) +
       sLi({ icon: 'globe', color: '#0a84ff', label: 'Explore our other apps', hint: 'Free apps & extensions by H24 Creationz', a: 'openurl', extra: `data-u="${PRODUCTS_URL}"`, chev: true }) +
-      sLi({ icon: 'ext', color: '#8e8e93', label: 'H24 Creationz on GitHub', a: 'openurl', extra: `data-u="${GITHUB_URL}"`, chev: true }) +
       sLi({ label: 'Version', value: VER + (IS_DESKTOP ? ' · Desktop' : IS_CAP ? ' · Android' : Server.ok ? ' · Home Server' : ' · Web') }) +
       sLi({ label: 'Shortcuts & gestures', a: 'keys', chev: true }),
       `${TITLE} is free, with no account and no ads of its own. Lyrics: LRCLIB · Radio: Radio Browser · Podcasts: Apple Podcasts directory · Independent music: Audius.`) +
@@ -4352,10 +4370,11 @@ const Actions = {
     if (i >= 0) pins.splice(i, 1); else pins.unshift(cur); save(); setHTML($('#eqbox'), eqInner());
     toast(i >= 0 ? `Unpinned ${cur}` : `Pinned ${cur} — it shows first everywhere`);
   },
+  eqdelask() { const cur = eqName(); confirmSheet(`Delete “${cur}”?`, 'Your own sound will be removed. You can always make it again.', 'Delete', () => { Actions.eqdel(); setTimeout(openEQ, 450); }); },
   eqdel() { const cur = eqName(); S.settings.eqCustom = eqCustom().filter(c => c.n !== cur); S.settings.eqPins = eqPins().filter(x => x !== cur); Actions.eqp(null, { n: 'Flat' }); toast('Deleted'); },
   offmix() { playOffline('mix'); },
-  party() { if (npOpen) closeNP(); setTimeout(() => Party.open(), npOpen ? 380 : 0); },
-  partyx() { Party.close(); },
+  party() { Party.fromNP = npOpen; if (npOpen) closeNP(); setTimeout(() => Party.open(), npOpen ? 380 : 0); },
+  partyx() { Party.close(); if (Player.cur) setTimeout(openNP, 120); },
   partyfs() { try { if (document.fullscreenElement) document.exitFullscreen(); else document.documentElement.requestFullscreen(); } catch (e) { toast('Full screen isn’t available here'); } },
   pstyle(el, d) { S.settings.partyStyle = d.s; save(); $$('#party .pchip').forEach(b => b.classList.toggle('on', b.dataset.s === d.s)); if (d.s === 'calm') toast('Calm: gentle colours, no flashing'); },
   ptorch() { Party.torch(); },
@@ -4454,7 +4473,12 @@ function reveal(el) {
   const hidden = r.left < b.left + 4 || r.right > b.right - 4 || r.top < b.top + 2 || r.bottom > b.bottom - 2;
   if (hidden) try { el.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'nearest' }); } catch (e) { }
 }
+let tapX = 0, tapY = 0, tapMoved = false, lastScrollAt = 0;
+document.addEventListener('pointerdown', e => { tapX = e.clientX; tapY = e.clientY; tapMoved = false; }, { passive: true, capture: true });
+document.addEventListener('pointermove', e => { if (Math.abs(e.clientX - tapX) > 10 || Math.abs(e.clientY - tapY) > 10) tapMoved = true; }, { passive: true, capture: true });
+document.addEventListener('scroll', () => { lastScrollAt = Date.now(); }, { passive: true, capture: true });
 document.addEventListener('click', e => {
+  if (e.target.closest && e.target.closest('.row,.card,.tile,.qrow') && !e.target.closest('.more,.qx,.np-ib') && (tapMoved || Date.now() - lastScrollAt < 120) && e.detail > 0) { e.preventDefault(); e.stopPropagation(); return; }
   if (Date.now() - suppressMini < 450 && e.target.closest('#mini')) { e.preventDefault(); return; }
   if (Date.now() - suppressRow < 600 && e.target.closest('[data-l][data-i]')) { e.preventDefault(); return; }
   const tab = e.target.closest('[data-tab]'); if (tab) { switchTab(tab.dataset.tab); return; }
