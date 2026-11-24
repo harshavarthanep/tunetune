@@ -1507,7 +1507,7 @@ body.partying .greet .streak{animation:heartPop .6s infinite}
 /* no shadow behind the album art */
 #np #np-img,#np .np-art .dk,#np .np-art img{box-shadow:none!important}
 /* bigger ⋯ menu on desktop */
-@media (min-width:900px){#np .np-top .np-ib,#np [data-a="npmore"]{width:44px;height:44px}#np [data-a="npmore"] .ic{width:28px;height:28px}}
+
 /* landscape phones: album art sized to fit comfortably */
 @media (orientation:landscape) and (max-height:560px){
   #np .np-art{--S:min(32vw,calc(100vh - var(--sat) - var(--sabx) - 70px));--D:calc(50cqw - min(32vw,calc(100vh - var(--sat) - var(--sabx) - 70px)) * .3)}
@@ -1518,3 +1518,31 @@ body.partying .greet .streak{animation:heartPop .6s infinite}
 .slpill{order:0}
 /* queue action buttons: clean icons, centred */
 .qib .ic{width:19px;height:19px;stroke-width:2}
+
+/* ================= v1.1: menus, equalizer lock, alignment, streak ================= */
+@media (min-width:700px) and (min-height:560px){
+  .sp{width:min(520px,92vw)}
+  .sp .sg{max-height:none}
+  .sp:has(.sa){max-height:min(88vh,900px)}
+  .sa{min-height:52px;font-size:16.5px}
+}
+.sg.eq.locked .eq-sw,.sg.eq.locked .eqc,.sg.eq.locked .pchips,.sg.eq.locked .bands,.sg.eq.locked .eqk,.sg.eq.locked .eq-ed,.sg.eq.locked .eq-loud,.sg.eq.locked [data-a="eqreset"],.sg.eq.locked .sw{opacity:.38;pointer-events:none;filter:grayscale(.6)}
+.sg.eq.locked .eq-st{opacity:1;pointer-events:auto}
+@media (min-width:900px) and (min-height:561px){
+  .tab.tset{color:var(--text);border-top:.5px solid var(--sep);border-radius:0;margin:auto 0 0;padding:16px 12px 4px}
+  .tab.tset .ic{color:var(--accent)}
+  .tab.tset.on{background:var(--fill);border-radius:10px}
+}
+.q-h{display:flex;justify-content:space-between;align-items:center;gap:12px}
+.q-h > div:first-child{flex:1;min-width:0}
+.qbtns{display:flex;align-items:center;gap:10px;flex:none}
+.qib{width:38px;height:38px;border-radius:50%;display:grid;place-items:center;padding:0;line-height:0}
+.qib .ic{width:19px;height:19px;display:block}
+.streak{display:inline-flex;align-items:center;gap:4px;-webkit-user-select:none;user-select:none}
+.streak.lit{animation:streakGlow 2.4s ease-out}
+@keyframes streakGlow{0%{box-shadow:0 0 0 rgba(255,120,40,0)}20%{box-shadow:0 0 22px rgba(255,120,40,.65)}100%{box-shadow:0 0 0 rgba(255,120,40,0)}}
+.streak .fire{display:inline-block;transform-origin:50% 90%}
+.streak.lit .fire{animation:fireFlicker .22s ease-in-out 10 alternate}
+@keyframes fireFlicker{0%{transform:scale(1) rotate(-6deg);filter:brightness(1)}50%{transform:scale(1.25,1.4) rotate(4deg);filter:brightness(1.4) saturate(1.3)}100%{transform:scale(1.1,1.2) rotate(-3deg);filter:brightness(1.2)}}
+body.partying .greet .streak{animation:none}
+@media (min-width:700px) and (min-height:560px){.sp{bottom:auto}}

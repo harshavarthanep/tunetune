@@ -981,6 +981,17 @@ const DES = (() => {
 
 /* JioSaavn's own API (the one jiosaavn.com uses). Browsers can't call it directly, so requests go through
    free relay services; the app tries each and remembers the one that works. */
+/* ============================================================================
+   MUSIC SOURCES — swap or add any of these here, or (no code edits) in
+   tunetune-config.json next to index.html:
+   {
+     "musicServer":   "https://your-worker.workers.dev",            // your own JioSaavn server (best)
+     "saavnServers":  ["https://some-jiosaavn-api.vercel.app/api"],  // community JioSaavn APIs
+     "relays":        ["https://some-cors-relay/?url={url}"],         // public web relays ({url} = target)
+     "piped":         ["https://pipedapi.example.com"],               // YouTube mirrors (Piped)
+     "invidious":     ["https://invidious.example.com"]               // YouTube mirrors (Invidious)
+   }
+   ============================================================================ */
 const JS_RELAYS = [
   { id: 'direct', wrap: u => u },
   { id: 'allorigins', wrap: u => `https://api.allorigins.win/raw?url=${enc(u)}` },
@@ -990,6 +1001,10 @@ const JS_RELAYS = [
   { id: 'allorigins-get', wrap: u => `https://api.allorigins.win/get?url=${enc(u)}`, unwrap: j => parseLoose(j && j.contents) },
   { id: 'afeld', wrap: u => `https://jsonp.afeld.me/?url=${enc(u)}` },
   { id: 'thingproxy', wrap: u => `https://thingproxy.freeboard.io/fetch/${u}` },
+  { id: 'corsproxy.org', wrap: u => `https://corsproxy.org/?${enc(u)}` },
+  { id: 'cors.lol', wrap: u => `https://api.cors.lol/?url=${enc(u)}` },
+  { id: 'whateverorigin', wrap: u => `https://whateverorigin.org/get?url=${enc(u)}`, unwrap: j => parseLoose(j && j.contents) },
+  { id: 'everyorigin', wrap: u => `https://everyorigin.jwvbremen.nl/get?url=${enc(u)}`, unwrap: j => parseLoose(j && (j.contents || j.html)) },
 ];
 function parseLoose(txt) {
   txt = String(txt || '').trim(); const i = txt.search(/[[{]/); if (i < 0) return null;
@@ -1000,7 +1015,13 @@ function normServer(v) { v = String(v || '').trim(); if (!v) return ''; if (!/^h
 async function loadSiteConfig() {
   try {
     const r = await fetchT('tunetune-config.json?v=' + Math.floor(Date.now() / 3600e3), { cache: 'no-store' }, 4000); if (!r.ok) return;
-    const j = await r.json(); let v = String((j && (j.musicServer || j.server)) || '').trim(); if (!v) return;
+    const j = await r.json(); if (!j || typeof j !== 'object') return;
+    const arr = x => (Array.isArray(x) ? x : x ? [x] : []).map(v => String(v || '').trim()).filter(v => /^https?:\/\//.test(v));
+    arr(j.relays).forEach((tpl, i) => { if (!JS_RELAYS.some(x => x.tpl === tpl)) JS_RELAYS.splice(1 + i, 0, { id: 'config-' + (i + 1), tpl, wrap: u => tpl.includes('{url}') ? tpl.replace('{url}', enc(u)) : tpl + enc(u) }); });
+    arr(j.saavnServers).reverse().forEach(b => { if (!SAAVN_DEFAULT.some(x => x.base === b)) SAAVN_DEFAULT.unshift({ base: b.replace(/\/+$/, ''), shape: /\/api$/.test(b.replace(/\/+$/, '')) ? 'A' : 'B' }); });
+    arr(j.piped).reverse().forEach(b => { if (!PIPED_DEFAULT.includes(b)) PIPED_DEFAULT.unshift(b.replace(/\/+$/, '')); });
+    arr(j.invidious).reverse().forEach(b => { if (!INV_DEFAULT.includes(b)) INV_DEFAULT.unshift(b.replace(/\/+$/, '')); });
+    let v = String(j.musicServer || j.server || '').trim(); if (!v) return;
     if (!/^https?:\/\//.test(v)) v = 'https://' + v;
     SITE.server = v.includes('{url}') ? v : v.replace(/[?#].*$/, '').replace(/\/+$/, '') + '/?url={url}';
     if (!S.settings.proxy) { JSA.reset(); JSA.setVia('custom'); mem.clear(); }
@@ -1492,7 +1513,7 @@ const Haptic = {
 const buzz = () => { if (S.settings.haptics !== false) Haptic.tap(8); };
 let fbCtx = null;
 function clickSound(kind) {
-  if (!S.settings.tapSound) return;
+  if (!S.settings.tapSound && !(kind === 'tick' && S.settings.crown)) return;
   try {
     const C = window.AudioContext || window.webkitAudioContext; if (!C) return;
     if (!fbCtx || fbCtx.state === 'closed' || fbCtx.state === 'interrupted') { try { fbCtx && fbCtx.close(); } catch (e) { } fbCtx = new C(); }
@@ -1504,6 +1525,7 @@ function clickSound(kind) {
     else { note(1318.5, 0, 0.06, 0.06); note(2637, 0, 0.03, 0.02, 'triangle'); }
   } catch (e) { }
 }
+let streakTapAt = 0;
 function feedback(kind = 'tap') { if (S.settings.haptics !== false) Haptic.tap(kind === 'done' ? 18 : kind === 'tick' ? 4 : 9); clickSound(kind); }
 let crownPos = new WeakMap(), crownAt = 0;
 document.addEventListener('visibilitychange', () => { if (!document.hidden && fbCtx && fbCtx.state !== 'running') fbCtx.resume().catch(() => { fbCtx = null; }); });
@@ -1980,12 +2002,14 @@ const Player = {
     if (!this.loaded || this.waitOnline) return this.load(true, this.resumeAt, true);
     if (this.el.paused) this.play(); else this.userPause();
   },
+  pos() { return this.seekWant != null ? this.seekWant : (this.loaded ? (this.el.currentTime || 0) : (this.resumeAt || 0)); },
   seek(s) {
     const t = this.cur; if (!t || t.live) return;
     if (!this.loaded) { this.resumeAt = Math.max(0, s); return this.load(true, this.resumeAt, true); }
     const a = this.el; const to = isFinite(a.duration) ? clamp(s, 0, Math.max(0, a.duration - 0.25)) : Math.max(0, s);
     this.seekWant = to; this.resumeAt = to; try { a.currentTime = to; } catch (e) { }
-    if (t.source === 'podcast') { try { (S.podProg || (S.podProg = {}))[t.id] = Math.floor(to); } catch (e) { } }
+    if (t.source === 'podcast') { try { (S.podProg || (S.podProg = {}))[t.id] = Math.floor(to); save(); } catch (e) { } }
+    try { if ('mediaSession' in navigator && navigator.mediaSession.setPositionState && isFinite(a.duration) && a.duration > 0) navigator.mediaSession.setPositionState({ duration: a.duration, position: Math.min(to, a.duration), playbackRate: a.playbackRate || 1 }); } catch (e) { }
     UI.time();
   },
   playList(list, idx = 0, from = '', shuffle = null) {
@@ -2153,8 +2177,8 @@ const Player = {
   seekBtns(on) {
     if (!('mediaSession' in navigator) || this._seekOn === on) return; this._seekOn = on;
     const ms = navigator.mediaSession; const h = (n, f) => { try { ms.setActionHandler(n, f); } catch (e) { } };
-    h('seekbackward', on ? d => this.seek(this.el.currentTime - ((d && d.seekOffset) || +S.settings.podBack || 15)) : null);
-    h('seekforward', on ? d => this.seek(this.el.currentTime + ((d && d.seekOffset) || +S.settings.podFwd || 30)) : null);
+    h('seekbackward', on ? d => this.seek(this.pos() - ((d && d.seekOffset) || +S.settings.podBack || 15)) : null);
+    h('seekforward', on ? d => this.seek(this.pos() + ((d && d.seekOffset) || +S.settings.podFwd || 30)) : null);
     h('previoustrack', on ? null : () => this.prev());
     h('nexttrack', on ? null : () => this.next());
   },
@@ -2273,7 +2297,7 @@ const UI = {
   time() {
     this.slp();
     const a = Player.el, t = Player.cur; if (!t) return;
-    const cur = Player.loaded ? a.currentTime : Player.resumeAt;
+    const cur = Player.seekWant != null ? Player.seekWant : Player.loaded ? a.currentTime : Player.resumeAt;
     const dur = Player.loaded && isFinite(a.duration) && a.duration ? a.duration : (t.duration || 0);
     if (t.live) { $('#m-prog').style.width = '0'; const mt = $('#m-time'); if (mt) mt.textContent = 'LIVE'; }
     else {
@@ -3102,7 +3126,7 @@ function eqInner() {
     <div class="li eqloud"><div class="lb"><span class="lx">Loudness<small class="lh">Evens out quiet and loud parts — great in the car or with earbuds. A built-in limiter keeps every setting free of distortion.</small></span><label class="sw"><input type="checkbox" id="eqloud" ${s.eqLoud ? 'checked' : ''}><span></span></label></div></div>
     <div class="fbtns"><button class="fb" data-a="eqreset">Reset all</button></div>`;
 }
-function openEQ() { openSheet(`<div class="sg eq ${S.settings.eqOn ? '' : 'off'}" id="eqbox">${eqInner()}</div><button class="scancel" data-a="sclose">Done</button>`); }
+function openEQ() { const lock = IS_IOS; openSheet(`<div class="sg eq ${S.settings.eqOn ? '' : 'off'} ${lock ? 'locked' : ''}" id="eqbox">${eqInner()}</div><button class="scancel" data-a="sclose">Done</button>`); }
 function eqToggle(on) {
   S.settings.eqOn = on; save();
   const yt = Player.el === Embed || Player.via === 'embed';
@@ -3939,7 +3963,7 @@ async function quickPicks() {
 function renderHome(e, tok) {
   const stk = streak();
   const nm = (S.settings.name || '').trim();
-  let html = header('Home', { right: nbBtn('go', 'gear', 'Settings', 'data-v="settings"'), left: `<span class="home-logo">${logoSvg()}</span>` }) + `<p class="greet">${greeting()}${nm ? ', ' + esc(nm) : ''}${stk >= 2 ? ` <span class="streak" data-a="streaktap" role="button" tabindex="0" title="Days in a row you listened">🔥 ${stk}-day streak</span>` : ''}</p>`;
+  let html = header('Home', { right: nbBtn('go', 'gear', 'Settings', 'data-v="settings"'), left: `<span class="home-logo">${logoSvg()}</span>` }) + `<p class="greet">${greeting()}${nm ? ', ' + esc(nm) : ''}${stk >= 2 ? ` <span class="streak" data-a="streaktap" role="button" tabindex="0" title="Double-tap me"><i class="fire" aria-hidden="true">🔥</i>${stk}-day streak</span>` : ''}</p>`;
   const standalone = matchMedia('(display-mode: standalone)').matches || navigator.standalone;
   if (!standalone && !S.noInstall && Object.keys(S.stats.plays || {}).length >= 3 && (deferredInstall || IS_IOS)) html += `<div class="nudge"><div class="nudge-ic">${I.music}</div><div class="nudge-t"><b>Get the Tune Tune app</b><span>${IS_IOS ? 'Tap Share, then “Add to Home Screen”' : 'Opens instantly and plays from your lock screen'}</span></div>${IS_IOS ? '' : '<button class="fb pri" data-a="install">Install</button>'}<button class="nudge-x" data-a="noinstall" aria-label="Dismiss">${I.x}</button></div>`;
   if (!navigator.onLine) {
@@ -4560,7 +4584,7 @@ const Actions = {
   lyrmode(el, d) { S.settings.lyrMode = d.m; save(); renderLyrics(); if (d.m === 'en') lyrTranslate(); },
   skipb2() { Player.seek(Player.el.currentTime - skipSecs(-1)); }, skipf2() { Player.seek(Player.el.currentTime + skipSecs(1)); },
   keys() { showKeys(); },
-  streaktap() { const now = Date.now(); if (now - (this._stT || 0) < 380) { this._stT = 0; Actions.streakdisco(); } else this._stT = now; },
+  streaktap(el) { const now = Date.now(); if (now - streakTapAt < 420) { streakTapAt = 0; const b = el && el.closest ? el.closest('.streak') : document.querySelector('.streak'); if (b) { b.classList.remove('lit'); void b.offsetWidth; b.classList.add('lit'); setTimeout(() => b.classList.remove('lit'), 2600); } Actions.streakdisco(); } else streakTapAt = now; },
   streakdisco() {
     if (document.getElementById('confetti')) return; feedback('done');
     const c = document.createElement('canvas'); c.id = 'confetti'; document.body.appendChild(c);
@@ -4568,11 +4592,11 @@ const Actions = {
     const k = devicePixelRatio || 1, W = c.width = innerWidth * k, H = c.height = innerHeight * k;
     const cols = ['#ff375f', '#ff9f0a', '#30d158', '#0a84ff', '#bf5af2', '#64d2ff'];
     const t0 = performance.now(); document.body.classList.add('partying');
-    const step = now => { const t = (now - t0) / 1000, fade = t < 0.4 ? t / 0.4 : t > 2.4 ? Math.max(0, (3 - t) / 0.6) : 1; g.clearRect(0, 0, W, H); g.globalCompositeOperation = 'lighter';
+    const step = now => { const t = (now - t0) / 1000, fade = t < 0.3 ? t / 0.3 : t > 1.3 ? Math.max(0, (1.8 - t) / 0.5) : 1; g.clearRect(0, 0, W, H); g.globalCompositeOperation = 'lighter';
       for (let i = 0; i < 6; i++) { const a = t * (0.9 + i * 0.12) + i * 1.05, x = W / 2 + Math.cos(a) * W * 0.38, y = H * 0.42 + Math.sin(a * 1.3) * H * 0.3, r = Math.max(W, H) * (0.32 + 0.08 * Math.sin(t * 4 + i)), gr = g.createRadialGradient(x, y, 0, x, y, r);
         gr.addColorStop(0, cols[i] + '66'); gr.addColorStop(1, 'transparent'); g.globalAlpha = 0.55 * fade; g.fillStyle = gr; g.fillRect(0, 0, W, H); }
       g.globalAlpha = 0.35 * fade; for (let i = 0; i < 14; i++) { const a = t * 0.6 + i * 0.45; g.strokeStyle = cols[i % 6]; g.lineWidth = 3 * k; g.beginPath(); g.moveTo(W / 2, -10); g.lineTo(W / 2 + Math.cos(a) * W, H * 0.9 + Math.sin(a) * H * 0.2); g.stroke(); }
-      if (t < 3) requestAnimationFrame(step); else { c.remove(); document.body.classList.remove('partying'); } };
+      if (t < 1.8) requestAnimationFrame(step); else { c.remove(); document.body.classList.remove('partying'); } };
     requestAnimationFrame(step);
   },
   dlinfo() {
@@ -4992,7 +5016,20 @@ function init() {
   if (nav.stacks[S.settings.startTab]) nav.tab = S.settings.startTab;
   try { const qt = new URLSearchParams(location.search).get('tab'); if (nav.stacks[qt]) nav.tab = qt; } catch (e) { }
   history.replaceState({ root: 1 }, '');
+  let back = null; try { back = JSON.parse(localStorage.getItem('tunetune.nav') || 'null'); } catch (e) { }
+  const deepLink = /[?&](tab|open|play|pl|text|url|share)=/.test(location.search);
+  if (back && !deepLink && Date.now() - back.t < 6 * 3600e3 && nav.stacks[back.tab]) {
+    nav.tab = back.tab;
+    if (Array.isArray(back.stack) && back.stack.length && back.stack.every(e => e && typeof e.v === 'string' && !('c' in e))) nav.stacks[back.tab] = back.stack;
+  }
   render();
+  if (back && !deepLink && Date.now() - back.t < 6 * 3600e3) {
+    const top = nav.stacks[nav.tab][nav.stacks[nav.tab].length - 1]; if (top && back.scroll) setTimeout(() => { const v = $('#view'); if (v) v.scrollTop = back.scroll; }, 120);
+    if (back.np) setTimeout(() => { if (Player.cur && !npOpen) { openNP(); if (back.panel) Actions.panel({}, { p: back.panel }); } }, 400);
+  }
+  const keepPlace = () => { try { const st = nav.stacks[nav.tab]; localStorage.setItem('tunetune.nav', JSON.stringify({ t: Date.now(), tab: nav.tab, stack: st.filter(e => !('c' in e)).map(e => ({ ...e })), scroll: ($('#view') || {}).scrollTop || 0, np: npOpen, panel: npOpen ? (($('#np').className.match(/\bp-(lyr|q)\b/) || [])[1] || '') : '' })); } catch (e) { } };
+  document.addEventListener('visibilitychange', () => { if (document.hidden) keepPlace(); });
+  addEventListener('pagehide', keepPlace);
   loadArtCache();
   Audius.discover();
   Mirrors.load();
@@ -5005,7 +5042,7 @@ function init() {
     navigator.serviceWorker.register('sw.js').catch(() => { });
   }
   window.TuneTune = { version: VER, engine: () => (IT.ok ? 'direct' : 'mirrors') };
-  if (window.__TT_TEST__) window.TuneTune._ = { JSA, DES, Saavn, Player, Streams, Mirrors, IT, YT, S, nav, cv, Actions, itShelves, mem, Embed, MirrorHealth, download, share, probeAudio, qInfo, sharePlaylist, SvC, translit, Deck, SITE, Offline, landCheck, Party, offlineList, playOffline, offlineSheet, Pre, deviceLangs, langSuggest, eqName, eqPins, Haptic, rtags: () => rtags(), podCats: () => podCats(), lyrSet: r => { lyrState = { id: Player.cur && Player.cur.id, ...r }; renderLyrics(); } };
+  if (window.__TT_TEST__) window.TuneTune._ = { JSA, DES, Saavn, Player, Streams, Mirrors, IT, YT, S, nav, cv, Actions, itShelves, mem, Embed, MirrorHealth, download, share, probeAudio, qInfo, sharePlaylist, SvC, translit, Deck, SITE, Offline, landCheck, Party, offlineList, playOffline, offlineSheet, JS_RELAYS, SAAVN_DEFAULT, PIPED_DEFAULT, INV_DEFAULT, loadSiteConfig, Pre, deviceLangs, langSuggest, eqName, eqPins, Haptic, rtags: () => rtags(), podCats: () => podCats(), lyrSet: r => { lyrState = { id: Player.cur && Player.cur.id, ...r }; renderLyrics(); } };
 }
 try { init(); }
 catch (err) {
