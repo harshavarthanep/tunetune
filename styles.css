@@ -627,7 +627,7 @@ pre.log{max-height:50vh;overflow:auto;font:12px/1.5 ui-monospace,Menlo,monospace
 
 /* render offscreen sections lazily for speed */
 .sec{content-visibility:auto;contain-intrinsic-size:auto 280px}
-body{zoom:var(--zoom,1)}
+#view > *,.np-in,.sg{zoom:var(--zoom,1)}
 .lx{flex:1 1 auto;min-width:42%}
 .lv{flex:0 1 auto;min-width:0;max-width:58%;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .tr-tx b{white-space:normal;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;line-height:1.2}
@@ -1142,3 +1142,37 @@ html.still #splash *{animation:none!important;opacity:1}
 .tile::after{inset:0;right:0;top:0;width:auto;aspect-ratio:auto;border-radius:inherit;background:none}
 @media (hover:hover) and (pointer:fine){.tile::after{background:linear-gradient(115deg,transparent 30%,rgba(255,255,255,.38) 47%,rgba(255,255,255,.08) 55%,transparent 70%);background-size:250% 100%;background-position:130% 0}}
 .tile{isolation:isolate}
+
+
+/* ================= v1.1 iPhone & alignment fixes ================= */
+/* sheets never go under the status bar or the home indicator */
+.sp{max-height:calc(100vh - var(--sat) - var(--sabx) - 28px)}
+@supports (height:100dvh){.sp{max-height:calc(100dvh - var(--sat) - var(--sabx) - 28px)}}
+@media (max-width:600px){.sp:has(.eq),.sp:has(.aq){max-height:calc(100dvh - var(--sat) - var(--sabx) - 20px)}}
+@media (min-width:700px) and (min-height:560px){.sp{max-height:min(80vh,760px)}}
+/* iPhone: text fields at 16px so iOS never zooms the whole app */
+@supports (-webkit-touch-callout:none){input,select,textarea,.tin{font-size:16px!important}}
+/* album art: the app handles every finger movement itself (slow drags always work) */
+#np .np-art{touch-action:none}
+/* shortcuts list */
+kbd{white-space:nowrap;display:inline-block}
+.info .inf{align-items:center}
+.info .inf b{text-align:right}
+/* audio quality details line up neatly on phones */
+@media (max-width:600px){
+  .sg.aq .inf{align-items:flex-start}
+  .sg.aq .inf b{text-align:left;font-size:14px}
+}
+/* own-server guide */
+.guide .fsub .cw,.guide .cw{display:flex;align-items:center;justify-content:center;gap:8px;width:100%;margin-top:10px;height:44px}
+.guide .tin{width:100%;box-sizing:border-box}
+.relay-st{margin:10px 0 0;padding:0;font-size:14px;line-height:1.4;border-radius:12px;min-height:0}
+.relay-st:empty{display:none}
+.relay-st.busy{padding:10px 12px;background:var(--fill);color:var(--text2)}
+.relay-st.ok{padding:10px 12px;background:rgba(48,209,88,.16);color:#30d158;font-weight:600}
+.relay-st.bad{padding:10px 12px;background:rgba(255,69,58,.14);color:#ff453a;font-weight:600}
+/* desktop sidebar: Settings sits clear of the bottom edge */
+@media (min-width:900px) and (min-height:561px){
+  #tabs{padding-bottom:26px}
+  .tab.tset{border-top:.5px solid var(--sep);border-radius:0 0 10px 10px;padding-top:14px;margin-top:auto}
+}

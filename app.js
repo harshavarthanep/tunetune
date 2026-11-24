@@ -3386,7 +3386,7 @@ function openServerGuide() {
       <li>Copy your worker’s address (like <i>tunetune.yourname.workers.dev</i>) and paste it below.</li>
     </ol>
     <input class="tin" id="relayin" placeholder="https://tunetune.yourname.workers.dev" value="${esc(cur)}" autocomplete="off" autocapitalize="off" spellcheck="false">
-    <p class="fsub" id="relayst"></p>
+    <p class="relay-st" id="relayst"></p>
     ${S.settings.proxy ? `<p class="fsub">To keep it even after clearing browser data — on every device and for everyone using your site — add a file named <b>tunetune-config.json</b> to your GitHub repo.<button class="fb cw" data-a="copycfg">${I.copy} Copy file contents</button></p>` : ''}
     <div class="fbtns">${S.settings.proxy ? '<button class="fb" data-a="relayclear">Remove</button>' : '<button class="fb" data-a="sclose">Later</button>'}<button class="fb pri" data-a="relaysave">Test &amp; Save</button></div></div>`);
 }
@@ -4328,15 +4328,15 @@ const Actions = {
     if (!v) return toast('Paste your worker address first');
     if (!/^https?:\/\//.test(v)) v = 'https://' + v;
     const base = v.includes('{url}') ? v : v.replace(/[?#].*$/, '').replace(/\/+$/, '') + '/?url={url}';
-    if (st) st.textContent = 'Testing your server…';
+    if (st) { st.className = 'relay-st busy'; st.textContent = 'Testing your server…'; }
     const old = S.settings.proxy; S.settings.proxy = base; JSA.reset();
     try {
       const j = await JSA.attempt(JSA.relays()[0], 'https://www.jiosaavn.com/api.php?' + new URLSearchParams({ __call: 'autocomplete.get', query: 'anirudh', _format: 'json', _marker: '0', api_version: '4', ctx: 'web6dot0' }));
       if (!j) throw new Error('no reply');
-      JSA.setVia('custom'); save(); mem.clear(); if (st) st.textContent = '✓ Working! JioSaavn songs now play clean, with downloads and the equalizer.';
+      JSA.setVia('custom'); save(); mem.clear(); if (st) { st.className = 'relay-st ok'; st.textContent = '✓ Working! JioSaavn songs now play clean, with downloads and the equalizer.'; }
       toast('Your music server works'); setTimeout(() => { closeSheet(); softRender(); }, 1400);
     } catch (e) {
-      S.settings.proxy = old; save(); if (st) st.textContent = '✗ Couldn’t reach JioSaavn through it (' + String(e.message || e).slice(0, 40) + '). Check you pasted the code and pressed Deploy, then try again.';
+      S.settings.proxy = old; save(); if (st) st.className = 'relay-st bad'; if (st) st.textContent = '✗ Couldn’t reach JioSaavn through it (' + String(e.message || e).slice(0, 40) + '). Check you pasted the code and pressed Deploy, then try again.';
     }
   },
   relayclear() { S.settings.proxy = ''; save(); JSA.reset(); if (JSA.via === 'custom') JSA.setVia(''); closeSheet(); toast('Removed your music server'); softRender(); },
@@ -4541,14 +4541,14 @@ document.addEventListener('change', e => {
   } else if (t.id === 'f-audio') { importFiles(t.files); t.value = ''; }
   else if (t.id === 'f-backup') { importBackup(t.files[0]); t.value = ''; }
 });
-const KEYS = [['Space or K', 'Play / pause'], ['← / →', 'Back / forward 10 seconds'], ['P / N or Shift + ← / →', 'Previous / next song'], ['↑ / ↓', 'Volume up / down'], ['M', 'Mute'],
+const KEYS = [['Space · K', 'Play / pause'], ['← →', 'Back / forward 10 seconds'], ['P · N', 'Previous / next song'], ['Shift ← →', 'Previous / next song'], ['↑ / ↓', 'Volume up / down'], ['M', 'Mute'],
   ['L or F', 'Favorite'], ['S', 'Shuffle'], ['R', 'Repeat'], ['Q', 'Queue'], ['Y', 'Lyrics'], ['E', 'Equalizer'], ['D', 'Driving mode'], ['X', 'Party Mode'], ['0 – 9', 'Jump to 0% – 90%'],
   ['/ or Ctrl + K', 'Search'], ['Esc', 'Close'], ['?', 'This list']];
 const GESTURES = [['Swipe the album art', 'Next / previous song'], ['Tap a side album', 'Jump to it'], ['Double-tap the album art', 'Favorite'], ['Swipe down on Now Playing', 'Close'],
   ['Swipe the mini player', 'Next / previous'], ['Press and hold a song', 'More options'], ['Lock screen / headphones', 'Play, pause, skip']];
 function showKeys() {
   openSheet(`<div class="sg form"><b class="ft">Shortcuts & gestures</b><div class="info">${GESTURES.map(([k, v]) => `<div class="inf"><span>${esc(v)}</span><b>${esc(k)}</b></div>`).join('')}</div>
-    <b class="ft" style="margin-top:14px">Keyboard</b><div class="info">${KEYS.map(([k, v]) => `<div class="inf"><span>${esc(v)}</span><b><kbd>${esc(k)}</kbd></b></div>`).join('')}</div>
+    ${matchMedia('(pointer: fine)').matches ? '' : '<!--'}<b class="ft" style="margin-top:14px">Keyboard</b><div class="info">${KEYS.map(([k, v]) => `<div class="inf"><span>${esc(v)}</span><b><kbd>${esc(k)}</kbd></b></div>`).join('')}</div>${matchMedia('(pointer: fine)').matches ? '' : '-->'}
     <div class="fbtns"><button class="fb pri" data-a="sclose">Done</button></div></div>`);
 }
 let preMute = 1;
@@ -4650,19 +4650,24 @@ function bindGestures() {
   art.addEventListener('pointerdown', e => { if (e.pointerType === 'mouse' && e.button === 0 && !e.target.closest('.yt-pill,#ytbox')) e.preventDefault(); if (e.target.closest('.yt-pill') || (e.target.closest('#ytbox') && ($('#np').classList.contains('needtap') || $('#np').classList.contains('ytfull'))) || (e.pointerType === 'mouse' && e.button !== 0)) return; px = e.clientX; py = e.clientY; pdx = 0; dMoved = 0; pt = Date.now(); horiz = false; });
   art.addEventListener('pointermove', e => {
     if (px === null) return; const dx = e.clientX - px, dy = e.clientY - py; dMoved = Math.max(dMoved, Math.abs(dx), Math.abs(dy));
-    if (!horiz && Math.abs(dx) > 10 && Math.abs(dx) > Math.abs(dy) * 1.2 && !Deck.busy) { horiz = true; dist = Deck.dist(); try { art.setPointerCapture(e.pointerId); } catch (x) { } }
-    if (horiz) { pdx = dx; let p = clamp(dx / dist, -1, 1); if ((p < 0 && !Deck.has(1) && !S.settings.autoplay) || (p > 0 && !Deck.has(-1))) p *= 0.25; Deck.set(p, false); }
+    if (!horiz && Math.abs(dx) > 6 && Math.abs(dx) >= Math.abs(dy) && !Deck.busy) { horiz = true; dist = Deck.dist(); px = e.clientX - Math.sign(dx) * 2; try { art.setPointerCapture(e.pointerId); } catch (x) { } }
+    if (horiz) {
+      pdx = e.clientX - px; let p = clamp(pdx / dist, -1, 1); if ((p < 0 && !Deck.has(1) && !S.settings.autoplay) || (p > 0 && !Deck.has(-1))) p *= 0.25;
+      if (!Deck.crossed && Math.abs(pdx) > dist * 0.28) { Deck.crossed = true; buzz(); } else if (Deck.crossed && Math.abs(pdx) < dist * 0.28) Deck.crossed = false;
+      const raf = window.requestAnimationFrame || (f => setTimeout(f, 16)), caf = window.cancelAnimationFrame || clearTimeout;
+      caf(Deck.raf); Deck.raf = raf(() => Deck.set(p, false));
+    }
   });
   const end = e => {
-    if (px === null) return; px = null;
+    if (px === null) return; px = null; Deck.crossed = false; (window.cancelAnimationFrame || clearTimeout)(Deck.raf);
     if (!horiz) {
       if (dMoved < 10 && e.type === 'pointerup' && (e.target.id === 'np-img' || e.target.closest('#ytbox'))) { if (Date.now() - lastTap < 320) { lastTap = 0; likeBurst(); } else lastTap = Date.now(); }
       return;
     }
     suppressDeck = Date.now();
-    const fast = Math.abs(pdx) / Math.max(1, Date.now() - pt) > 0.5;
-    if ((pdx < -dist * 0.28 || (pdx < -30 && fast)) && (Deck.has(1) || S.settings.autoplay)) Deck.go(1);
-    else if ((pdx > dist * 0.28 || (pdx > 30 && fast)) && Deck.has(-1)) Deck.go(-1);
+    const fast = Math.abs(pdx) / Math.max(1, Date.now() - pt) > 0.35;
+    if ((pdx < -dist * 0.25 || (pdx < -24 && fast)) && (Deck.has(1) || S.settings.autoplay)) Deck.go(1);
+    else if ((pdx > dist * 0.25 || (pdx > 24 && fast)) && Deck.has(-1)) Deck.go(-1);
     else Deck.set(0, true);
   };
   art.addEventListener('pointerup', end); art.addEventListener('pointercancel', end); art.addEventListener('lostpointercapture', e => { if (px !== null) end(e); });
@@ -4696,7 +4701,7 @@ function bindGestures() {
   let x0 = 0;
   np.addEventListener('touchmove', e => {
     if (y0 === null) return; dy = Math.max(0, e.touches[0].clientY - y0);
-    if (Math.abs(e.touches[0].clientX - x0) > Math.abs(e.touches[0].clientY - y0) && Math.abs(e.touches[0].clientX - x0) > 10) { y0 = null; np.classList.remove('drag'); np.style.transform = ''; return; }
+    if (Math.abs(e.touches[0].clientX - x0) > Math.abs(e.touches[0].clientY - y0) * 0.8 && Math.abs(e.touches[0].clientX - x0) > 6) { y0 = null; np.classList.remove('drag'); np.style.transform = ''; return; }
     if (dy > 4) { np.classList.add('drag'); np.style.transform = `translateY(${dy}px)`; }
   }, { passive: true });
   np.addEventListener('touchend', () => {
