@@ -211,6 +211,7 @@ const I = {
   info: svg(P('M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18zM12 11v6M12 7.5v.5', 2)),
   expand: svg(P('M14 4h6v6M10 20H4v-6M20 4l-7 7M4 20l7-7', 2)),
   translate: svg(P('M4 5h9M8.5 3v2M6 5c.6 3 2.6 5.6 5 7M11 5c-.8 3.6-3.3 6.6-6.5 8.5M13 20l4-9 4 9M14.4 17h5.2', 1.8)),
+  disco: `<svg class="ic disco" viewBox="0 0 24 24" aria-hidden="true"><defs><radialGradient id="dbg" cx="38%" cy="32%" r="75%"><stop offset="0" stop-color="#fff"/><stop offset=".45" stop-color="#c9d2e3"/><stop offset="1" stop-color="#59627a"/></radialGradient><clipPath id="dbc"><circle cx="12" cy="13" r="8"/></clipPath></defs><path d="M12 1v4" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/><circle cx="12" cy="13" r="8" fill="url(#dbg)"/><g clip-path="url(#dbc)" stroke="rgba(40,48,70,.55)" stroke-width=".7" fill="none"><path d="M4 9.5h16M4 13h16M4 16.5h16"/><g class="db-mer"><path d="M2 5v16M6 5v16M10 5v16M14 5v16M18 5v16M22 5v16M26 5v16"/></g></g><circle class="db-glint" cx="9" cy="10" r="1.3" fill="#fff"/></svg>`,
   torch: svg(P('M8 3h8l-1.5 5h-5zM9.5 8h5v4l-1 9h-3l-1-9zM12 12v3', 1.8)),
   sparkle: svg(P('M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8zM19 16l.8 2.2L22 19l-2.2.8L19 22l-.8-2.2L16 19l2.2-.8z', 1.7)),
   edit: svg(P('M4 20h4L19 9l-4-4L4 16zM14 6l4 4', 1.8)),
@@ -1559,6 +1560,7 @@ const Player = {
     setInterval(() => this.watch(), 4000);
     addEventListener('pagehide', () => this.persist());
     document.addEventListener('visibilitychange', () => {
+      if (document.hidden) this.hiddenAt = Date.now();
       if (document.hidden && Party.tr) Party.torchOff();
       if (document.hidden && this.intrAt && Date.now() - this.intrAt < 3000) this.intrOk = true;
       if (!document.hidden && this.intrAt) this.intrTry();
@@ -1592,12 +1594,17 @@ const Player = {
     else if (ev === 'playing') {
       if (this.userPaused && !this.wantPlay && a !== Embed) { try { a.pause(); } catch (e) { } UI.state(); return; }
       this.loading = false; this.resumeTries = 0; this.failRun = 0; this.wantPlay = true; this.lastProgress = Date.now(); if (this.intrAt) { this.stopIntr(); }
+      const hr = new Date().getHours();
+      if ((hr >= 23 || hr < 4) && !this.sleepAt && !this.sleepEnd && S.lastNightTip !== dayKey() && S.settings.nightTip !== false && !document.hidden) { S.lastNightTip = dayKey(); save(); setTimeout(() => toast('Late night? Stop the music in 30 minutes', { label: 'Set', ms: 6000, fn: () => { try { Player.sleep(30); UI.timerBtn(); toast('Sleep timer: 30 minutes'); } catch (e) { } } }), 2500); }
+      if (t) { clearTimeout(this.metaT); this.metaT = setTimeout(() => { if (this.cur === t) { try { this.meta(t); } catch (e) { } } }, 600); }
+      try { if ('mediaSession' in navigator) navigator.mediaSession.playbackState = 'playing'; } catch (e) { }
       if (/^(piped|inv):/.test(this.via)) MirrorHealth.good();
       UI.state(); UI.track(t);
     }
     else if (ev === 'pause') {
       if (!this.loading && !a.ended && this.wantPlay && !this.userPaused && this.cur && S.settings.autoResume !== false && a !== Embed) { this.interrupted(); UI.state(); return; }
-      if (a === Embed && document.hidden && this.wantPlay && !this.userPaused) { setTimeout(() => { if (this.el === Embed && this.wantPlay) Embed.play(); }, 400); UI.state(); return; }
+      if (a === Embed && document.hidden && this.wantPlay && !this.userPaused && Date.now() - (this.hiddenAt || 0) < 2000) { setTimeout(() => { if (this.el === Embed && this.wantPlay) Embed.play(); }, 400); UI.state(); return; }
+      if (a === Embed && document.hidden) { this.wantPlay = false; this.userPaused = true; UI.state(); return; }
       if (!this.loading && !a.ended) this.wantPlay = false; UI.state();
     }
     else if (ev === 'loadedmetadata') {
@@ -1974,7 +1981,8 @@ const Player = {
     this.extending = (async () => {
       const c = this.cur;
       if (!S.settings.autoplay || !c || c.live || c.source === 'podcast') return false;
-      const skipped = x => ((S.skips || {})[x.id] || 0) >= 3;
+      const recent = new Set((S.history || []).slice(0, 25).map(x => x.id));
+      const skipped = x => ((S.skips || {})[x.id] || 0) >= 3 || recent.has(x.id);
       const have = new Set(this.queue.map(x => x.id));
       let pool = [];
       const yid = ytIdOf(c);
@@ -2447,7 +2455,7 @@ function buildShell() {
       <div class="np-panel" id="np-q"></div>
     </div>
     <div class="np-meta"><div class="np-tt"><div class="np-t" id="np-t"></div><span class="dlbadge" id="np-dl">${I.dlok}</span><div class="np-a" id="np-a" data-a="npartist"></div></div>
-      <button class="np-ib" id="np-party" data-a="party" aria-label="Party Mode">${I.sparkle}</button><button class="np-ib" id="np-share" data-a="npshare" aria-label="Share">${I.share}</button><button class="np-ib" id="np-like" data-a="nplike" aria-label="Favorite">${I.heart}</button></div>
+      <button class="np-ib" id="np-party" data-a="party" aria-label="Party Mode">${I.disco}</button><button class="np-ib" id="np-share" data-a="npshare" aria-label="Share">${I.share}</button><button class="np-ib" id="np-like" data-a="nplike" aria-label="Favorite">${I.heart}</button></div>
     <div class="scrub"><input class="rng" id="np-seek" type="range" min="0" max="1000" step="1" value="0" aria-label="Seek">
       <div class="times"><span id="np-cur">0:00</span><span class="livepill">● LIVE</span><span class="qbadge" id="np-qb" data-a="aq" role="button" tabindex="0" aria-label="Audio quality"></span><button class="eqtag" id="np-eqt" data-a="eq" aria-label="Equalizer"></button><span id="np-rem">-0:00</span></div></div>
     <div class="ctrl">
@@ -2540,7 +2548,7 @@ async function translateLines(lines, from) {
 function lyrBar(r) {
   const sc = lyrScript((r.synced || []).map(x => x.text).join(' ') || r.plain || ''); const m = S.settings.lyrMode || 'orig';
   const b = (k, label, ic) => `<button class="lyb ${m === k ? 'on' : ''}" data-a="lyrmode" data-m="${k}">${ic ? I[ic] : ''}${label}</button>`;
-  return `<div class="ly-bar"><button class="lyb" data-a="copylyr">${I.copy}Copy</button>${sc ? b('orig', sc[2]) + b('latin', 'English letters') + b('en', 'Translate', 'translate') : ''}</div>`;
+  return `<div class="ly-bar"><button class="lyb lyc" data-a="copylyr" aria-label="Copy lyrics">${I.copy}<span>Copy</span></button>${sc ? `<div class="lyseg" role="tablist">${b('orig', sc[2]) + b('latin', 'Aa English') + b('en', 'Translate', 'translate')}</div>` : ''}</div>`;
 }
 function lyrLine(r, k, text) {
   const m = S.settings.lyrMode || 'orig'; if (!text) return '♪';
@@ -2551,12 +2559,12 @@ function lyrLine(r, k, text) {
 function renderLyrics() {
   const box = $('#np-lyr'), r = lyrState; if (!box || !r) return;
   if (r.synced && r.synced.length) {
-    $('#ly-tools').innerHTML = lyrBar(r);
+    $('#ly-tools').innerHTML = lyrBar(r).replace(/^<div class="ly-bar">|<\/div>$/g, '');
     box.innerHTML = `<div>${r.synced.map((l, k) => `<p class="ly" data-a="lyseek" data-t="${l.t}">${lyrLine(r, k, l.text)}</p>`).join('')}<p class="ly-src">Lyrics from LRCLIB${(S.settings.lyrMode === 'en' && r.tr) ? ' · translation by MyMemory' : ''}</p></div>`;
     lyrIdx = -1; lyrTick(Player.loaded ? Player.el.currentTime : 0, true);
   } else if (r.plain) {
     const L = r.plain.split('\n');
-    $('#ly-tools').innerHTML = lyrBar(r);
+    $('#ly-tools').innerHTML = lyrBar(r).replace(/^<div class="ly-bar">|<\/div>$/g, '');
     box.innerHTML = `<div class="ly-plain">${L.map((l, k) => lyrLine(r, k, l) === '♪' ? '' : lyrLine(r, k, l)).join('\n')}</div><p class="ly-src">Lyrics from LRCLIB</p>`;
   }
 }
@@ -2620,16 +2628,7 @@ function renderQueue() {
     go(); (window.requestAnimationFrame || (f => setTimeout(f, 16)))(go);
   }
 }
-let qd = null, qLp = null, qLpAt = 0;
-document.addEventListener('pointerdown', e => {
-  const row0 = e.target.closest && e.target.closest('#qlist .qrow'); if (!row0 || e.target.closest('.qh,.qx')) return;
-  const sx = e.clientX, sy = e.clientY, ev = e; clearTimeout(qLp);
-  qLp = setTimeout(() => { qLp = null; qLpAt = Date.now(); qStart(row0, ev, row0); }, 330);
-  const cancel = m => { if (m.type !== 'pointermove' || Math.abs(m.clientX - sx) > 8 || Math.abs(m.clientY - sy) > 8) { clearTimeout(qLp); qLp = null; off(); } };
-  const off = () => { removeEventListener('pointermove', cancel); removeEventListener('pointerup', cancel); removeEventListener('pointercancel', cancel); };
-  addEventListener('pointermove', cancel); addEventListener('pointerup', cancel); addEventListener('pointercancel', cancel);
-}, true);
-document.addEventListener('click', e => { if (Date.now() - qLpAt < 700 && e.target.closest && e.target.closest('#np-q')) { e.preventDefault(); e.stopPropagation(); } }, true);
+let qd = null;
 document.addEventListener('touchmove', e => { if (qd) e.preventDefault(); }, { passive: false });
 document.addEventListener('pointerdown', e => {
   const h = e.target.closest && e.target.closest('.qh'); if (!h) return;
@@ -2732,7 +2731,7 @@ function trackMenu(t, meta = {}) {
       t.uid && ['yt', 'audius', 'saavn'].includes(t.source) && { label: 'Go to Artist', icon: 'user', fn: () => goArtist(t) },
       t.source === 'saavn' && t.albumId && { label: 'Go to Album', icon: 'music', fn: () => { const open = () => go('coll', { k: 'yt', c: { kind: 'album', id: t.albumId, title: t.album, art: t.artLarge, source: 'saavn' }, title: t.album }); if (npOpen) { closeNP(); setTimeout(open, 380); } else open(); } },
       meta.np && !t.live && { label: 'Playback Speed', icon: 'speed', fn: speedMenu },
-      meta.np && { label: 'Party Mode — lights & DJ effects', icon: 'sparkle', fn: () => Actions.party() },
+      meta.np && { label: 'Party Mode — lights & DJ effects', icon: 'disco', fn: () => Actions.party() },
       meta.np && { label: 'Driving Mode', icon: 'car', fn: openDrive },
       meta.np && lyrState && lyrState.id === t.id && (lyrState.plain || (lyrState.synced && lyrState.synced.length)) && { label: 'Copy Lyrics', icon: 'lyrics', fn: copyLyrics },
       { label: 'Song Info', icon: 'info', fn: () => songInfo(t) },
@@ -4599,6 +4598,7 @@ document.addEventListener('click', e => {
   const el = e.target.closest('[data-a]'); if (!el) return;
   const A = Actions[el.dataset.a]; if (!A) return;
   e.preventDefault();
+  if (el.matches('.np-ib,.lyb,.pchip,.popt,.qchip,.chip,.eq-ed,.nb-btn,.pill,.fb,#np-pp,.np-c button,.dv-c button,.dv-c2 button,.p-ctl button')) { el.classList.remove('pop'); void el.offsetWidth; el.classList.add('pop'); setTimeout(() => el.classList.remove('pop'), 420); }
   let snap = null, sel = '';
   try { if (el.closest(HSEL + ',.sg')) { snap = scrollSnap(); sel = selOf(el); reveal(el); } } catch (x) { snap = null; }
   A(el, el.dataset, e);

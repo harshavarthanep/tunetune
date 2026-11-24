@@ -1,0 +1,159 @@
+{
+  "name": "tunetune",
+  "productName": "Tune Tune",
+  "version": "1.1.0",
+  "description": "Tune Tune \u2014 free music & podcast player: JioSaavn-quality songs, synced lyrics, equalizer, Party Mode, offline downloads.",
+  "author": {
+    "name": "H24 Creationz",
+    "email": "h24creationz@users.noreply.github.com"
+  },
+  "license": "MIT",
+  "main": "desktop/main.js",
+  "scripts": {
+    "start": "electron .",
+    "dist": "electron-builder --publish never",
+    "web": "npx serve .",
+    "android:prepare": "node -e \"const fs=require('fs');fs.rmSync('www',{recursive:true,force:true});fs.mkdirSync('www');for(const f of ['index.html','styles.css','app.js','manifest.webmanifest','sw.js','tunetune-config.json'])if(fs.existsSync(f))fs.copyFileSync(f,'www/'+f);fs.cpSync('icons','www/icons',{recursive:true})\"",
+    "android:setup": "node scripts/android-setup.js"
+  },
+  "dependencies": {
+    "@capacitor/android": "^6.2.0",
+    "@capacitor/core": "^6.2.0",
+    "@jofr/capacitor-media-session": "4.0.0",
+    "@capacitor/app": "^6.0.2",
+    "@capacitor/local-notifications": "^6.1.2"
+  },
+  "devDependencies": {
+    "@capacitor/cli": "^6.2.0",
+    "electron": "^33.2.0",
+    "electron-builder": "^25.1.8"
+  },
+  "build": {
+    "appId": "com.h24creationz.tunetune",
+    "productName": "Tune Tune",
+    "files": [
+      "index.html",
+      "styles.css",
+      "app.js",
+      "manifest.webmanifest",
+      "sw.js",
+      "tunetune-config.json",
+      "icons/**",
+      "desktop/**"
+    ],
+    "directories": {
+      "output": "dist"
+    },
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64",
+            "arm64"
+          ]
+        },
+        {
+          "target": "portable",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "icon": "icons/icon-512.png"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "Tune Tune",
+      "artifactName": "TuneTune-Windows-Setup-${arch}.${ext}"
+    },
+    "mac": {
+      "target": [
+        {
+          "target": "dmg",
+          "arch": [
+            "universal"
+          ]
+        },
+        {
+          "target": "zip",
+          "arch": [
+            "universal"
+          ]
+        }
+      ],
+      "icon": "icons/icon-512.png",
+      "category": "public.app-category.music",
+      "artifactName": "TuneTune-Mac.${ext}",
+      "hardenedRuntime": false,
+      "identity": null
+    },
+    "linux": {
+      "target": [
+        {
+          "target": "AppImage",
+          "arch": [
+            "x64",
+            "arm64"
+          ]
+        },
+        {
+          "target": "deb",
+          "arch": [
+            "x64",
+            "arm64"
+          ]
+        },
+        {
+          "target": "tar.gz",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "icon": "icons/icon-512.png",
+      "category": "Audio",
+      "maintainer": "H24 Creationz",
+      "synopsis": "Free music & podcast player",
+      "artifactName": "TuneTune-Linux-${arch}.${ext}"
+    },
+    "portable": {
+      "artifactName": "TuneTune-Windows-Portable.${ext}"
+    },
+    "dmg": {
+      "title": "Tune Tune"
+    },
+    "fileAssociations": [
+      {
+        "ext": [
+          "mp3",
+          "m4a",
+          "aac",
+          "flac",
+          "wav",
+          "ogg",
+          "opus",
+          "aiff",
+          "alac",
+          "wma"
+        ],
+        "name": "Audio",
+        "description": "Music file",
+        "role": "Viewer",
+        "mimeType": "audio/mpeg"
+      }
+    ],
+    "protocols": [
+      {
+        "name": "Tune Tune",
+        "schemes": [
+          "tunetune"
+        ]
+      }
+    ]
+  },
+  "homepage": "https://harshavarthanep.github.io/products/"
+}

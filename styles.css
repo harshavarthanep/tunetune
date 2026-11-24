@@ -627,7 +627,7 @@ pre.log{max-height:50vh;overflow:auto;font:12px/1.5 ui-monospace,Menlo,monospace
 
 /* render offscreen sections lazily for speed */
 .sec{content-visibility:auto;contain-intrinsic-size:auto 280px}
-#view > *,.np-in,.sg{zoom:var(--zoom,1)}
+#view > *{zoom:var(--zoom,1)}
 .lx{flex:1 1 auto;min-width:42%}
 .lv{flex:0 1 auto;min-width:0;max-width:58%;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .tr-tx b{white-space:normal;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;line-height:1.2}
@@ -1206,3 +1206,51 @@ kbd{white-space:nowrap;display:inline-block}
 /* Apple-style press feedback everywhere */
 button:active,.card:active .cw,.tile:active,.qrow:active{transform:scale(.97);transition:transform .12s}
 .np-ib:active,.np-pp:active,#np-pp:active{transform:scale(.9)}
+
+
+/* ================= v1.1: fit, scrolling, motion ================= */
+html,body{overflow-x:hidden;max-width:100%}
+#view,#np,.np-in{overflow-x:hidden}
+#np .np-in{max-width:100vw;box-sizing:border-box}
+@media (max-width:600px){#view > *{zoom:min(var(--zoom,1),1.08)}}
+/* queue & lyrics scroll like Apple Music / Spotify, with a slim visible scrollbar */
+.np-panel{-webkit-overflow-scrolling:touch;overscroll-behavior:contain;scrollbar-width:thin;scrollbar-color:rgba(255,255,255,.35) transparent;touch-action:pan-y}
+.np-panel::-webkit-scrollbar{width:6px;display:block}
+.np-panel::-webkit-scrollbar-thumb{background:rgba(255,255,255,.35);border-radius:3px}
+.np-panel::-webkit-scrollbar-track{background:transparent}
+#qlist .qrow{touch-action:pan-y}
+.qh{touch-action:none;padding:8px 4px;margin:-8px -4px}
+/* lyrics toolbar: one line — Copy + segmented control */
+#ly-tools{flex-wrap:nowrap;align-items:center;gap:10px;overflow-x:auto;scrollbar-width:none;padding-bottom:14px}
+#ly-tools::-webkit-scrollbar{display:none}
+.lyb{flex:none;white-space:nowrap}
+.lyc{padding:7px 11px}
+.lyseg{display:flex;flex:none;gap:2px;padding:3px;border-radius:18px;background:rgba(255,255,255,.14);-webkit-backdrop-filter:blur(12px);backdrop-filter:blur(12px);pointer-events:auto}
+.lyseg .lyb{background:transparent;padding:6px 12px;border-radius:15px;font-size:12.5px;transition:background .25s,color .25s,transform .15s}
+.lyseg .lyb.on{background:#fff;color:#000;box-shadow:0 2px 8px rgba(0,0,0,.18)}
+@media (max-width:420px){.lyc span{display:none}.lyc{padding:7px 9px}.lyseg .lyb{padding:6px 10px}}
+/* disco ball: slowly turning, with a twinkle */
+.ic.disco{overflow:visible}
+.ic.disco .db-mer{animation:dbSpin 3.2s linear infinite}
+.ic.disco .db-glint{animation:dbGlint 2.4s ease-in-out infinite}
+@keyframes dbSpin{from{transform:translateX(0)}to{transform:translateX(-4px)}}
+@keyframes dbGlint{0%,100%{opacity:.9;transform:scale(1)}50%{opacity:.35;transform:scale(.6)}}
+#np-party .ic.disco{width:24px;height:24px;filter:drop-shadow(0 0 6px rgba(255,255,255,.35))}
+html.still .ic.disco *{animation:none}
+/* tap animation on every control */
+.pop{animation:pop .42s cubic-bezier(.3,1.6,.5,1)}
+@keyframes pop{0%{transform:scale(1)}30%{transform:scale(.86)}65%{transform:scale(1.08)}100%{transform:scale(1)}}
+/* pop-up menus: rows glide in one after another */
+#sheet.open .sa{animation:saIn .32s cubic-bezier(.2,.9,.3,1) both}
+#sheet.open .sa:nth-child(2){animation-delay:.025s}#sheet.open .sa:nth-child(3){animation-delay:.05s}#sheet.open .sa:nth-child(4){animation-delay:.075s}
+#sheet.open .sa:nth-child(5){animation-delay:.1s}#sheet.open .sa:nth-child(n+6){animation-delay:.12s}
+@keyframes saIn{from{opacity:0;transform:translateY(10px)}}
+#sheet.open .sg > *{animation:sgIn .34s cubic-bezier(.2,.9,.3,1) both}
+@keyframes sgIn{from{opacity:0;transform:translateY(8px) scale(.99)}}
+/* Now Playing panels (lyrics / queue) fade in */
+#np.p-lyr #np-lyr,#np.p-q #np-q{animation:panelIn .3s ease both}
+@keyframes panelIn{from{opacity:0;transform:translateY(10px)}}
+/* toast springs in */
+#toast.on{animation:toastIn .38s cubic-bezier(.2,1.3,.4,1)}
+@keyframes toastIn{from{transform:translate(-50%,-14px) scale(.9);opacity:0}}
+html.still .pop,html.still #sheet .sa,html.still #sheet .sg > *,html.still #toast.on{animation:none}
