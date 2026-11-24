@@ -825,7 +825,7 @@ kbd{font:600 12px ui-monospace,Menlo,monospace;padding:2px 6px;border-radius:5px
 #view{padding-bottom:calc(var(--tab-h) + var(--mini-h) + var(--sabx) + 18px)}
 body:not(.has-track) #view{padding-bottom:calc(var(--tab-h) + var(--sabx) + 14px)}
 .np-in{padding-bottom:calc(var(--sabx) + 6px)}
-.tab{justify-content:center;gap:1px}
+@media (max-width:899px),(max-height:560px){.tab{justify-content:center;gap:1px}}
 .sp{bottom:calc(8px + var(--sabx))}
 
 /* ---------- phones in landscape ---------- */
@@ -912,7 +912,6 @@ body:not(.has-track) #view{padding-bottom:calc(var(--tab-h) + var(--sabx) + 14px
 #splash.out .sp-in{transform:scale(1.12);transition:transform .55s ease}
 @keyframes spIn{from{opacity:0;transform:scale(.6) translateY(14px)}}
 /* gentle entrance for every page */
-#view > *{animation:pgIn .45s cubic-bezier(.2,.9,.3,1) both}
 @keyframes pgIn{from{opacity:0;transform:translateY(10px)}}
 html.still #view > *,html.still #splash .sp-in{animation:none}
 @media (orientation:landscape) and (max-height:560px){
@@ -1005,12 +1004,61 @@ body.offline .row[data-id]:not([data-id^="lc:"]):not(:has(.dlm)){opacity:.4}
 .lang-sug .fb{flex:none;width:auto;height:34px;padding:0 14px}
 
 /* ---------- more motion: lists slide in one after another ---------- */
-#view .row{animation:rowIn .42s cubic-bezier(.2,.9,.3,1) both}
-#view .row:nth-child(2){animation-delay:.03s}#view .row:nth-child(3){animation-delay:.06s}#view .row:nth-child(4){animation-delay:.09s}
-#view .row:nth-child(5){animation-delay:.12s}#view .row:nth-child(6){animation-delay:.15s}#view .row:nth-child(n+7){animation-delay:.18s}
-#view .hs .card{animation:cardIn .5s cubic-bezier(.2,.9,.3,1) both}
-#view .hs .card:nth-child(2){animation-delay:.05s}#view .hs .card:nth-child(3){animation-delay:.1s}#view .hs .card:nth-child(n+4){animation-delay:.15s}
 @keyframes rowIn{from{opacity:0;transform:translateY(8px)}}
 @keyframes cardIn{from{opacity:0;transform:translateX(18px) scale(.96)}}
 button:not(.row):active{transition:transform .1s}
 html.still #view .row,html.still #view .hs .card{animation:none}
+
+
+/* ---------- v1.1: calm, Apple Music-like motion — a quick fade only when you open a new page ---------- */
+#view.enter > *{animation:pgFade .32s cubic-bezier(.2,.8,.2,1) both}
+#view.enter > *:nth-child(n+4){animation-delay:.04s}
+@keyframes pgFade{from{opacity:0;transform:translateY(6px)}}
+img.art,img.thumb,img.ch-art,.topres img,.m-art{transition:opacity .25s ease}
+#np-img{-webkit-user-drag:none;user-select:none}
+#np .np-art img,#np .np-art{-webkit-user-drag:none;user-select:none;-webkit-touch-callout:none}
+
+/* ---------- v1.1: desktop that looks like a big-company product ---------- */
+.tab.tset{display:none}
+@media (min-width:900px) and (min-height:561px){
+  :root{--side:252px;--pad:max(40px,calc((100vw - var(--side) - 1320px) / 2))}
+  #tabs{padding:calc(var(--sat) + 26px) 14px 18px;gap:4px}
+  #tabs .brand{padding:0 12px 26px;font-size:21px}
+  #tabs .brand img{width:34px;height:34px;border-radius:9px;box-shadow:0 6px 18px color-mix(in srgb,var(--accent) 30%,transparent)}
+  .tab{justify-content:flex-start;padding:10px 12px;border-radius:10px;font-size:15px;font-weight:600;color:var(--text);transition:background .2s,color .2s}
+  .tab:hover{background:var(--fill)}
+  .tab.on{background:var(--fill2)}
+  .tab.on .ic{color:var(--accent)}
+  .tab .ic{width:21px;height:21px}
+  .tab.tset{display:flex;margin-top:auto;color:var(--text2)}
+  .tab.tset .ic{color:var(--text2)}
+  .nb [data-v="settings"]{display:none}
+  .nb{height:calc(60px + var(--sat));padding:var(--sat) calc(var(--pad) - 10px) 0}
+  #view{padding-top:6px}
+  #mini{left:calc(var(--side) + 24px);right:24px;bottom:18px;border-radius:18px;max-width:1320px;margin:0 auto;box-shadow:0 18px 50px rgba(0,0,0,.28)}
+  .grp,.grp-t,.grp-f{margin-left:auto;margin-right:auto;max-width:860px}
+  .sec-h,.hs,.cg,.cgrid,.tiles,.rows{scroll-padding-inline:var(--pad)}
+}
+
+/* ---------- v1.1: opening animation ---------- */
+#splash{background:radial-gradient(circle at 50% 42%,color-mix(in srgb,var(--accent) 16%,var(--bg)) 0,var(--bg) 62%)}
+#splash .sp-in{gap:14px;animation:none}
+.sp-logo{position:relative;width:104px;height:104px;display:grid;place-items:center}
+.sp-logo img{position:relative;z-index:2;width:100%;height:100%;border-radius:24px;box-shadow:0 22px 50px color-mix(in srgb,var(--accent) 45%,transparent);animation:spPop .7s cubic-bezier(.18,1.4,.4,1) both}
+.sp-ring{position:absolute;inset:0;border-radius:30px;border:2px solid color-mix(in srgb,var(--accent) 70%,transparent);opacity:0;animation:spRing 1.3s .25s cubic-bezier(.2,.8,.3,1) both}
+.sp-ring.r2{animation-delay:.42s;border-color:color-mix(in srgb,#bf5af2 60%,transparent)}
+.sp-ring.r3{animation-delay:.6s;border-color:color-mix(in srgb,#0a84ff 50%,transparent)}
+.sp-bars{display:flex;align-items:flex-end;gap:4px;height:22px}
+.sp-bars i{width:4px;height:100%;border-radius:2px;background:linear-gradient(var(--accent),#bf5af2);transform-origin:bottom;transform:scaleY(.2);animation:spBar .55s ease-in-out infinite alternate}
+.sp-bars i:nth-child(2){animation-delay:.1s}.sp-bars i:nth-child(3){animation-delay:.25s}.sp-bars i:nth-child(4){animation-delay:.05s}.sp-bars i:nth-child(5){animation-delay:.3s}.sp-bars i:nth-child(6){animation-delay:.15s}.sp-bars i:nth-child(7){animation-delay:.35s}
+.sp-word{display:flex;font-size:30px;letter-spacing:-.6px;color:var(--text);background:none;-webkit-text-fill-color:currentColor}
+.sp-word span{display:inline-block;opacity:0;animation:spLetter .5s calc(.25s + var(--i) * .045s) cubic-bezier(.2,1.2,.4,1) both}
+#splash .sp-tag{animation:spIn .6s .7s ease both}
+#splash.out{opacity:0;visibility:hidden;transform:scale(1.06);transition:opacity .55s ease,transform .6s cubic-bezier(.3,.7,.2,1),visibility .55s}
+@keyframes spPop{0%{opacity:0;transform:scale(.4) rotate(-12deg);filter:blur(8px)}60%{filter:blur(0)}100%{opacity:1;transform:none}}
+@keyframes spRing{0%{opacity:.9;transform:scale(.9)}100%{opacity:0;transform:scale(2.1)}}
+@keyframes spBar{to{transform:scaleY(1)}}
+@keyframes spLetter{from{opacity:0;transform:translateY(14px) scale(.8)}to{opacity:1;transform:none}}
+html.still #splash *{animation:none!important;opacity:1}
+#splash .sp-word{color:var(--text);background:none;-webkit-background-clip:border-box;background-clip:border-box;-webkit-text-fill-color:var(--text)}
+#splash .sp-word span{font-size:inherit;color:inherit;opacity:0;animation:spLetter .5s calc(.2s + var(--i) * .04s) cubic-bezier(.2,1.2,.4,1) both}

@@ -12,8 +12,8 @@ const VER = '1.1';
 // so EVERYONE who opens your website gets clean, ad-free JioSaavn audio with no setup.
 const BUILT_IN_SERVER = '';
 // ✏️ Links shown in Settings → More from H24 Creationz
-const PRODUCTS_URL = 'https://harshavarthanep.github.io/products/';
-const GITHUB_URL = '';
+const PRODUCTS_URL = 'https://harshavarthanep.github.io/h24-products/';
+const GITHUB_URL = 'https://github.com/harshavarthanep';
 const TAGLINE = 'YouTube Music-style search · JioSaavn-quality sound · Apple Music-style design';
 const KEY = 'tunetune.v1';
 const YEAR = new Date().getFullYear();
@@ -823,7 +823,7 @@ async function firstOk(fns) {
   return [];
 }
 /* ---- JioSaavn: full songs up to 320 kbps with album art — plays in any browser (lock screen too), no YouTube involved ---- */
-const SAAVN_DEFAULT = [{ base: 'https://saavn.sumit.co/api', shape: 'A' }, { base: 'https://saavn.dev/api', shape: 'A' }, { base: 'https://saavn.me', shape: 'B' }, { base: 'https://jiosaavn-api-privatecvc2.vercel.app', shape: 'B' }];
+const SAAVN_DEFAULT = [{ base: 'https://jio.shnwaz.dev/api', shape: 'A' }, { base: 'https://saavn.sumit.co/api', shape: 'A' }, { base: 'https://saavn.dev/api', shape: 'A' }, { base: 'https://saavn.me', shape: 'B' }, { base: 'https://jiosaavn-api-privatecvc2.vercel.app', shape: 'B' }];
 const decodeEnt = x => String(x || '').replace(/&(quot|amp|#039|#39|apos|lt|gt);/g, (m, k) => ({ quot: '"', amp: '&', '#039': "'", '#39': "'", apos: "'", lt: '<', gt: '>' }[k]));
 const https = u => String(u || '').replace(/^http:/, 'https:');
 const SvC = {
@@ -2396,13 +2396,18 @@ const TABS = [['home', 'Home', 'home'], ['explore', 'Explore', 'explore'], ['sea
 function splash() {
   if (!S.settings.motion || document.getElementById('splash')) return;
   const d = document.createElement('div'); d.id = 'splash';
-  d.innerHTML = `<div class="sp-in"><img src="icons/icon-192.png" alt=""><b>${TITLE}</b><small class="sp-tag">${TAGLINE}</small>${(S.settings.name || '').trim() ? `<span>Hi, ${esc(S.settings.name.trim())}</span>` : ''}</div>`;
+  const nm = (S.settings.name || '').trim();
+  d.innerHTML = `<div class="sp-in"><div class="sp-logo"><span class="sp-ring"></span><span class="sp-ring r2"></span><span class="sp-ring r3"></span><img src="icons/icon-192.png" alt=""></div>
+    <div class="sp-bars" aria-hidden="true">${'<i></i>'.repeat(7)}</div>
+    <b class="sp-word">${[...TITLE].map((c, i) => `<span style="--i:${i}">${c === ' ' ? '&nbsp;' : esc(c)}</span>`).join('')}</b>
+    <small class="sp-tag">${nm ? `Welcome back, ${esc(nm)}` : TAGLINE}</small></div>`;
   document.body.appendChild(d);
-  setTimeout(() => d.classList.add('out'), 900); setTimeout(() => d.remove(), 1500);
+  setTimeout(() => d.classList.add('out'), 1150); setTimeout(() => d.remove(), 1800);
 }
 function buildShell() {
   $('#tabs').innerHTML = `<div class="brand"><img src="icons/icon-192.png" alt="">${TITLE}</div>` +
-    TABS.map(([k, l, ic]) => `<button class="tab" data-tab="${k}">${I[ic]}<span>${l}</span></button>`).join('');
+    TABS.map(([k, l, ic]) => `<button class="tab" data-tab="${k}">${I[ic]}<span>${l}</span></button>`).join('') +
+    `<button class="tab tset" data-a="go" data-v="settings">${I.gear}<span>Settings</span></button>`;
   $('#mini').innerHTML = `<span class="m-aw"><img class="m-art" id="m-art" alt=""><span class="m-ring"></span></span><div class="m-txt"><div class="m-t" id="m-t">Not Playing</div><span class="dlbadge" id="m-dl">${I.dlok}</span><div class="m-s" id="m-s"></div></div>
     <span class="m-time" id="m-time"></span>
     <button class="ib m-prev" data-a="prev" aria-label="Previous">${I.prev}</button>
@@ -3423,14 +3428,20 @@ function render() {
   let html;
   try { html = (VIEWS[e.v] || VIEWS.home)(e, tok); }
   catch (err) { console.error(err); html = header('Something went wrong', { noLarge: true }) + emptyState({ icon: 'music', t: 'This page couldn’t open', d: String(err && err.message || err), btn: ['reload', 'Try Again'] }); }
-  v.innerHTML = html; revealImgs();
+  const fresh = !softing && (render.lastKey !== e.v + '|' + (e.k || '') + '|' + (e.id || e.l || e.q || ''));
+  render.lastKey = e.v + '|' + (e.k || '') + '|' + (e.id || e.l || e.q || '');
+  v.innerHTML = html;
+  for (const im of v.querySelectorAll('img')) if (im.complete && im.naturalWidth) im.classList.add('ld');
+  revealImgs();
+  if (fresh && S.settings.motion !== false) { v.classList.remove('enter'); void v.offsetWidth; v.classList.add('enter'); clearTimeout(render.t); render.t = setTimeout(() => v.classList.remove('enter'), 500); }
   v.scrollTop = e.scroll || 0;
   setTimeout(() => { e.scroll = 0; }, 1500);
-  $$('.tab').forEach(b => { const on = b.dataset.tab === nav.tab; b.classList.toggle('on', on); b.setAttribute('aria-current', on ? 'page' : 'false'); });
+  $$('.tab').forEach(b => { const on = b.dataset.tab ? b.dataset.tab === nav.tab && e.v !== 'settings' : e.v === 'settings' || e.v === 'advanced'; b.classList.toggle('on', on); b.setAttribute('aria-current', on ? 'page' : 'false'); });
 }
+let softing = false;
 function softRender() {
   const v = $('#view'); const st = v.scrollTop; const rows = [...v.querySelectorAll(HSEL)].map(r => r.scrollLeft);
-  render(); v.scrollTop = st;
+  softing = true; try { render(); } finally { softing = false; } v.scrollTop = st;
   [...v.querySelectorAll(HSEL)].forEach((r, i) => { if (rows[i]) { r.style.scrollBehavior = 'auto'; r.scrollLeft = rows[i]; r.style.scrollBehavior = ''; } });
 }
 function enter(kind = 'push') {
@@ -3714,6 +3725,7 @@ function renderHome(e, tok) {
     if (off.length) html += `<div class="off-card"><div><b>Offline Mix</b><span>${plural(off.length, 'song')} — downloads, recently played and your own files</span></div><button class="fb pri" data-a="offmix">${I.shuffle}Play</button></div>`;
     return html + (off.length ? sec('Available offline', rowsHTML(off, reg(off, { from: 'Offline' }), { dur: true })) : emptyState({ icon: 'download', t: 'Nothing saved offline', d: 'Next time you’re online, download songs to keep them here.' }));
   }
+  setTimeout(warmLangs, 2500);
   const sv = (S.cached || []).filter(t => S.settings.mixPods || t.source !== 'podcast');
   if (S.settings.savedCard !== false && sv.length >= 3) html += `<div class="saved-card"><div class="sc-arts">${sv.slice(0, 3).map(t => `<img src="${esc(artOf(t))}" alt="">`).join('')}</div><div class="sc-t"><b>Ready offline</b><span>Your last ${plural(sv.length, 'song')} — plays without internet</span></div><button class="np-ib" data-a="savedplay" aria-label="Play in order">${I.play}</button><button class="np-ib" data-a="savedshuf" aria-label="Shuffle">${I.shuffle}</button></div>`;
   const sug = langSuggest(); if (sug) html += `<div class="lang-sug"><span>You’ve been listening to a lot of <b>${esc(sug)}</b> music</span><button class="fb pri" data-a="addlang" data-l="${esc(sug)}">Add ${esc(sug)}</button><button class="nudge-x" data-a="nolang" data-l="${esc(sug)}" aria-label="Dismiss">${I.x}</button></div>`;
@@ -3776,6 +3788,18 @@ function renderExplore(e, tok) {
     box.innerHTML = groups.slice(0, 4).map(g => sec(g.title, `<div class="tiles">${g.items.map(b => `<div class="tile" style="${b.color ? `background:${argb(b.color)}` : `--h:${hue(b.title)}`}" data-a="ytcat" data-p="${esc(b.params)}" data-title="${esc(b.title)}" role="button" tabindex="0"><span>${esc(b.title)}</span></div>`).join('')}</div>`, { sub: 'From YouTube Music' })).join('');
   }).catch(() => { }));
   return html;
+}
+let langWarm = 0;
+function warmLangs() {
+  if (langWarm || !navigator.onLine || slowNet()) return; langWarm = 1;
+  const jobs = []; myLangs().slice(0, 2).forEach(L => langDefs(L).slice(0, 2).forEach(d => jobs.push(d[1])));
+  const next = async () => {
+    const f = jobs.shift(); if (!f) return;
+    if (Player.loading || document.hidden) { setTimeout(next, 2500); jobs.unshift(f); return; }
+    try { await f(); } catch (e) { }
+    setTimeout(next, 600);
+  };
+  if (window.requestIdleCallback) requestIdleCallback(next, { timeout: 6000 }); else setTimeout(next, 4000);
 }
 function langDefs(L) {
   return [
@@ -4062,6 +4086,7 @@ function renderSettings() {
       sLi({ icon: 'infinity', color: '#30d158', label: 'Autoplay similar songs', ctl: sSw('autoplay', s.autoplay) }) +
       sLi({ label: 'Resume after calls', hint: 'Music continues by itself when a phone call or alarm ends', ctl: sSw('autoResume', S.settings.autoResume !== false) }) +
       sLi({ label: 'Mix podcasts with songs', hint: 'Off keeps podcasts and songs in separate queues', ctl: sSw('mixPods', !!S.settings.mixPods) }) +
+      sLi({ label: 'Car Mode in landscape', hint: 'Phones switch to big Car Mode controls when turned sideways', ctl: sSw('landCar', S.settings.landCar) }) +
       sLi({ icon: 'timer', color: '#5e5ce6', label: 'Sleep Timer', value: timerVal, a: 'sleep', chev: true }) +
       sLi({ icon: 'speed', color: '#0a84ff', label: 'Music speed', value: Player.rate + '×', a: 'speed', chev: true }) +
       sLi({ icon: 'radio', color: '#ff375f', label: 'Region', ctl: `<select class="sel" data-set="country" aria-label="Region">${COUNTRIES.map(([c, n]) => `<option value="${c}" ${s.country === c ? 'selected' : ''}>${n}</option>`).join('')}</select>` })) +
@@ -4109,7 +4134,6 @@ function renderSettings() {
       sLi({ icon: 'ext', color: '#8e8e93', label: 'H24 Creationz on GitHub', a: 'openurl', extra: `data-u="${GITHUB_URL}"`, chev: true }) +
       sLi({ label: 'Version', value: VER + (IS_DESKTOP ? ' · Desktop' : IS_CAP ? ' · Android' : Server.ok ? ' · Home Server' : ' · Web') }) +
       sLi({ label: 'Shortcuts & gestures', a: 'keys', chev: true }),
-      sLi({ label: 'Car Mode in landscape', hint: 'Phones switch to big Car Mode controls when turned sideways', ctl: sSw('landCar', S.settings.landCar) }),
       `${TITLE} is free, with no account and no ads of its own. Lyrics: LRCLIB · Radio: Radio Browser · Podcasts: Apple Podcasts directory · Independent music: Audius.`) +
     '<div style="height:24px"></div>';
 }
@@ -4597,7 +4621,9 @@ function likeBurst() {
 }
 function bindGestures() {
   const art = $('#np-deck'); let px = null, py = 0, pdx = 0, pt = 0, horiz = false, dMoved = 0, lastTap = 0, dist = 300;
-  art.addEventListener('pointerdown', e => { if (e.target.closest('.yt-pill') || (e.target.closest('#ytbox') && ($('#np').classList.contains('needtap') || $('#np').classList.contains('ytfull'))) || (e.pointerType === 'mouse' && e.button !== 0)) return; px = e.clientX; py = e.clientY; pdx = 0; dMoved = 0; pt = Date.now(); horiz = false; });
+  art.addEventListener('dragstart', e => e.preventDefault());
+  art.querySelectorAll('img').forEach(i => { i.draggable = false; });
+  art.addEventListener('pointerdown', e => { if (e.pointerType === 'mouse' && e.button === 0 && !e.target.closest('.yt-pill,#ytbox')) e.preventDefault(); if (e.target.closest('.yt-pill') || (e.target.closest('#ytbox') && ($('#np').classList.contains('needtap') || $('#np').classList.contains('ytfull'))) || (e.pointerType === 'mouse' && e.button !== 0)) return; px = e.clientX; py = e.clientY; pdx = 0; dMoved = 0; pt = Date.now(); horiz = false; });
   art.addEventListener('pointermove', e => {
     if (px === null) return; const dx = e.clientX - px, dy = e.clientY - py; dMoved = Math.max(dMoved, Math.abs(dx), Math.abs(dy));
     if (!horiz && Math.abs(dx) > 10 && Math.abs(dx) > Math.abs(dy) * 1.2 && !Deck.busy) { horiz = true; dist = Deck.dist(); try { art.setPointerCapture(e.pointerId); } catch (x) { } }
