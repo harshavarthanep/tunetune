@@ -1355,3 +1355,58 @@ html{-webkit-text-size-adjust:100%;text-size-adjust:100%}
 .dlm .ic{width:17px;height:17px;stroke:initial}
 .dlpill .ic{background:none;padding:0;color:#1ed760;width:15px;height:15px}
 .dlpill.auto .ic{background:none;color:#a1a1a6}
+
+/* ================= v1.1: queue, toasts, Car Mode, equalizer size, spacing ================= */
+/* queue lists scroll from anywhere on a row (only the ☰ handle drags) */
+#np-q .qrow,#np-q .qrow *{touch-action:pan-y}
+#np-q .qh,#np-q .qh *{touch-action:none}
+#np-q .qrow:active,#np-q .qrow:active img{transform:none}
+#np-q{padding-right:12px;box-sizing:border-box}
+#qlist .qrow{padding-right:4px}
+.qbtns{display:flex;gap:8px}
+.qib{width:34px;height:34px;border-radius:50%;display:grid;place-items:center;background:rgba(255,255,255,.14);color:#fff;transition:background .2s}
+.qib:hover{background:rgba(255,255,255,.24)}
+.qib .ic{width:17px;height:17px}
+.qnow-h{margin-top:4px}
+.qchips{margin:12px 0 18px}
+/* touch screens use the phone's own thin scrollbar (no dark bars over the lyrics) */
+@media (pointer:coarse){.np-panel{scrollbar-width:none}.np-panel::-webkit-scrollbar{display:none}}
+#ly-tools{background:linear-gradient(to bottom,rgba(0,0,0,.22),rgba(0,0,0,0));border-radius:14px}
+/* toasts with a button: wide enough that the message reads in one or two lines */
+#toast.act{width:min(92vw,440px);box-sizing:border-box;padding:10px 10px 10px 16px}
+#toast.act span{flex:1;min-width:0;line-height:1.35}
+#toast .tact{white-space:nowrap}
+/* phones: player controls sit higher above the home indicator */
+@media (max-width:899px){.np-in{padding-bottom:calc(var(--sabx) + 16px)}}
+/* desktop: equalizer & audio quality open at a comfortable size */
+@media (min-width:700px) and (min-height:560px){
+  .sp:has(.eq),.sp:has(.aq){height:min(86vh,820px)}
+  .sp:has(.eq) > .sg,.sp:has(.aq) > .sg{flex:1;min-height:0}
+}
+/* Car Mode: the album sizes to its own area in every orientation; buttons never touch the edges */
+.dv-art{container-type:size;--A:min(80cqw,92cqh);--B:calc(var(--A) * .6)}
+#drive .dv-art #dv-art{width:var(--A);height:var(--A);will-change:transform;cursor:grab}
+#drive .dv-side{width:var(--B);height:var(--B)}
+#dv-prev{left:calc(50% - var(--A) / 2 - var(--B) * .72)}
+#dv-next{right:calc(50% - var(--A) / 2 - var(--B) * .72)}
+@media (orientation:portrait),(min-height:561px){
+  #drive{padding-left:calc(var(--sal) + 20px);padding-right:calc(var(--sar) + 20px)}
+  .dv-art{width:100%;flex:1;min-height:0}
+  .dv-c{gap:min(3.2vw,22px)}
+  .dv-c button{width:min(13vw,68px);height:min(13vw,68px)}
+  .dv-c button.big{width:min(21vw,96px);height:min(21vw,96px)}
+  .dv-c2{gap:min(5vw,26px)}
+  .dv-c2 button{width:min(12vw,54px);height:min(12vw,54px)}
+}
+@media (orientation:landscape) and (max-height:560px){
+  #drive{grid-template-columns:minmax(0,50%) 1fr}
+  .dv-art{--A:min(90cqw,90cqh)}
+}
+/* crown-style scrolling (Settings): lists settle on each item */
+html.crown .hs,html.crown .cg{scroll-snap-type:x mandatory}
+html.crown .hs > *,html.crown .cg > *{scroll-snap-align:start}
+html.crown #view{scroll-snap-type:y proximity}
+html.crown #view .row,html.crown .np-panel .qrow{scroll-snap-align:start}
+html.crown .np-panel{scroll-snap-type:y proximity}
+/* Ready offline card: the text opens the list */
+.saved-card .sc-t{cursor:pointer}

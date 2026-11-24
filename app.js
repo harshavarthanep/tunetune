@@ -264,7 +264,7 @@ const DEFAULTS = {
   pod: { follows: [], prog: {} }, stats: { plays: {}, days: {} },
   settings: { theme: 'auto', accent: '#ff375f', eqOn: false, eq: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0], eqPreset: 'Flat', eqCustom: [], eqPins: [], eqBoost: 0, eqPre: 0, eqBass: 0, eqTreble: 0, eqLoud: false, eqWidth: 1, autoplay: true, country: '', volume: 1, langs: null, quality: 'auto', mirror: '', server: '', saavn: '', proxy: '', ytPlayer: true, engine: 'auto', normalize: true, hideAppCard: false, apkUrl: '',
     crossfade: 0, preload: true, podSpeed: 1, podBack: 15, podFwd: 30, startTab: 'home', zoom: 1, motion: true, animBg: true, badge: true, haptics: true,
-    pauseHistory: false, hideExplicit: false, smartDl: false, lyricsSize: 'm', partyStyle: 'disco', partyBuzz: false, autoSave: true, autoSaveMax: 30, landCar: true,
+    pauseHistory: false, hideExplicit: false, smartDl: false, lyricsSize: 'm', tapSound: false, crown: false, partyStyle: 'disco', partyBuzz: false, autoSave: true, autoSaveMax: 30, landCar: true,
     homeSections: { mixes: true, langs: true, chart: true, following: true, radio: true, podcasts: true, free: true, moods: true } },
 };
 const S = (() => {
@@ -1485,6 +1485,29 @@ const Haptic = {
   },
 };
 const buzz = () => { if (S.settings.haptics !== false) Haptic.tap(8); };
+let fbCtx = null;
+function clickSound(kind) {
+  if (!S.settings.tapSound) return;
+  try {
+    const C = window.AudioContext || window.webkitAudioContext; if (!C) return;
+    fbCtx = fbCtx || new C(); if (fbCtx.state !== 'running') fbCtx.resume().catch(() => { });
+    const t0 = fbCtx.currentTime, o = fbCtx.createOscillator(), g = fbCtx.createGain();
+    const f = kind === 'tick' ? 2400 : kind === 'done' ? 880 : 1500, dur = kind === 'tick' ? 0.018 : kind === 'done' ? 0.12 : 0.035, vol = kind === 'tick' ? 0.05 : 0.08;
+    o.type = kind === 'done' ? 'sine' : 'triangle'; o.frequency.setValueAtTime(f, t0); if (kind === 'done') o.frequency.exponentialRampToValueAtTime(f * 1.5, t0 + dur);
+    g.gain.setValueAtTime(vol, t0); g.gain.exponentialRampToValueAtTime(0.0001, t0 + dur);
+    o.connect(g); g.connect(fbCtx.destination); o.start(t0); o.stop(t0 + dur + 0.02);
+  } catch (e) { }
+}
+function feedback(kind = 'tap') { if (S.settings.haptics !== false) Haptic.tap(kind === 'done' ? 18 : kind === 'tick' ? 4 : 9); clickSound(kind); }
+let crownPos = new WeakMap(), crownAt = 0;
+document.addEventListener('scroll', e => {
+  if (!S.settings.crown) return; const el = e.target === document ? document.scrollingElement : e.target; if (!el || !el.classList) return;
+  const horiz = el.matches && el.matches('.hs,.cg,.chips');
+  const step = horiz ? Math.max(80, (el.firstElementChild && el.firstElementChild.getBoundingClientRect().width) || 140) : 58;
+  const pos = Math.round((horiz ? el.scrollLeft : el.scrollTop) / step);
+  if (crownPos.get(el) !== pos) { const had = crownPos.has(el); crownPos.set(el, pos); if (had && Date.now() - crownAt > 45) { crownAt = Date.now(); feedback('tick'); } }
+}, { passive: true, capture: true });
+
 
 /* ================= Android app: native lock-screen controls + background service ================= */
 const NativeMS = (() => {
@@ -1603,6 +1626,7 @@ const Player = {
       this.loading = false; this.resumeTries = 0; this.failRun = 0; this.wantPlay = true; this.lastProgress = Date.now(); if (this.intrAt) { this.stopIntr(); }
       const hr = new Date().getHours();
       if ((hr >= 23 || hr < 4) && !this.sleepAt && !this.sleepEnd && S.lastNightTip !== dayKey() && S.settings.nightTip !== false && !document.hidden) { S.lastNightTip = dayKey(); save(); setTimeout(() => toast('Late night? Stop the music in 30 minutes', { label: 'Set', ms: 6000, fn: () => { try { Player.sleep(30); UI.timerBtn(); toast('Sleep timer: 30 minutes'); } catch (e) { } } }), 2500); }
+      try { this._seekOn = undefined; this.session(); this.seekBtns(!!(t && t.source === 'podcast')); } catch (e) { }
       if (t) { clearTimeout(this.metaT); this.metaT = setTimeout(() => { if (this.cur === t) { try { this.meta(t); } catch (e) { } } }, 600); }
       try { if ('mediaSession' in navigator) navigator.mediaSession.playbackState = 'playing'; } catch (e) { }
       if (/^(piped|inv):/.test(this.via)) MirrorHealth.good();
@@ -1825,7 +1849,7 @@ const Player = {
     }
     if (!src) return this.skipAfterFail(t);
     this.isBlob = blob;
-    const wantFx = (S.settings.eqOn || Party.react()) && !IS_IOS;
+    const wantFx = (S.settings.eqOn && !IS_IOS) || Party.react();
     if (!blob && wantFx && (S.settings.proxy || SITE.server) && /saavncdn\.com/.test(src)) src = JSA.relays()[0].wrap(src);
     let host = ''; try { host = new URL(src, location.href).host; } catch (e) { }
     const fx = !!(wantFx && !t.live && this.via !== 'preview' && (blob || !this.badCors.has(host)));
@@ -2119,6 +2143,8 @@ const Player = {
     const ms = navigator.mediaSession; const h = (n, f) => { try { ms.setActionHandler(n, f); } catch (e) { } };
     h('seekbackward', on ? d => this.seek(this.el.currentTime - ((d && d.seekOffset) || +S.settings.podBack || 15)) : null);
     h('seekforward', on ? d => this.seek(this.el.currentTime + ((d && d.seekOffset) || +S.settings.podFwd || 30)) : null);
+    h('previoustrack', on ? null : () => this.prev());
+    h('nexttrack', on ? null : () => this.next());
   },
   remotePlay() {
     const a = this.el; this.stopIntr && this.stopIntr();
@@ -2308,6 +2334,7 @@ let toastT;
 let toastFn = null;
 function toast(m, act) {
   const t = $('#toast'); if (!t) return;
+  if (/^(Added|Removed|Saved|Deleted|Downloaded|Cleared|Pinned|Unpinned|Renamed|Back in)/.test(String(m))) feedback('done');
   toastFn = act && act.fn ? act.fn : null;
   t.innerHTML = `<span>${esc(m)}</span>${act && act.fn ? `<button class="tact" data-a="toastact">${esc(act.label || 'Undo')}</button>` : ''}`;
   t.classList.toggle('act', !!toastFn); t.classList.add('on'); clearTimeout(toastT);
@@ -2319,14 +2346,14 @@ function toast(m, act) {
 const PARTY_STYLES = [['disco', 'Disco'], ['waves', 'Waves'], ['lasers', 'Lasers'], ['rings', 'Rings'], ['calm', 'Calm']];
 const Party = {
   on: false, raf: 0, tr: null, lastBeat: 0, avg: 0.2, lastTorch: 0, lastBuzz: 0, hue: 0, t0: 0, kick: 0, flash: 0, buf: null, lock: null, dots: null,
-  react() { return this.on && !IS_IOS; },
+  react() { return this.on; },
   real() { return !!(Player.an && Player.el === Player.fx && Player.loaded && !Player.el.paused); },
   open() {
     if (this.on || !Player.cur) return; this.on = true; this.t0 = performance.now();
     const st = S.settings; st.partyStyle = st.partyStyle || 'disco';
     const d = document.createElement('div'); d.id = 'party';
     d.innerHTML = `<canvas id="pcv"></canvas><div class="p-glow"></div>
-      <div class="p-top"><button class="p-x" data-a="partyx" aria-label="Exit Party Mode">${I.chevDown}</button><span class="p-tag" id="p-tag"></span><button class="p-x" data-a="partyfs" aria-label="Full screen">${I.expand}</button></div>
+      <div class="p-top"><button class="p-x" data-a="partyx" aria-label="Exit Party Mode">${I.chevDown}</button><span class="p-tag" id="p-tag"></span><button class="p-x" data-a="partyx" aria-label="Close Party Mode">${I.x}</button></div>
       <div class="p-mid"><div class="p-disc" id="p-disc"><img id="p-art" alt=""><span class="p-hole"></span></div>
         <div class="p-t" id="p-t"></div><div class="p-a" id="p-a"></div></div>
       <div class="p-ctl"><button data-a="prev" aria-label="Previous">${I.prev}</button><button class="big" data-a="toggle" id="p-pp" aria-label="Play or pause">${I.pause}</button><button data-a="next" aria-label="Next">${I.next}</button></div>
@@ -2347,20 +2374,23 @@ const Party = {
     try { if (document.fullscreenElement) document.exitFullscreen(); } catch (e) { }
     const d = $('#party'); if (d) { d.classList.remove('on'); setTimeout(() => d.remove(), 420); }
     if (Player.filters.length) Player.applyEq();
+    if (IS_IOS && Player.el === Player.fx && Player.loaded) setTimeout(() => Player.reroute(), 300);
   },
   ui() {
     const t = Player.cur, d = $('#party'); if (!t || !d) return;
     const a = $('#p-art'), u = artOf(t, true); if (a.getAttribute('src') !== u) { delete a.dataset.fb; a.src = u; }
     $('#p-t').textContent = t.title; $('#p-a').textContent = t.artist;
     $('#p-pp').innerHTML = Player.loaded && !Player.el.paused ? I.pause : I.play;
-    $('#p-tag').textContent = IS_IOS || Player.el === Embed ? 'Lights follow the beat' : this.real() ? 'Lights react to the music' : 'Lights follow the beat';
+    $('#p-tag').textContent = Player.el === Embed ? 'Lights follow the beat' : this.real() ? 'Lights react to the music' : 'Lights follow the beat';
   },
   size() { const c = $('#pcv'); if (!c) return; const r = Math.min(2, devicePixelRatio || 1) * (innerWidth * innerHeight > 1.5e6 ? 0.6 : 0.8); c.width = Math.round(innerWidth * r); c.height = Math.round(innerHeight * r); this.dots = null; },
   levels(now) {
     if (this.real()) {
       const an = Player.an; if (!this.buf || this.buf.length !== an.frequencyBinCount) this.buf = new Uint8Array(an.frequencyBinCount);
       an.getByteFrequencyData(this.buf); const b = this.buf, avg = (a, z) => { let s2 = 0; for (let i = a; i < z; i++) s2 += b[i]; return s2 / (z - a) / 255; };
-      return { bass: avg(1, 7), mid: avg(7, 60), high: avg(60, 200), spec: b, real: true };
+      let flux = 0; const pv = this.prevBuf || (this.prevBuf = new Uint8Array(b.length));
+      for (let i = 1; i < 170; i++) { const d = b[i] - pv[i]; if (d > 0) flux += d * (i < 12 ? 1.6 : 1); } pv.set(b); flux /= 255 * 170;
+      return { bass: avg(1, 7), mid: avg(7, 60), high: avg(60, 200), spec: b, real: true, flux };
     }
     const playing = Player.loaded && !Player.el.paused, t = (now - this.t0) / 1000, bpm = 118, ph = (t * bpm / 60) % 1;
     if (!playing) return { bass: 0.08, mid: 0.1 + 0.05 * Math.sin(t), high: 0.06, real: false };
@@ -2382,8 +2412,13 @@ const Party = {
     if (document.hidden) return;
     const L = this.levels(now), t = (now - this.t0) / 1000, style = S.settings.partyStyle || 'disco', calm = style === 'calm';
     this.avg = this.avg * 0.93 + L.bass * 0.07;
-    if (L.bass > this.avg * 1.28 && L.bass > 0.32 && now - this.lastBeat > 290) { this.lastBeat = now; this.beat(now); }
-    this.kick *= 0.88; this.flash *= 0.85; this.hue = (this.hue + (calm ? 0.15 : 0.35 + L.bass * 1.6)) % 360;
+    this.mel = (this.mel || 0) * 0.9 + L.mid * 0.1;
+    if (L.real) {
+      const H = this.fh || (this.fh = []); H.push(L.flux); if (H.length > 43) H.shift();
+      const m = H.reduce((a, b) => a + b, 0) / H.length, sd = Math.sqrt(H.reduce((a, b) => a + (b - m) * (b - m), 0) / H.length);
+      if (L.flux > m + 1.45 * sd && L.flux > 0.012 && now - this.lastBeat > 240) { this.lastBeat = now; this.beat(now); }
+    } else if (L.bass > this.avg * 1.28 && L.bass > 0.32 && now - this.lastBeat > 290) { this.lastBeat = now; this.beat(now); }
+    this.kick *= 0.88; this.flash *= 0.85; this.hue = (this.hue + (calm ? 0.15 : 0.25 + L.bass * 1.2 + this.mel * 2.2)) % 360;
     const disc0 = document.getElementById('p-disc'); if (disc0) disc0.style.setProperty('--k', String((1 + this.kick * (calm ? 0.02 : 0.07) + L.bass * 0.03).toFixed(3)));
     const c = $('#pcv'); if (!c) return; const g = c.getContext && c.getContext('2d'); if (!g) return;
     const W = c.width, H = c.height;
@@ -2633,14 +2668,14 @@ function renderQueue() {
   box.innerHTML = `${prev.length ? `<div class="q-h qprev-h"><div><b>Previously Played</b><small>${plural(prev.length, 'song')} · tap one to play it again</small></div></div>
     <div id="qprev">${prev.map((t, k) => { const qi = pOff + k; return `<div class="qrow qprev" data-a="qjump" data-q="${qi}" role="button" tabindex="0"><img src="${esc(artOf(t))}" alt="" class="${t.live ? 'logo' : ''}" loading="lazy">
       <div class="qt"><div>${esc(t.title)}</div><div class="s">${esc(t.artist)}</div></div></div>`; }).join('')}</div>` : ''}
+    <div class="q-h qnow-h"><div><b>Now Playing</b></div></div>
+    <div class="qrow qcur"><span class="qart"><img src="${esc(artOf(c))}" alt="" class="${c.live ? 'logo' : ''}"><span class="eqbars ${Player.loaded && !Player.el.paused ? '' : 'paused'}"><i></i><i></i><i></i></span></span>
+      <div class="qt"><div>${esc(c.title)}</div><div class="s">${esc(c.artist)}</div></div></div>
     <div class="qchips">
       <button class="qchip ${Player.shuffle ? 'on' : ''}" data-a="shuffle">${I.shuffle}Shuffle</button>
       <button class="qchip ${Player.repeat !== 'off' ? 'on' : ''}" data-a="repeat">${Player.repeat === 'one' ? I.repeat1 : I.repeat}Repeat</button>
       <button class="qchip ${S.settings.autoplay ? 'on' : ''}" data-a="autoplay">${I.infinity}Autoplay</button></div>
-    <div class="q-h"><div><b>Now Playing</b></div></div>
-    <div class="qrow qcur"><span class="qart"><img src="${esc(artOf(c))}" alt="" class="${c.live ? 'logo' : ''}"><span class="eqbars ${Player.loaded && !Player.el.paused ? '' : 'paused'}"><i></i><i></i><i></i></span></span>
-      <div class="qt"><div>${esc(c.title)}</div><div class="s">${esc(c.artist)}</div></div></div>
-    <div class="q-h"><div><b>Playing Next</b><small>${up.length ? plural(up.length, 'song') : 'Nothing queued'}${Player.from ? ' from ' + esc(Player.from) : ''}</small></div>${up.length ? '<div class="qbtns"><button data-a="qsave">Save</button><button data-a="qclear">Clear</button></div>' : ''}</div>
+    <div class="q-h"><div><b>Playing Next</b><small>${up.length ? plural(up.length, 'song') : 'Nothing queued'}${Player.from ? ' from ' + esc(Player.from) : ''}</small></div>${up.length ? `<div class="qbtns"><button class="qib" data-a="qsave" aria-label="Save as playlist" title="Save as playlist">${I.plus}</button><button class="qib" data-a="qclearask" aria-label="Clear Playing Next" title="Clear Playing Next">${I.trash}</button></div>` : ''}</div>
     <div id="qlist">${up.map((t, k) => {
       const qi = Player.i + 1 + k;
       return `<div class="qrow qnext" data-q="${qi}"><img src="${esc(artOf(t))}" alt="" class="${t.live ? 'logo' : ''}" loading="lazy">
@@ -2652,7 +2687,7 @@ function renderQueue() {
   revealImgs();
   if (keepTop !== null) box.scrollTop = keepTop;
   else {
-    box.dataset.cur = c.id; const pr = box.querySelectorAll('.qprev'); const peek = pr.length ? pr[Math.max(0, pr.length - 2)] : null; const ch = box.querySelector('.qchips');
+    box.dataset.cur = c.id; const pr = box.querySelectorAll('.qprev'); const peek = pr.length ? pr[Math.max(0, pr.length - 2)] : null; const ch = box.querySelector('.qnow-h');
     const go = () => { const tgt = peek || ch; if (tgt) box.scrollTop = Math.max(0, tgt.offsetTop - (peek ? 34 : 6)); };
     go(); (window.requestAnimationFrame || (f => setTimeout(f, 16)))(go);
   }
@@ -2894,9 +2929,21 @@ function openDrive() {
   document.body.appendChild(d); requestAnimationFrame(() => d.classList.add('on')); UI.drive(); UI.time();
   const clock = () => { const c = $('#dv-clock'); if (c) c.textContent = new Date().toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }); };
   clock(); d._clock = setInterval(clock, 15000);
-  let sx = null; const art = $('#dv-artw');
-  art.addEventListener('pointerdown', e => { sx = e.clientX; });
-  art.addEventListener('pointerup', e => { if (sx === null) return; const dx = e.clientX - sx; sx = null; if (Math.abs(dx) > 60) { buzz(); dx < 0 ? Player.next() : Player.prev(); } });
+  let sx = null, sy = 0, dxl = 0, hz = false; const art = $('#dv-artw'), img = $('#dv-art');
+  art.style.touchAction = 'none';
+  art.addEventListener('dragstart', e => e.preventDefault());
+  art.addEventListener('pointerdown', e => { sx = e.clientX; sy = e.clientY; dxl = 0; hz = false; if (e.pointerType === 'mouse') e.preventDefault(); });
+  art.addEventListener('pointermove', e => {
+    if (sx === null) return; const dx = e.clientX - sx, dy = e.clientY - sy;
+    if (!hz && Math.abs(dx) > 7 && Math.abs(dx) > Math.abs(dy) * 0.9) { hz = true; img.style.transition = 'none'; try { art.setPointerCapture(e.pointerId); } catch (x) { } }
+    if (hz) { dxl = dx; img.style.transform = `translate3d(${dx}px,0,0) rotate(${dx / 40}deg) scale(${1 - Math.min(0.12, Math.abs(dx) / 1600)})`; }
+  });
+  const dEnd = e => {
+    if (sx === null) return; sx = null; img.style.transition = 'transform .32s cubic-bezier(.25,.95,.3,1)'; img.style.transform = '';
+    if (hz && Math.abs(dxl) > Math.min(90, art.clientWidth * 0.2)) { buzz(); dxl < 0 ? Player.next() : Player.prevTrack(); }
+    hz = false; setTimeout(() => { img.style.transition = ''; }, 340);
+  };
+  art.addEventListener('pointerup', dEnd); art.addEventListener('pointercancel', dEnd); art.addEventListener('lostpointercapture', e => { if (e.target === art) dEnd(e); });
   try { if (navigator.wakeLock) navigator.wakeLock.request('screen').then(l => { d._lock = l; }).catch(() => { }); } catch (e) { }
 }
 async function lyrTranslate() {
@@ -3561,7 +3608,7 @@ function applyTheme() {
   const dark = s === 'dark' || (s === 'auto' && matchMedia('(prefers-color-scheme: dark)').matches);
   const r = document.documentElement; r.dataset.theme = dark ? 'dark' : 'light'; r.style.setProperty('--accent', S.settings.accent);
   const st = S.settings;
-  r.classList.toggle('still', !st.motion); r.classList.toggle('nobg', !st.animBg); r.classList.toggle('nobadge', !st.badge);
+  r.classList.toggle('still', !st.motion); r.classList.toggle('crown', !!st.crown); r.classList.toggle('nobg', !st.animBg); r.classList.toggle('nobadge', !st.badge);
   r.dataset.lyr = st.lyricsSize || 'm';
   r.style.setProperty('--zoom', String(+st.zoom || 1));
   const m = $('meta[name="theme-color"]'); if (m) m.setAttribute('content', dark ? '#000000' : '#ffffff');
@@ -3857,6 +3904,7 @@ function madeForYou() {
 const KINDS = {
   liked: { title: 'Favorite Songs', icon: 'heartFill', get: () => S.liked.filter(t => !t.live), empty: { icon: 'heart', t: 'No favorites yet', d: 'Tap the heart on any song to keep it here.' } },
   stations: { title: 'Saved Stations', icon: 'radio', get: () => S.liked.filter(t => t.live), empty: { icon: 'radio', t: 'No saved stations', d: 'Save live stations from their ••• menu to find them fast.' } },
+  saved: { title: 'Ready Offline', icon: 'download', get: () => (S.cached || []), empty: { icon: 'download', t: 'Nothing saved yet', d: 'The songs you play are kept here so they play without internet.' } },
   offline: { title: 'Offline Mix', icon: 'shuffle', get: () => offlineList(), empty: { icon: 'download', t: 'Nothing saved yet', d: 'Downloads and the songs you play are kept here so they play without internet.' } },
   downloads: { title: 'Downloaded', icon: 'download', get: () => S.downloads, empty: { icon: 'download', t: 'No downloads', d: 'Download songs from their ••• menu to play them offline, even in airplane mode.' } },
   locals: { title: 'On This Device', icon: 'folder', get: () => S.locals, empty: { icon: 'folder', t: 'No device music', d: 'Add MP3, M4A, FLAC, WAV or OGG files from this phone or computer.', btn: ['import', 'Add Music Files'] } },
@@ -3887,7 +3935,7 @@ function renderHome(e, tok) {
   }
   setTimeout(warmLangs, 2500);
   const sv = (S.cached || []).filter(t => S.settings.mixPods || t.source !== 'podcast');
-  if (S.settings.savedCard !== false && sv.length >= 3) html += `<div class="saved-card"><div class="sc-arts">${sv.slice(0, 3).map(t => `<img src="${esc(artOf(t))}" alt="">`).join('')}</div><div class="sc-t"><b>Ready offline</b><span>Your last ${plural(sv.length, 'song')} — plays without internet</span></div><button class="np-ib" data-a="savedplay" aria-label="Play in order">${I.play}</button><button class="np-ib" data-a="savedshuf" aria-label="Shuffle">${I.shuffle}</button></div>`;
+  if (S.settings.savedCard !== false && sv.length >= 3) html += `<div class="saved-card"><div class="sc-arts">${sv.slice(0, 3).map(t => `<img src="${esc(artOf(t))}" alt="">`).join('')}</div><div class="sc-t" data-a="go" data-v="coll" data-k="saved" role="button" tabindex="0"><b>Ready offline ›</b><span>Your last ${plural(sv.length, 'song')} — plays without internet</span></div><button class="np-ib" data-a="savedplay" aria-label="Play in order">${I.play}</button><button class="np-ib" data-a="savedshuf" aria-label="Shuffle">${I.shuffle}</button></div>`;
   const sug = langSuggest(); if (sug) html += `<div class="lang-sug"><span>You’ve been listening to a lot of <b>${esc(sug)}</b> music</span><button class="fb pri" data-a="addlang" data-l="${esc(sug)}">Add ${esc(sug)}</button><button class="nudge-x" data-a="nolang" data-l="${esc(sug)}" aria-label="Dismiss">${I.x}</button></div>`;
   const langs = myLangs();
   html += `<div class="chips pg">${langs.map(L => `<button class="chip" data-a="lang" data-l="${esc(L)}">${esc(L)}</button>`).join('')}<button class="chip ghost" data-a="langs">${I.plus}Languages</button></div>`;
@@ -4247,6 +4295,8 @@ function renderSettings() {
       sLi({ label: 'Resume after calls', hint: 'Music continues by itself when a phone call or alarm ends', ctl: sSw('autoResume', S.settings.autoResume !== false) }) +
       sLi({ label: 'Mix podcasts with songs', hint: 'Off keeps podcasts and songs in separate queues', ctl: sSw('mixPods', !!S.settings.mixPods) }) +
       (IS_CAP || window.ttDesktop ? sLi({ label: 'Remind me after 3 days away', hint: 'A gentle notification if you haven’t listened for a while', ctl: sSw('remind3', S.settings.remind3 !== false) }) + '' : '') +
+      sLi({ label: 'Click sounds', hint: 'A soft tick when you tap, like, add or delete', ctl: sSw('tapSound', !!S.settings.tapSound) }) +
+      sLi({ label: 'Crown-style scrolling', hint: 'Lists snap into place with a tick as you scroll, like an Apple Watch', ctl: sSw('crown', !!S.settings.crown) }) +
       sLi({ label: 'Car Mode in landscape', hint: 'Phones switch to big Car Mode controls when turned sideways', ctl: sSw('landCar', S.settings.landCar) }) +
       sLi({ icon: 'timer', color: '#5e5ce6', label: 'Sleep Timer', value: timerVal, a: 'sleep', chev: true }) +
       sLi({ icon: 'speed', color: '#0a84ff', label: 'Music speed', value: Player.rate + '×', a: 'speed', chev: true }) +
@@ -4400,6 +4450,7 @@ const Actions = {
     const qi0 = +d.q, gone = Player.queue[qi0]; Player.removeAt(qi0);
     if (gone) toast(`Removed “${gone.title}”`, { label: 'Undo', fn: () => { const at = Math.min(qi0, Player.queue.length); Player.queue.splice(at, 0, gone); if (at <= Player.i) Player.i++; qRefresh(); toast('Back in the queue'); } });
   }, qclear() { Player.clearUpNext(); },
+  qclearask() { const n = Player.queue.length - Player.i - 1; confirmSheet(`Clear Playing Next?`, `${plural(n, 'song')} will be removed from the queue. The song playing now keeps playing.`, 'Clear', () => { Player.clearUpNext(); feedback('done'); toast('Cleared Playing Next'); }); },
   lyseek(el, d) { Player.seek(+d.t); lyrHold = 0; },
   eq() { openEQ(); }, sleep() { sleepMenu(); }, speed() { speedMenu(); },
   eqp(el, d) {
@@ -4496,7 +4547,7 @@ const Actions = {
   keys() { showKeys(); },
   dlinfo() {
     const t = Player.cur; if (!t) return; const dl = isDl(t.id);
-    toast(dl ? 'Downloaded — plays without internet. Find it in Library → Downloaded.' : 'Saved for offline — one of your last songs kept on this device, so it plays without internet.', { label: dl ? 'View' : 'Offline Mix', ms: 5000, fn: () => { if (dl) { closeNP(); setTimeout(() => go('coll', { k: 'downloads', title: 'Downloaded' }), 380); } else playOffline('mix'); } });
+    toast(dl ? 'Downloaded · plays without internet' : 'Saved for offline · plays without internet', { label: dl ? 'View' : 'Offline Mix', ms: 5000, fn: () => { if (dl) { closeNP(); setTimeout(() => go('coll', { k: 'downloads', title: 'Downloaded' }), 380); } else playOffline('mix'); } });
   },
   savedplay() { playOffline('saved-order'); }, savedshuf() { playOffline('saved'); },
   addlang(el, d) { S.settings.langs = [...myLangs().filter(x => x !== d.l), d.l]; save(); mem.clear(); softRender(); toast(`${d.l} added to your languages`); },
@@ -4631,7 +4682,7 @@ document.addEventListener('click', e => {
   const el = e.target.closest('[data-a]'); if (!el) return;
   const A = Actions[el.dataset.a]; if (!A) return;
   e.preventDefault();
-  if (el.matches('.np-ib,.lyb,.pchip,.popt,.qchip,.chip,.eq-ed,.nb-btn,.pill,.fb,#np-pp,.np-c button,.dv-c button,.dv-c2 button,.p-ctl button')) { el.classList.remove('pop'); void el.offsetWidth; el.classList.add('pop'); setTimeout(() => el.classList.remove('pop'), 420); }
+  if (el.matches('.np-ib,.lyb,.pchip,.popt,.qchip,.qib,.chip,.eq-ed,.nb-btn,.pill,.fb,#np-pp,.np-c button,.dv-c button,.dv-c2 button,.p-ctl button,.sa,.m-btn')) { el.classList.remove('pop'); void el.offsetWidth; el.classList.add('pop'); setTimeout(() => el.classList.remove('pop'), 420); feedback('tap'); }
   let snap = null, sel = '';
   try { if (el.closest(HSEL + ',.sg')) { snap = scrollSnap(); sel = selOf(el); reveal(el); } } catch (x) { snap = null; }
   A(el, el.dataset, e);
@@ -4681,7 +4732,8 @@ document.addEventListener('change', e => {
   else if (t.dataset && t.dataset.set && t.dataset.set.startsWith('home.')) { S.settings.homeSections[t.dataset.set.slice(5)] = t.checked; save(); buzz(); }
   else if (t.dataset && t.dataset.set) {
     const k = t.dataset.set; S.settings[k] = t.type === 'checkbox' ? t.checked : t.type === 'range' ? +t.value : t.value; save(); buzz();
-    if (['motion', 'animBg', 'badge'].includes(k)) applyTheme();
+    if (['motion', 'animBg', 'badge', 'crown'].includes(k)) applyTheme();
+    if (k === 'tapSound' && t.checked) setTimeout(() => clickSound('done'), 30);
     if (k === 'normalize') Player.applyVol();
     if (k === 'remind3') { if (window.ttDesktop && window.ttDesktop.setRemind) window.ttDesktop.setRemind(t.checked); const LN = Native.plug('LocalNotifications'); if (!t.checked && LN) LN.cancel({ notifications: [{ id: 7301 }] }).catch(() => { }); else Native.remind(); }
     if (k === 'autoplay') toast(t.checked ? 'Autoplay on' : 'Autoplay off');
