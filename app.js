@@ -12,8 +12,8 @@ const VER = '1.1';
 // so EVERYONE who opens your website gets clean, ad-free JioSaavn audio with no setup.
 const BUILT_IN_SERVER = '';
 // ✏️ Links shown in Settings → More from H24 Creationz
-const PRODUCTS_URL = 'https://harshavarthanep.github.io/h24-products/';
-const GITHUB_URL = 'https://github.com/harshavarthanep';
+const PRODUCTS_URL = 'https://harshavarthanep.github.io/products/';
+const GITHUB_URL = '';
 const TAGLINE = 'YouTube Music-style search · JioSaavn-quality sound · Apple Music-style design';
 const KEY = 'tunetune.v1';
 const YEAR = new Date().getFullYear();
