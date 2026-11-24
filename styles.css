@@ -1403,11 +1403,6 @@ html{-webkit-text-size-adjust:100%;text-size-adjust:100%}
   .dv-art{--A:min(90cqw,90cqh)}
 }
 /* crown-style scrolling (Settings): lists settle on each item */
-html.crown .hs,html.crown .cg{scroll-snap-type:x mandatory}
-html.crown .hs > *,html.crown .cg > *{scroll-snap-align:start}
-html.crown #view{scroll-snap-type:y proximity}
-html.crown #view .row,html.crown .np-panel .qrow{scroll-snap-align:start}
-html.crown .np-panel{scroll-snap-type:y proximity}
 /* Ready offline card: the text opens the list */
 .saved-card .sc-t{cursor:pointer}
 
@@ -1474,9 +1469,6 @@ html,body{touch-action:manipulation}
 .tab.on .ic{animation:tabIn .38s cubic-bezier(.3,1.6,.5,1)}
 @keyframes tabIn{0%{transform:scale(.8)}60%{transform:scale(1.12)}100%{transform:scale(1)}}
 /* haptic scroll: lists glide, then settle with a small bump */
-html.crown #view,html.crown .np-panel,html.crown .hs{scroll-behavior:smooth}
-.land{animation:land .38s cubic-bezier(.3,1.5,.5,1)}
-@keyframes land{0%{transform:translateY(0)}35%{transform:translateY(-3px)}100%{transform:none}}
 /* ready offline card */
 .sc-ic{flex:none;width:34px;height:34px;border-radius:10px;display:grid;place-items:center;color:#fff;background:linear-gradient(135deg,var(--accent),#bf5af2)}
 .sc-ic .ic{width:19px;height:19px}
@@ -1490,3 +1482,39 @@ body.partying .greet .streak{animation:heartPop .6s infinite}
 .qbtns{align-items:center}
 .qib{flex:none;padding:0}
 .q-h{align-items:center}
+
+/* ================= v1.1: scrolling, logo animation, polish ================= */
+/* phones: while lyrics or the queue are open, the hidden album art can never catch your finger */
+@media (max-width:899px),(orientation:landscape) and (max-height:560px){
+  #np.p-lyr .np-art,#np.p-q .np-art,#np.p-lyr .np-art *,#np.p-q .np-art *{visibility:hidden!important;pointer-events:none!important}
+  .np-panel,.np-panel *{touch-action:pan-y}
+  #np-q .qh,#np-q .qh *{touch-action:none}
+}
+/* logo opening: pieces slide and drop into place, the note pops */
+.sp-mark .lg-a1,.sp-mark .lg-a2,.sp-mark .lg-b1,.sp-mark .lg-b2,.sp-mark .lg-n{transform-box:fill-box;stroke-dasharray:none;stroke-dashoffset:0}
+.sp-mark .lg-a1{transform:translateX(-40px);opacity:0;animation:lgIn .36s .04s cubic-bezier(.2,.9,.3,1) forwards}
+.sp-mark .lg-b1{transform:translateX(40px);opacity:0;animation:lgIn .36s .12s cubic-bezier(.2,.9,.3,1) forwards}
+.sp-mark .lg-a2{transform-origin:50% 0;transform:scaleY(0);animation:lgDrop .3s .26s cubic-bezier(.3,1.3,.5,1) forwards}
+.sp-mark .lg-b2{transform-origin:50% 0;transform:scaleY(0);animation:lgDrop .3s .34s cubic-bezier(.3,1.3,.5,1) forwards}
+.sp-mark .lg-n{transform-origin:50% 50%;transform:scale(0);animation:lgPop .4s .5s cubic-bezier(.3,1.8,.5,1) forwards}
+@keyframes lgIn{to{transform:none;opacity:1}}
+@keyframes lgDrop{to{transform:none}}
+/* timer: only the hand turns */
+.ic.tmr .tm-hand{transform-box:view-box;transform-origin:12px 13.5px}
+.on .ic.tmr .tm-hand,.slpill.on .ic.tmr .tm-hand{animation:tmHand 4s linear infinite}
+#np-btimer.on .ic,.slpill.on .ic,#dv-sleep.on .ic{animation:none}
+@keyframes tmHand{to{transform:rotate(360deg)}}
+/* no shadow behind the album art */
+#np #np-img,#np .np-art .dk,#np .np-art img{box-shadow:none!important}
+/* bigger ⋯ menu on desktop */
+@media (min-width:900px){#np .np-top .np-ib,#np [data-a="npmore"]{width:44px;height:44px}#np [data-a="npmore"] .ic{width:28px;height:28px}}
+/* landscape phones: album art sized to fit comfortably */
+@media (orientation:landscape) and (max-height:560px){
+  #np .np-art{--S:min(32vw,calc(100vh - var(--sat) - var(--sabx) - 70px));--D:calc(50cqw - min(32vw,calc(100vh - var(--sat) - var(--sabx) - 70px)) * .3)}
+}
+/* offline pill & icons in the accent colour */
+.dlpill.auto .ic{color:var(--accent)}
+.dlpill .ic{color:#1ed760}
+.slpill{order:0}
+/* queue action buttons: clean icons, centred */
+.qib .ic{width:19px;height:19px;stroke-width:2}

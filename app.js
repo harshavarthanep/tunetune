@@ -8,11 +8,11 @@
 const TITLE = 'Tune Tune';
 const APP = 'TuneTune';
 const VER = '1.1';
-const LOGO_MARK = '<g fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path class="lg-a1" d="M16 24H52" stroke-width="11"/><path class="lg-a2" d="M34 24V66" stroke-width="11"/><path class="lg-b1" d="M50 44H84" stroke-width="11"/><path class="lg-b2" d="M67 44V80" stroke-width="11"/></g><circle class="lg-n" cx="26.5" cy="71" r="10.5" fill="currentColor"/>';
+const LOGO_MARK = '<g fill="currentColor"><path class="lg-a1" d="M18.5 18H60L53.5 31H18.5a6.5 6.5 0 0 1 0-13Z"/><rect class="lg-a2" x="28" y="24" width="13" height="44" rx="6.5"/><path class="lg-b1" d="M52 40H81.5a6.5 6.5 0 0 1 0 13H45.5Z"/><rect class="lg-b2" x="60" y="46" width="13" height="38" rx="6.5"/><g class="lg-n"><ellipse cx="29" cy="70" rx="12.5" ry="9.5" transform="rotate(-25 29 70)"/></g></g>';
 const logoSvg = (cls = '') => `<svg class="tt-logo ${cls}" viewBox="0 0 100 100" aria-hidden="true">${LOGO_MARK}</svg>`;
 // ✏️ OPTIONAL — paste your music-server address between the quotes (e.g. 'https://tunetune.yourname.workers.dev')
 // so EVERYONE who opens your website gets clean, ad-free JioSaavn audio with no setup.
-const BUILT_IN_SERVER = 'https://tunetune.harshavarthan-e.workers.dev';
+const BUILT_IN_SERVER = '';
 // ✏️ Links shown in Settings → More from H24 Creationz
 const PRODUCTS_URL = 'https://harshavarthanep.github.io/products/';
 const GITHUB_URL = 'https://github.com/harshavarthanep';
@@ -175,17 +175,18 @@ const I = {
   chevL: svg(P('M15 5l-7 7 7 7', 2.6)),
   chevR: svg(P('M9 5l7 7-7 7', 2.2)),
   plus: svg(P('M12 5v14M5 12h14', 2.4)),
+  pladd: svg(P('M4 6.5h11M4 11.5h11M4 16.5h7M18 13v7M14.5 16.5h7', 2)),
   minus: svg(P('M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18zM8 12h8', 1.9)),
   download: svg(P('M12 4v11M7.5 10.5L12 15l4.5-4.5M5 19.5h14')),
   dlok: svg('<circle cx="12" cy="12" r="10"/><path d="M12 7v9M8 12.5l4 4 4-4" fill="none" stroke="#fff" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/>'),
   queue: svg(P('M4 6h16M4 11h16M4 16h9') + '<path d="M16 14v7l5-3.5z"/>'),
   playNext: svg(P('M4 6h10M4 11h10M4 16h6') + '<path d="M15 13v7l5.5-3.5z"/>'),
   lyrics: svg(P('M4 5h16a1 1 0 0 1 1 1v10a1 1 0 0 1-1 1H9.5L5 20.5V17H4a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1zM8 9.5h8M8 12.5h5', 1.9)),
-  timer: svg(P('M12 21a8 8 0 1 0 0-16 8 8 0 0 0 0 16zM12 9v4.5l2.5 1.5M9.5 2.5h5')),
+  timer: `<svg class="ic tmr" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="13.5" r="8"/><path d="M9.5 2.8h5M12 2.8v2.7M18.6 6.9l1.2-1.2"/><path class="tm-hand" d="M12 13.5V9"/></svg>`,
   eq: svg(P('M5 3v18M12 3v18M19 3v18', 1.5) + '<circle cx="5" cy="15" r="2.6"/><circle cx="12" cy="8" r="2.6"/><circle cx="19" cy="13" r="2.6"/>'),
   share: svg(P('M12 3v12M8 7l4-4 4 4M7 10H6a1.5 1.5 0 0 0-1.5 1.5v8A1.5 1.5 0 0 0 6 21h12a1.5 1.5 0 0 0 1.5-1.5v-8A1.5 1.5 0 0 0 18 10h-1')),
   trash: svg(P('M4 7h16M9 7V4.5h6V7M6.5 7l1 13h9l1-13M10 11v5.5M14 11v5.5')),
-  gear: svg(P('M12 15.2a3.2 3.2 0 1 0 0-6.4 3.2 3.2 0 0 0 0 6.4z', 1.8) + P('M19.4 13.5l1.6 1.2-2 3.4-1.9-.7a7.6 7.6 0 0 1-2 1.2l-.3 2h-3.9l-.3-2a7.6 7.6 0 0 1-2-1.2l-1.9.7-2-3.4 1.6-1.2a7.5 7.5 0 0 1 0-3l-1.6-1.2 2-3.4 1.9.7a7.6 7.6 0 0 1 2-1.2l.3-2h3.9l.3 2a7.6 7.6 0 0 1 2 1.2l1.9-.7 2 3.4-1.6 1.2a7.5 7.5 0 0 1 0 3z', 1.8)),
+  gear: `<svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" aria-hidden="true"><path d="M10.3 2.6h3.4l.5 2.6a7.3 7.3 0 0 1 1.9 1.1l2.5-.9 1.7 2.9-2 1.7a7.4 7.4 0 0 1 0 2.2l2 1.7-1.7 2.9-2.5-.9a7.3 7.3 0 0 1-1.9 1.1l-.5 2.6h-3.4l-.5-2.6a7.3 7.3 0 0 1-1.9-1.1l-2.5.9-1.7-2.9 2-1.7a7.4 7.4 0 0 1 0-2.2l-2-1.7 1.7-2.9 2.5.9a7.3 7.3 0 0 1 1.9-1.1z"/><circle cx="12" cy="12" r="3"/></svg>`,
   music: svg(P('M9 18V6l11-2v12') + '<circle cx="6.5" cy="18" r="2.6"/><circle cx="17.5" cy="16" r="2.6"/>'),
   x: svg(P('M6 6l12 12M18 6L6 18', 2.6)),
   folder: svg(P('M3.5 7V18a1.5 1.5 0 0 0 1.5 1.5h14a1.5 1.5 0 0 0 1.5-1.5V9a1.5 1.5 0 0 0-1.5-1.5h-7L10 5H5A1.5 1.5 0 0 0 3.5 6.5z')),
@@ -1504,8 +1505,7 @@ function clickSound(kind) {
   } catch (e) { }
 }
 function feedback(kind = 'tap') { if (S.settings.haptics !== false) Haptic.tap(kind === 'done' ? 18 : kind === 'tick' ? 4 : 9); clickSound(kind); }
-let crownPos = new WeakMap(), crownAt = 0, crownEnd = 0;
-document.addEventListener('scroll', e => { if (!S.settings.crown) return; const el = e.target === document ? document.scrollingElement : e.target; if (!el || !el.classList) return; clearTimeout(crownEnd); crownEnd = setTimeout(() => { el.classList.remove('land'); void el.offsetWidth; el.classList.add('land'); feedback('tick'); setTimeout(() => el.classList.remove('land'), 420); }, 140); }, { passive: true, capture: true });
+let crownPos = new WeakMap(), crownAt = 0;
 document.addEventListener('visibilitychange', () => { if (!document.hidden && fbCtx && fbCtx.state !== 'running') fbCtx.resume().catch(() => { fbCtx = null; }); });
 document.addEventListener('scroll', e => {
   if (!S.settings.crown) return; const el = e.target === document ? document.scrollingElement : e.target; if (!el || !el.classList) return;
@@ -1633,6 +1633,8 @@ const Player = {
       this.loading = false; this.resumeTries = 0; this.failRun = 0; this.wantPlay = true; this.lastProgress = Date.now(); if (this.intrAt) { this.stopIntr(); }
       const hr = new Date().getHours();
       if ((hr >= 23 || hr < 4) && !this.sleepAt && !this.sleepEnd && S.lastNightTip !== dayKey() && S.settings.nightTip !== false && !document.hidden) { S.lastNightTip = dayKey(); save(); setTimeout(() => toast('Late night? Stop the music in 30 minutes', { label: 'Set', ms: 6000, fn: () => { try { Player.sleep(30); UI.timerBtn(); toast('Sleep timer: 30 minutes'); } catch (e) { } } }), 2500); }
+      if (this.seekWant != null && this.el !== Embed && Math.abs((this.el.currentTime || 0) - this.seekWant) > 1.5) { try { this.el.currentTime = this.seekWant; } catch (e) { } }
+      this.seekWant = null;
       try { this._seekOn = undefined; this.session(); this.seekBtns(!!(t && t.source === 'podcast')); } catch (e) { }
       if (t) { clearTimeout(this.metaT); this.metaT = setTimeout(() => { if (this.cur === t) { try { this.meta(t); } catch (e) { } } }, 600); }
       try { if ('mediaSession' in navigator) navigator.mediaSession.playbackState = 'playing'; } catch (e) { }
@@ -1856,7 +1858,7 @@ const Player = {
     }
     if (!src) return this.skipAfterFail(t);
     this.isBlob = blob;
-    const wantFx = !!S.settings.eqOn || Party.react();
+    const wantFx = (!!S.settings.eqOn && !IS_IOS) || Party.react();
     if (!blob && wantFx && (S.settings.proxy || SITE.server) && /saavncdn\.com/.test(src)) src = JSA.relays()[0].wrap(src);
     let host = ''; try { host = new URL(src, location.href).host; } catch (e) { }
     const fx = !!(wantFx && !t.live && this.via !== 'preview' && (blob || !this.badCors.has(host)));
@@ -1981,7 +1983,9 @@ const Player = {
   seek(s) {
     const t = this.cur; if (!t || t.live) return;
     if (!this.loaded) { this.resumeAt = Math.max(0, s); return this.load(true, this.resumeAt, true); }
-    const a = this.el; if (isFinite(a.duration)) a.currentTime = clamp(s, 0, Math.max(0, a.duration - 0.25));
+    const a = this.el; const to = isFinite(a.duration) ? clamp(s, 0, Math.max(0, a.duration - 0.25)) : Math.max(0, s);
+    this.seekWant = to; this.resumeAt = to; try { a.currentTime = to; } catch (e) { }
+    if (t.source === 'podcast') { try { (S.podProg || (S.podProg = {}))[t.id] = Math.floor(to); } catch (e) { } }
     UI.time();
   },
   playList(list, idx = 0, from = '', shuffle = null) {
@@ -2158,7 +2162,8 @@ const Player = {
     const a = this.el; this.stopIntr && this.stopIntr();
     if (!this.cur) return;
     if (!this.loaded || this.waitOnline) return this.toggle();
-    if (a !== Embed && (a.error || !a.currentSrc || a.networkState === 3)) return this.load(true, a.currentTime || this.resumeAt || 0, true);
+    if (a !== Embed && (a.error || !a.currentSrc || a.networkState === 3)) return this.load(true, this.seekWant != null ? this.seekWant : (a.currentTime || this.resumeAt || 0), true);
+    if (this.seekWant != null && a !== Embed) { try { a.currentTime = this.seekWant; } catch (e) { } }
     this.wantPlay = true; this.userPaused = false;
     try { const p = a.play(); if (p && p.catch) p.catch(err => { if (!(err && err.name === 'NotAllowedError') && this.cur) this.load(true, a.currentTime || this.resumeAt || 0, true); }); } catch (e) { }
     if (this.ctx && this.ctx.state !== 'running') this.ctx.resume().catch(() => { });
@@ -2264,7 +2269,9 @@ const UI = {
     const et = $('#np-eqt'); if (et) { const on = S.settings.eqOn && !IS_IOS && Player.cur && !Player.cur.live; const txt = on ? eqName() : ''; if (et.dataset.t !== txt + (Player.el === Player.fx)) { et.dataset.t = txt + (Player.el === Player.fx); et.innerHTML = on ? `${I.eq}${esc(txt)}` : ''; et.classList.toggle('na', on && Player.el !== Player.fx); et.title = on && Player.el !== Player.fx ? 'Equalizer isn’t available for this song' : 'Equalizer: ' + txt; } }
     const aq = $('#aqbox'); if (aq) { const k = (Player.cur && Player.cur.id) + '|' + Player.quality + '|' + Player.via + '|' + S.settings.eqOn; if (aq.dataset.k !== k) { aq.dataset.k = k; setHTML(aq, aqInner()); } }
   },
+  slp() { const sp = document.getElementById('np-slp'); if (!sp) return; const on = !!(Player.sleepAt || Player.sleepEnd); sp.classList.toggle('on', on); const b = document.getElementById('np-btimer'); if (b) b.classList.toggle('on', on); if (on) { const left = Player.sleepEnd ? 'End of song' : fmt(Math.max(0, (Player.sleepAt - Date.now()) / 1000)); const lb = sp.querySelector('span'); if (lb && lb.textContent !== left) lb.textContent = left; } },
   time() {
+    this.slp();
     const a = Player.el, t = Player.cur; if (!t) return;
     const cur = Player.loaded ? a.currentTime : Player.resumeAt;
     const dur = Player.loaded && isFinite(a.duration) && a.duration ? a.duration : (t.duration || 0);
@@ -2456,8 +2463,8 @@ const Party = {
       }
     } else if (style === 'waves') {
       for (let k = 0; k < 6; k++) {
-        g.beginPath(); const amp = H * (0.035 + L.mid * 0.22 + this.kick * 0.03) * (1 - k * 0.1), base = H * (0.22 + k * 0.12);
-        for (let x = 0; x <= W; x += 5) { const y = base + Math.sin(x / W * Math.PI * (2 + k * 0.6) + tt * (1.2 + k * 0.3)) * amp + Math.sin(x / W * 11 + tt * 2.4) * amp * (0.2 + L.high * 0.5); x ? g.lineTo(x, y) : g.moveTo(x, y); }
+        g.beginPath(); const amp = H * (0.04 + L.mid * 0.12 + this.kick * 0.035) * (1 - k * 0.08), base = H * (0.22 + k * 0.12);
+        for (let x = 0; x <= W; x += 4) { const u = x / W; const y = base + Math.sin(u * Math.PI * (1.6 + k * 0.35) + tt * (0.9 + k * 0.22)) * amp * (0.75 + 0.25 * Math.sin(u * Math.PI)); x ? g.lineTo(x, y) : g.moveTo(x, y); }
         g.strokeStyle = hsl(this.hue + k * 40, 95, 60, 0.35 + L.bass * 0.4); g.lineWidth = R * (0.004 + L.bass * 0.01); g.stroke();
       }
     } else if (style === 'lasers') {
@@ -2527,7 +2534,7 @@ function buildShell() {
     <div class="np-meta"><div class="np-tt"><div class="np-t" id="np-t"></div><span class="dlbadge" id="np-dl">${I.dlok}</span><div class="np-a" id="np-a" data-a="npartist"></div></div>
       <button class="np-ib" id="np-party" data-a="party" aria-label="Party Mode">${I.disco}</button><button class="np-ib" id="np-share" data-a="npshare" aria-label="Share">${I.share}</button><button class="np-ib" id="np-like" data-a="nplike" aria-label="Favorite">${I.heart}</button></div>
     <div class="scrub"><input class="rng" id="np-seek" type="range" min="0" max="1000" step="1" value="0" aria-label="Seek">
-      <div class="times"><span id="np-cur">0:00</span><span class="livepill">● LIVE</span><span class="qbadge" id="np-qb" data-a="aq" role="button" tabindex="0" aria-label="Audio quality"></span><button class="eqtag" id="np-eqt" data-a="eq" aria-label="Equalizer"></button><button class="dlpill" id="np-dlq" data-a="dlinfo" aria-label="Offline status">${I.offline}<span></span></button><button class="slpill" id="np-slp" data-a="sleep" aria-label="Sleep timer">${I.timer}<span></span></button><span id="np-rem">-0:00</span></div></div>
+      <div class="times"><span id="np-cur">0:00</span><span class="livepill">● LIVE</span><span class="qbadge" id="np-qb" data-a="aq" role="button" tabindex="0" aria-label="Audio quality"></span><button class="slpill" id="np-slp" data-a="sleep" aria-label="Sleep timer">${I.timer}<span></span></button><button class="eqtag" id="np-eqt" data-a="eq" aria-label="Equalizer"></button><button class="dlpill" id="np-dlq" data-a="dlinfo" aria-label="Offline status">${I.offline}<span></span></button><span id="np-rem">-0:00</span></div></div>
     <div class="ctrl">
       <button class="np-ib c-s" id="np-shuf" data-a="shuffle" aria-label="Shuffle">${I.shuffle}</button>
       <button class="np-ib c-k" data-a="skipb" aria-label="Skip back">${skipIcon(S.settings.podBack || 15, true)}</button>
@@ -2681,7 +2688,7 @@ function renderQueue() {
       <button class="qchip ${Player.shuffle ? 'on' : ''}" data-a="shuffle">${I.shuffle}Shuffle</button>
       <button class="qchip ${Player.repeat !== 'off' ? 'on' : ''}" data-a="repeat">${Player.repeat === 'one' ? I.repeat1 : I.repeat}Repeat</button>
       <button class="qchip ${S.settings.autoplay ? 'on' : ''}" data-a="autoplay">${I.infinity}Autoplay</button></div>
-    <div class="q-h"><div><b>Playing Next</b><small>${up.length ? plural(up.length, 'song') : 'Nothing queued'}${Player.from ? ' from ' + esc(Player.from) : ''}</small></div>${up.length ? `<div class="qbtns"><button class="qib" data-a="qsave" aria-label="Save as playlist" title="Save as playlist">${I.plus}</button><button class="qib" data-a="qclearask" aria-label="Clear Playing Next" title="Clear Playing Next">${I.trash}</button></div>` : ''}</div>
+    <div class="q-h"><div><b>Playing Next</b><small>${up.length ? plural(up.length, 'song') : 'Nothing queued'}${Player.from ? ' from ' + esc(Player.from) : ''}</small></div>${up.length ? `<div class="qbtns"><button class="qib" data-a="qsave" aria-label="Save as playlist" title="Save as playlist">${I.pladd}</button><button class="qib" data-a="qclearask" aria-label="Clear Playing Next" title="Clear Playing Next">${I.trash}</button></div>` : ''}</div>
     <div id="qlist">${up.map((t, k) => {
       const qi = Player.i + 1 + k;
       return `<div class="qrow qnext" data-q="${qi}"><img src="${esc(artOf(t))}" alt="" class="${t.live ? 'logo' : ''}" loading="lazy">
@@ -3050,7 +3057,7 @@ function langPicker(first) {
 const fmtDb = v => (v > 0 ? '+' : '') + (+v).toFixed(Number.isInteger(+v) ? 0 : 1);
 function eqStatus() {
   const s = S.settings;
-  if (IS_IOS && s.eqOn && Player.el === Player.fx) return ['ok', 'Active on this song. On iPhone the equalizer works while Tune Tune is open — music may pause when the screen locks.'];
+  if (IS_IOS) return ['off', 'iPhone and iPad mute sound processing when the screen locks, so the equalizer stays off there to keep music playing.'];
   if (!s.eqOn) return ['off', 'Turn it on to shape the sound.'];
   if (!Player.cur || !Player.loaded) return ['ok', 'Ready — it applies as soon as a song plays.'];
   if (Player.el === Embed) return ['warn', 'Not active on this song: it plays through YouTube’s player, which doesn’t allow sound changes.'];
@@ -3616,7 +3623,7 @@ function applyTheme() {
   const dark = s === 'dark' || (s === 'auto' && matchMedia('(prefers-color-scheme: dark)').matches);
   const r = document.documentElement; r.dataset.theme = dark ? 'dark' : 'light'; r.style.setProperty('--accent', S.settings.accent);
   const st = S.settings;
-  r.classList.toggle('still', !st.motion); r.classList.toggle('crown', !!st.crown); r.classList.toggle('nobg', !st.animBg); r.classList.toggle('nobadge', !st.badge);
+  r.classList.toggle('still', !st.motion); r.classList.toggle('nobg', !st.animBg); r.classList.toggle('nobadge', !st.badge);
   r.dataset.lyr = st.lyricsSize || 'm';
   r.style.setProperty('--zoom', String(+st.zoom || 1));
   const m = $('meta[name="theme-color"]'); if (m) m.setAttribute('content', dark ? '#000000' : '#ffffff');
@@ -3932,7 +3939,7 @@ async function quickPicks() {
 function renderHome(e, tok) {
   const stk = streak();
   const nm = (S.settings.name || '').trim();
-  let html = header('Home', { right: nbBtn('go', 'gear', 'Settings', 'data-v="settings"'), left: `<span class="home-logo">${logoSvg()}</span>` }) + `<p class="greet">${greeting()}${nm ? ', ' + esc(nm) : ''}${stk >= 2 ? ` <span class="streak" data-a="streakparty" role="button" tabindex="0" title="Days in a row you listened">🔥 ${stk}-day streak</span>` : ''}</p>`;
+  let html = header('Home', { right: nbBtn('go', 'gear', 'Settings', 'data-v="settings"'), left: `<span class="home-logo">${logoSvg()}</span>` }) + `<p class="greet">${greeting()}${nm ? ', ' + esc(nm) : ''}${stk >= 2 ? ` <span class="streak" data-a="streaktap" role="button" tabindex="0" title="Days in a row you listened">🔥 ${stk}-day streak</span>` : ''}</p>`;
   const standalone = matchMedia('(display-mode: standalone)').matches || navigator.standalone;
   if (!standalone && !S.noInstall && Object.keys(S.stats.plays || {}).length >= 3 && (deferredInstall || IS_IOS)) html += `<div class="nudge"><div class="nudge-ic">${I.music}</div><div class="nudge-t"><b>Get the Tune Tune app</b><span>${IS_IOS ? 'Tap Share, then “Add to Home Screen”' : 'Opens instantly and plays from your lock screen'}</span></div>${IS_IOS ? '' : '<button class="fb pri" data-a="install">Install</button>'}<button class="nudge-x" data-a="noinstall" aria-label="Dismiss">${I.x}</button></div>`;
   if (!navigator.onLine) {
@@ -3943,7 +3950,7 @@ function renderHome(e, tok) {
   }
   setTimeout(warmLangs, 2500);
   const sv = (S.cached || []).filter(t => S.settings.mixPods || t.source !== 'podcast');
-  if (S.settings.savedCard !== false && sv.length >= 3) html += `<div class="saved-card"><span class="sc-ic">${I.offline}</span><div class="sc-arts">${sv.slice(0, 3).map(t => `<img src="${esc(artOf(t))}" alt="">`).join('')}</div><div class="sc-t" data-a="go" data-v="coll" data-k="saved" role="button" tabindex="0"><b>Ready offline ›</b><span>Your last ${plural(sv.length, 'song')} — plays without internet</span></div><button class="np-ib" data-a="savedplay" aria-label="Play in order">${I.play}</button><button class="np-ib" data-a="savedshuf" aria-label="Shuffle">${I.shuffle}</button></div>`;
+  if (S.settings.savedCard !== false && sv.length >= 3) html += `<div class="saved-card"><div class="sc-arts">${sv.slice(0, 3).map(t => `<img src="${esc(artOf(t))}" alt="">`).join('')}</div><div class="sc-t" data-a="go" data-v="coll" data-k="saved" role="button" tabindex="0"><b>Ready offline ›</b><span>Your last ${plural(sv.length, 'song')} — plays without internet</span></div><button class="np-ib" data-a="savedplay" aria-label="Play in order">${I.play}</button><button class="np-ib" data-a="savedshuf" aria-label="Shuffle">${I.shuffle}</button></div>`;
   const sug = langSuggest(); if (sug) html += `<div class="lang-sug"><span>You’ve been listening to a lot of <b>${esc(sug)}</b> music</span><button class="fb pri" data-a="addlang" data-l="${esc(sug)}">Add ${esc(sug)}</button><button class="nudge-x" data-a="nolang" data-l="${esc(sug)}" aria-label="Dismiss">${I.x}</button></div>`;
   const langs = myLangs();
   html += `<div class="chips pg">${langs.map(L => `<button class="chip" data-a="lang" data-l="${esc(L)}">${esc(L)}</button>`).join('')}<button class="chip ghost" data-a="langs">${I.plus}Languages</button></div>`;
@@ -4297,14 +4304,14 @@ function renderSettings() {
       sLi({ icon: 'download', color: '#0a84ff', label: 'Preload next song', hint: 'No gaps or buffering between songs', ctl: sSw('preload', s.preload) }) +
       (IS_IOS ? '' : `<div class="li"><div class="lb"><span class="lx">Crossfade<small class="lh">Blend the end of one song into the next</small></span><span class="lv" id="v-crossfade">${+s.crossfade ? s.crossfade + ' s' : 'Off'}</span></div></div><div class="pad"><input class="slider" type="range" min="0" max="12" step="1" value="${+s.crossfade || 0}" data-set="crossfade" style="--p:${((+s.crossfade || 0) / 12) * 100}%" aria-label="Crossfade seconds"></div>`)) +
     sGrp('Playback',
-      sLi({ icon: 'eq', color: '#ff9f0a', label: 'Equalizer', value: s.eqOn ? eqName() : 'Off', a: 'eq', chev: true }) +
+      sLi({ icon: 'eq', color: '#ff9f0a', label: 'Equalizer', value: IS_IOS ? 'Not on iPhone' : s.eqOn ? eqName() : 'Off', a: 'eq', chev: true }) +
       (!IS_IOS && eqPins().length ? `<div class="pad"><div class="chips eqpins">${eqPins().filter(n => eqFind(n)).map(n => `<button class="chip ${s.eqOn && eqName() === n ? 'on' : ''}" data-a="eqp" data-n="${esc(n)}">${I.pin}${esc(n)}</button>`).join('')}</div></div>` : '') +
       sLi({ icon: 'infinity', color: '#30d158', label: 'Autoplay similar songs', ctl: sSw('autoplay', s.autoplay) }) +
       sLi({ label: 'Resume after calls', hint: 'Music continues by itself when a phone call or alarm ends', ctl: sSw('autoResume', S.settings.autoResume !== false) }) +
       sLi({ label: 'Mix podcasts with songs', hint: 'Off keeps podcasts and songs in separate queues', ctl: sSw('mixPods', !!S.settings.mixPods) }) +
       (IS_CAP || window.ttDesktop ? sLi({ label: 'Remind me after 3 days away', hint: 'A gentle notification if you haven’t listened for a while', ctl: sSw('remind3', S.settings.remind3 !== false) }) + '' : '') +
       sLi({ label: 'Tap sounds', hint: 'Soft musical sounds when you tap, like, add, delete, play or pause', ctl: sSw('tapSound', !!S.settings.tapSound) }) +
-      sLi({ label: 'Haptic scroll', hint: 'Lists glide and settle on each item with a gentle tick and bump', ctl: sSw('crown', !!S.settings.crown) }) +
+      sLi({ label: 'Haptic scroll', hint: 'A soft tick as you scroll through lists', ctl: sSw('crown', !!S.settings.crown) }) +
       sLi({ label: 'Car Mode in landscape', hint: 'Phones switch to big Car Mode controls when turned sideways', ctl: sSw('landCar', S.settings.landCar) }) +
       sLi({ icon: 'timer', color: '#5e5ce6', label: 'Sleep Timer', value: timerVal, a: 'sleep', chev: true }) +
       sLi({ icon: 'speed', color: '#0a84ff', label: 'Music speed', value: Player.rate + '×', a: 'speed', chev: true }) +
@@ -4553,19 +4560,20 @@ const Actions = {
   lyrmode(el, d) { S.settings.lyrMode = d.m; save(); renderLyrics(); if (d.m === 'en') lyrTranslate(); },
   skipb2() { Player.seek(Player.el.currentTime - skipSecs(-1)); }, skipf2() { Player.seek(Player.el.currentTime + skipSecs(1)); },
   keys() { showKeys(); },
-  streakparty() {
+  streaktap() { const now = Date.now(); if (now - (this._stT || 0) < 380) { this._stT = 0; Actions.streakdisco(); } else this._stT = now; },
+  streakdisco() {
     if (document.getElementById('confetti')) return; feedback('done');
     const c = document.createElement('canvas'); c.id = 'confetti'; document.body.appendChild(c);
     const g = c.getContext && c.getContext('2d'); if (!g) { c.remove(); return; }
-    const W = c.width = innerWidth * (devicePixelRatio || 1), H = c.height = innerHeight * (devicePixelRatio || 1), k = devicePixelRatio || 1;
-    const cols = ['#ff375f', '#ff9f0a', '#ffd60a', '#30d158', '#0a84ff', '#bf5af2', '#fff'];
-    const parts = []; for (const ox of [0.08, 0.92]) for (let i = 0; i < 90; i++) { const a = (ox < 0.5 ? -60 : -120) * Math.PI / 180 + (Math.random() - 0.5) * 0.9, sp = (9 + Math.random() * 11) * k; parts.push({ x: W * ox, y: H * 0.95, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp, r: (3 + Math.random() * 5) * k, c: cols[i % cols.length], rot: Math.random() * 6, vr: (Math.random() - 0.5) * 0.4, sh: i % 3 }); }
-    let t0 = performance.now(); document.body.classList.add('partying');
-    const step = now => { const t = (now - t0) / 1000; g.clearRect(0, 0, W, H);
-      g.globalAlpha = Math.max(0, 0.35 - t * 0.1); for (let i = 0; i < 5; i++) { const x = W / 2 + Math.cos(t * 1.6 + i * 1.26) * W * 0.4, y = H * 0.35 + Math.sin(t * 2 + i) * H * 0.2, gr = g.createRadialGradient(x, y, 0, x, y, W * 0.45); gr.addColorStop(0, cols[i]); gr.addColorStop(1, 'transparent'); g.fillStyle = gr; g.fillRect(0, 0, W, H); }
-      g.globalAlpha = 1; for (const p of parts) { p.vy += 0.32 * k; p.vx *= 0.99; p.x += p.vx; p.y += p.vy; p.rot += p.vr; g.save(); g.translate(p.x, p.y); g.rotate(p.rot); g.fillStyle = p.c; if (p.sh === 0) g.fillRect(-p.r, -p.r / 2, p.r * 2, p.r); else { g.beginPath(); g.arc(0, 0, p.r * 0.7, 0, 7); g.fill(); } g.restore(); }
-      if (t < 3.4) requestAnimationFrame(step); else { c.remove(); document.body.classList.remove('partying'); } };
-    requestAnimationFrame(step); toast('🔥 Keep the streak going!');
+    const k = devicePixelRatio || 1, W = c.width = innerWidth * k, H = c.height = innerHeight * k;
+    const cols = ['#ff375f', '#ff9f0a', '#30d158', '#0a84ff', '#bf5af2', '#64d2ff'];
+    const t0 = performance.now(); document.body.classList.add('partying');
+    const step = now => { const t = (now - t0) / 1000, fade = t < 0.4 ? t / 0.4 : t > 2.4 ? Math.max(0, (3 - t) / 0.6) : 1; g.clearRect(0, 0, W, H); g.globalCompositeOperation = 'lighter';
+      for (let i = 0; i < 6; i++) { const a = t * (0.9 + i * 0.12) + i * 1.05, x = W / 2 + Math.cos(a) * W * 0.38, y = H * 0.42 + Math.sin(a * 1.3) * H * 0.3, r = Math.max(W, H) * (0.32 + 0.08 * Math.sin(t * 4 + i)), gr = g.createRadialGradient(x, y, 0, x, y, r);
+        gr.addColorStop(0, cols[i] + '66'); gr.addColorStop(1, 'transparent'); g.globalAlpha = 0.55 * fade; g.fillStyle = gr; g.fillRect(0, 0, W, H); }
+      g.globalAlpha = 0.35 * fade; for (let i = 0; i < 14; i++) { const a = t * 0.6 + i * 0.45; g.strokeStyle = cols[i % 6]; g.lineWidth = 3 * k; g.beginPath(); g.moveTo(W / 2, -10); g.lineTo(W / 2 + Math.cos(a) * W, H * 0.9 + Math.sin(a) * H * 0.2); g.stroke(); }
+      if (t < 3) requestAnimationFrame(step); else { c.remove(); document.body.classList.remove('partying'); } };
+    requestAnimationFrame(step);
   },
   dlinfo() {
     const t = Player.cur; if (!t) return; const dl = isDl(t.id);
