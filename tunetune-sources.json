@@ -1,14 +1,30 @@
 {
-  "_readme": "BACKUP FREE SOURCES. Always used — no switch needed. Tried only after the built-in free sources fail, and before your own servers and the YouTube player. Add or remove lines any time; dead entries are skipped automatically. Each entry can be a plain link or {\"name\": \"…\", \"url\": \"…\"}. Relays must contain {url} where the target link goes (or end so the link can be added at the end).",
+  "_readme": "BACKUP FREE SOURCES. Always used — no switch needed. Tried only after the built-in free sources fail, and before your own servers and the YouTube player. Add or remove lines any time; routes that fail are skipped automatically and re-checked later. Each entry can be a plain link or {\"name\": \"…\", \"url\": \"…\"}. Relays use {url} where the target link goes: …?url={url} (link encoded) or …/{url} (link as is). Tip: Settings → Test music sources shows which ones work on your device.",
   "relays": [
-    { "name": "CORS.SH proxy", "url": "https://proxy.cors.sh/{url}" },
-    { "name": "Corsfix", "url": "https://proxy.corsfix.com/?{url}" },
-    { "name": "CORS Anywhere (Heroku demo)", "url": "https://cors-anywhere.herokuapp.com/{url}" },
-    { "name": "Fringe proxy", "url": "https://cors-proxy.fringe.zone/{url}" },
-    { "name": "x2u", "url": "https://cors.x2u.in/{url}" },
-    { "name": "WhateverOrigin (www)", "url": "https://www.whateverorigin.org/get?url={url}" },
-    { "name": "CORS.lol", "url": "https://cors.lol/?url={url}" },
-    { "name": "Htmldriven", "url": "https://cors-proxy.htmldriven.com/?url={url}" }
+    {
+      "name": "corsproxy.io",
+      "url": "https://corsproxy.io/?url={url}"
+    },
+    {
+      "name": "Fringe proxy",
+      "url": "https://cors-proxy.fringe.zone/{url}"
+    },
+    {
+      "name": "WhateverOrigin (www)",
+      "url": "https://www.whateverorigin.org/get?url={url}"
+    },
+    {
+      "name": "CORS.lol",
+      "url": "https://cors.lol/?url={url}"
+    },
+    {
+      "name": "Htmldriven",
+      "url": "https://cors-proxy.htmldriven.com/?url={url}"
+    },
+    {
+      "name": "hyoo",
+      "url": "https://cors.hyoo.ru/{url}"
+    }
   ],
   "saavnServers": [
     "https://jiosaavn-api-ts.vercel.app/api",

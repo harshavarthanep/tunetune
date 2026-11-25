@@ -877,7 +877,7 @@ const SvC = {
     if (tier !== 'free') return [];
     return [...CFG.saavn, ...SAAVN_DEFAULT.filter(x => !CFG.saavn.some(y => y.base === x.base))];
   },
-  isBad(b) { return Date.now() - (this.fails.get(b.base) || 0) < 5 * 60e3; },
+  isBad(b) { return Health.bad('s:' + b.base); },
   down(tier = 'free') { const L = this.list(tier); return !L.length || L.every(b => this.isBad(b)); },
   order(tier) {
     const L = this.list(tier); const o = L.filter(b => !this.isBad(b)).concat(L.filter(b => this.isBad(b)));
@@ -894,12 +894,12 @@ const SvC = {
         try {
           const j = await getJSON(inst.base + path, 6000, { signal });
           if (!j || j.success === false || (j.status && String(j.status).toUpperCase() !== 'SUCCESS') || j.data == null) throw softErr('no data');
-          this.best = inst.base; this.fails.delete(inst.base); Src.note(tier, inst.base);
+          this.best = inst.base; Health.ok('s:' + inst.base); Src.note(tier, inst.base); if (tier === 'own') Src.count('own');
           return { data: j.data, shape: sh, route: { tier, relay: inst.base } };
         } catch (e) {
           err = e; if (signal && signal.aborted) throw e;
           const unsupported = e.status >= 400 && e.status < 500 && e.status !== 429;
-          if (!e.soft && !unsupported) { this.fails.set(inst.base, Date.now()); break; }
+          if (!e.soft && !unsupported) { Health.fail('s:' + inst.base); break; }
         }
       }
       throw err;
@@ -1028,22 +1028,18 @@ const DES = (() => {
 /* JioSaavn's own API (the one jiosaavn.com uses). Browsers can't call it directly, so requests go through
    free relay services; the app races them, keeps the one that answers first and cancels the rest. */
 const JS_RELAYS = [
-  { id: 'direct', wrap: u => u },
-  { id: 'allorigins', wrap: u => `https://api.allorigins.win/raw?url=${enc(u)}` },
-  { id: 'codetabs', wrap: u => `https://api.codetabs.com/v1/proxy/?quest=${enc(u)}` },
-  { id: 'corsproxy.io', wrap: u => `https://corsproxy.io/?url=${enc(u)}` },
-  { id: 'cors.lol', wrap: u => `https://api.cors.lol/?url=${enc(u)}` },
-  { id: 'allorigins-get', wrap: u => `https://api.allorigins.win/get?url=${enc(u)}`, unwrap: j => parseLoose(j && j.contents) },
+  { id: 'direct', wrap: u => u },   // the Android and desktop apps call JioSaavn themselves — no relay needed
   { id: 'cors.eu.org', wrap: u => `https://cors.eu.org/${u}` },
+  { id: 'allorigins', wrap: u => `https://api.allorigins.win/raw?url=${enc(u)}` },
+  { id: 'cors.lol', wrap: u => `https://api.cors.lol/?url=${enc(u)}` },
+  { id: 'x2u', wrap: u => `https://cors.x2u.in/${u}` },
+  { id: 'allorigins-get', wrap: u => `https://api.allorigins.win/get?url=${enc(u)}`, unwrap: j => parseLoose(j && j.contents) },
   { id: 'corsproxy.org', wrap: u => `https://corsproxy.org/?${enc(u)}` },
-  { id: 'afeld', wrap: u => `https://jsonp.afeld.me/?url=${enc(u)}` },
   { id: 'whateverorigin', wrap: u => `https://whateverorigin.org/get?url=${enc(u)}`, unwrap: j => parseLoose(j && j.contents) },
   { id: 'everyorigin', wrap: u => `https://everyorigin.jwvbremen.nl/get?url=${enc(u)}`, unwrap: j => parseLoose(j && (j.contents || j.html)) },
-  { id: 'cf-cors', wrap: u => `https://test.cors.workers.dev/?${u}` },
+  { id: 'afeld', wrap: u => `https://jsonp.afeld.me/?url=${enc(u)}` },
   { id: 'zimjs', wrap: u => `https://cors.zimjs.com/${u}` },
   { id: 'sirjosh', wrap: u => `https://cors-get-proxy.sirjosh.workers.dev/?url=${enc(u)}` },
-  { id: 'thingproxy', wrap: u => `https://thingproxy.freeboard.io/fetch/${u}` },
-  { id: 'yacdn', wrap: u => `https://yacdn.org/proxy/${u}` },
 ];
 function parseLoose(txt) {
   txt = String(txt || '').trim(); const i = txt.search(/[[{]/); if (i < 0) return null;
@@ -1093,6 +1089,30 @@ function loadSiteConfig(force) {
   return CFG.p;
 }
 const WORKER_CODE = "// Tune Tune music server \u2014 paste into a free Cloudflare Worker and press Deploy\nconst ALLOW = /(^|\\.)(jiosaavn\\.com|saavncdn\\.com|saavn\\.com|shnwaz\\.dev|sumit\\.co|saavn\\.dev|saavn\\.me)$/;\nconst CORS = {\n  'Access-Control-Allow-Origin': '*',\n  'Access-Control-Allow-Methods': 'GET, HEAD, OPTIONS',\n  'Access-Control-Allow-Headers': '*',\n  'Access-Control-Expose-Headers': 'Content-Length, Content-Range, Accept-Ranges, Content-Type',\n};\nexport default {\n  async fetch(req) {\n    if (req.method === 'OPTIONS') return new Response(null, { headers: CORS });\n    const target = new URL(req.url).searchParams.get('url');\n    if (!target) return new Response('Tune Tune relay is running', { headers: CORS });\n    let t;\n    try { t = new URL(target); } catch (e) { return new Response('Bad link', { status: 400, headers: CORS }); }\n    if (!ALLOW.test(t.hostname)) return new Response('Not allowed', { status: 403, headers: CORS });\n    const h = {\n      'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0 Safari/537.36',\n      'Accept': '*/*', 'Accept-Language': 'en-IN,en;q=0.9', 'Referer': 'https://www.jiosaavn.com/',\n    };\n    const range = req.headers.get('Range');\n    if (range) h['Range'] = range;\n    if (t.hostname.endsWith('jiosaavn.com')) h['Cookie'] = 'gdpr_acceptance=true; DL=english';\n    const media = t.hostname.endsWith('saavncdn.com');\n    const r = await fetch(t.toString(), { method: req.method, headers: h, cf: { cacheTtl: media ? 86400 : 300, cacheEverything: true } });\n    const out = new Headers(r.headers);\n    for (const k in CORS) out.set(k, CORS[k]);\n    out.delete('set-cookie');\n    return new Response(r.body, { status: r.status, headers: out });\n  },\n};\n";
+/* Route health that survives restarts. A route that fails waits 10 min, then 20, 40 … up to 6 h before
+   it is tried again in normal use; Health.recheck() quietly re-tests expired ones in the background. */
+const Health = {
+  m: null,
+  load() { if (!this.m) { try { this.m = JSON.parse(localStorage.getItem('tunetune.health') || '{}') || {}; } catch (e) { this.m = {}; } } return this.m; },
+  save() { clearTimeout(this.t); this.t = setTimeout(() => { try { localStorage.setItem('tunetune.health', JSON.stringify(this.m)); } catch (e) { } }, 1500); },
+  wait(n) { return Math.min(6 * 3600e3, 10 * 60e3 * Math.pow(2, Math.max(0, n - 1))); },
+  bad(id) { const h = this.load()[id]; return !!(h && h.n && Date.now() - h.at < this.wait(h.n)); },
+  fail(id) { const m = this.load(), h = m[id] || { n: 0 }; h.n = Math.min((h.n || 0) + 1, 12); h.at = Date.now(); m[id] = h; this.save(); },
+  ok(id) { const m = this.load(); if (m[id] && !m[id].n && Date.now() - (m[id].ok || 0) < 60e3) return; m[id] = { n: 0, at: Date.now(), ok: Date.now() }; this.save(); },
+  state(id) { const h = this.load()[id]; return !h ? '' : h.n ? (this.bad(id) ? 'down' : 'retry') : 'ok'; },
+  clear() { this.m = {}; try { localStorage.removeItem('tunetune.health'); } catch (e) { } },
+  // background: re-test routes whose wait has run out (a few at a time), so a route that comes back is used again
+  async recheck() {
+    if (this.busy || !navigator.onLine || document.hidden) return; this.busy = true;
+    try {
+      const url = 'https://www.jiosaavn.com/api.php?' + new URLSearchParams({ __call: 'autocomplete.get', query: 'hits', _format: 'json', _marker: '0', api_version: '4', ctx: 'web6dot0' });
+      const rel = [...JSA.relays('free'), ...JSA.relays('backup')].filter(p => this.state('r:' + p.id) === 'retry').slice(0, 4);
+      await Promise.all(rel.map(p => JSA.attempt(p, url).then(() => JSA.markOk(p), () => JSA.markBad(p))));
+      const sv = [...SvC.list('free'), ...SvC.list('backup')].filter(b => this.state('s:' + b.base) === 'retry').slice(0, 3);
+      await Promise.all(sv.map(b => getJSON(b.base + (b.shape === 'B' ? '/search/songs?query=hits&page=1&limit=1' : '/search/songs?query=hits&limit=1'), 6000).then(j => { if (j && j.data != null) this.ok('s:' + b.base); else this.fail('s:' + b.base); }, () => this.fail('s:' + b.base))));
+    } finally { this.busy = false; }
+  },
+};
 const JSA = {
   via: '', viaB: '', deadB: 0, fails: new Map(), deadUntil: 0, okAt: {},
   init() {
@@ -1102,12 +1122,16 @@ const JSA = {
       localStorage.removeItem('tunetune.jsdead'); // every start re-checks the free relays
     } catch (e) { }
   },
-  bad(p) { return Date.now() - (this.fails.get(p.id) || 0) < (p.srv ? 60e3 : 10 * 60e3); },
+  bad(p) { return p.srv ? Date.now() - (this.fails.get(p.id) || 0) < 60e3 : Health.bad('r:' + p.id); },
+  markBad(p) { if (p.srv) this.fails.set(p.id, Date.now()); else Health.fail('r:' + p.id); },
+  markOk(p) { if (p.srv) this.fails.delete(p.id); else Health.ok('r:' + p.id); },
   dead() { this.deadUntil = Date.now() + 3 * 60e3; },
   async attempt(p, url, signal) {
-    const r = await fetchT(p.wrap(url), { signal }, p.id === 'direct' ? 4000 : 7000);
+    const r = await fetchT(p.wrap(url), { signal }, p.id === 'direct' ? 4500 : p.srv ? 9000 : 5000);
     if (!r.ok) throw Object.assign(new Error('HTTP ' + r.status), { status: r.status });
-    const j = p.unwrap ? p.unwrap(await r.json()) : parseLoose(await r.text());
+    let j = p.unwrap ? p.unwrap(await r.json()) : parseLoose(await r.text());
+    // relays that wrap the answer (“{contents: …}” or “{body: …}”) are unwrapped automatically
+    if (j && !p.unwrap && typeof j === 'object' && !Array.isArray(j)) { const w = typeof j.contents === 'string' ? j.contents : typeof j.body === 'string' ? j.body : null; if (w != null) j = parseLoose(w); }
     if (!j || typeof j !== 'object') throw new Error('not JSON');
     return j;
   },
@@ -1133,7 +1157,7 @@ const JSA = {
     if (!all.length) throw Object.assign(new Error('not set up'), { skip: true });
     const url = 'https://www.jiosaavn.com/api.php?' + new URLSearchParams({ ...params, _format: 'json', _marker: '0', api_version: '4', ctx: 'web6dot0' });
     const done = (p, j) => {
-      this.fails.delete(p.id); if (tier === 'free') { this.setVia(p.id); this.okAt[p.id] = Date.now(); this.keepOk(); } else if (tier === 'backup') this.viaB = p.id;
+      this.markOk(p); Src.count(tier); if (tier === 'free') { this.setVia(p.id); this.okAt[p.id] = Date.now(); this.keepOk(); } else if (tier === 'backup') this.viaB = p.id;
       Src.note(tier, p.id); try { Object.defineProperty(j, '__r', { value: { tier, relay: p.id }, enumerable: false }); } catch (e) { } return j;
     };
     if (tier === 'cfg' || tier === 'own') {
@@ -1150,7 +1174,7 @@ const JSA = {
     const fresh = this.order(tier).filter(p => !this.bad(p));
     if (!fresh.length) { if (isB) this.deadB = Date.now() + 3 * 60e3; else this.dead(); throw new Error('JioSaavn relays are busy'); }
     const known = fresh[0].id === (isB ? this.viaB : this.via) ? fresh.shift() : null;
-    if (known) { try { return done(known, await lim(() => this.attempt(known, url))); } catch (e) { this.fails.set(known.id, Date.now()); } }
+    if (known) { try { return done(known, await lim(() => this.attempt(known, url))); } catch (e) { this.markBad(known); } }
     // another request is already searching for a working relay: wait for it instead of starting a second search
     if (isB) return this.raceRelays(fresh, url, done, all, true);
     if (this.racing && !again) { await this.racing.catch(() => { }); return this.call(params, tier, true); }
@@ -1162,7 +1186,7 @@ const JSA = {
     for (const wave of [fresh.slice(0, 6), fresh.slice(6)]) {
       if (!wave.length) continue;
       try {
-        const { j, p } = await race(wave, (p, signal) => this.attempt(p, url, signal).then(j => ({ j, p }), e => { if (!signal.aborted) this.fails.set(p.id, Date.now()); throw e; }));
+        const { j, p } = await race(wave, (p, signal) => this.attempt(p, url, signal).then(j => ({ j, p }), e => { if (!signal.aborted) this.markBad(p); throw e; }));
         return done(p, j);
       } catch (e) { }
     }
@@ -1181,8 +1205,8 @@ const JSA = {
   },
   async diagnose() {
     const url = 'https://www.jiosaavn.com/api.php?' + new URLSearchParams({ __call: 'autocomplete.get', query: 'ilaiyaraaja', _format: 'json', _marker: '0', api_version: '4', ctx: 'web6dot0' });
-    const list = [...this.relays('free'), ...this.relays('backup'), ...(Src.on() ? [...this.relays('cfg'), ...this.relays('own')] : [])];
-    return Promise.all(list.map(p => this.attempt(p, url).then(() => { this.fails.delete(p.id); return `✓ ${p.id}`; }, e => `✗ ${p.id} (${String(e.message || e).slice(0, 24)})`)));
+    const list = [...this.relays('free').map(p => [p, '']), ...this.relays('backup').map(p => [p, ' (backup)'])];
+    return Promise.all(list.map(([p, tag]) => this.attempt(p, url).then(() => { this.markOk(p); return `✓ ${p.name || p.id}${tag}`; }, e => { this.markBad(p); return `✗ ${p.name || p.id}${tag} — ${String(e.message || e).slice(0, 22)}`; })));
   },
   img(u, size) { return https(String(u || '').replace(/\d{2,3}x\d{2,3}/, size)); },
   track(x) {
@@ -1238,7 +1262,25 @@ const Src = {
   ownServer() { return this.on() ? (S.settings.proxy || '') : ''; },
   has(tier) { return tier === 'free' || (tier === 'backup' ? !!(BK.relays.length || SvC.list('backup').length) : tier === 'cfg' ? !!this.cfgServer() : tier === 'own' ? !!(this.ownServer() || (this.on() && S.settings.saavn)) : false); },
   tiers() { return ['free', 'backup', ...this.servers()]; },
-  servers() { return this.on() ? ['cfg', 'own'] : []; },
+  servers() { return this.on() ? ['own', 'cfg'] : []; },
+  // true when every free and backup route is known to be down right now (so your servers are asked at once)
+  freeDown() {
+    return JSA.relays('free').every(p => JSA.bad(p)) && JSA.relays('backup').every(p => JSA.bad(p)) && SvC.down('free') && (!SvC.list('backup').length || SvC.down('backup'));
+  },
+  // how often your servers were used today (Cloudflare's free plan has a daily limit)
+  uses: null,
+  count(tier) {
+    if (tier !== 'cfg' && tier !== 'own') return;
+    const d = new Date().toDateString(); let u = this.uses;
+    if (!u) { try { u = JSON.parse(localStorage.getItem('tunetune.srvuse') || 'null'); } catch (e) { } }
+    if (!u || u.d !== d) u = { d, cfg: 0, own: 0 };
+    u[tier]++; this.uses = u;
+    clearTimeout(this.uT); this.uT = setTimeout(() => { try { localStorage.setItem('tunetune.srvuse', JSON.stringify(u)); } catch (e) { } }, 2000);
+  },
+  usedToday(tier) {
+    let u = this.uses; if (!u) { try { u = JSON.parse(localStorage.getItem('tunetune.srvuse') || 'null'); } catch (e) { } }
+    return u && u.d === new Date().toDateString() ? (u[tier] || 0) : 0;
+  },
   note(tier, relay) { this.last = { tier, relay, at: Date.now() }; if (tier !== 'free') this.state[tier] = 'ok'; },
   fail(tier) { if (tier !== 'free') this.state[tier] = 'down'; },
   // plain-language name of a route, e.g. “Free relay · corsproxy.io”
@@ -1268,10 +1310,10 @@ const Src = {
     else toast('Your servers aren’t answering — YouTube stays the backup', { label: 'Check', ms: 6000, fn: () => go('advanced') });
     if (ok && yt) Player.cleanRetry();
   },
-  // tunetune-config server first, then your own — returns the first tier that answers
+  // your own server first, then the tunetune-config servers — returns the first tier that answers
   async check() {
     this.busy = true; let ok = '';
-    for (const tier of ['cfg', 'own']) {
+    for (const tier of ['own', 'cfg']) {
       if (!this.has(tier)) continue;
       try {
         if (tier === 'own' && !this.ownServer()) { await SvC.songs('hits', 'own'); this.okRoute = { tier, relay: S.settings.saavn }; }
@@ -1303,22 +1345,37 @@ function bestMatch(t, list) {
   }
   return best;
 }
+const HEDGE_MS = 2500;   // head start the free routes get before your servers are asked too
 const Saavn = {
   get best() { return Src.describe(Src.last); },
   set best(v) { },
   fails: { clear() { JSA.reset(); SvC.fails.clear(); } },
   down() { return JSA.down() && SvC.down('free') && !Src.on(); },
   // runs fn(tier) for each allowed tier in order; a soft “no results” answer stops early (your servers have the same catalog)
-  async run(fn, tiers) {
+  async seq(fn, list) {
     let err = null;
-    for (const tier of tiers || ['free', 'backup', ...Src.servers()]) {
+    for (const tier of list) {
       if (tier === 'backup') await loadBackupSources().catch(() => { });   // the backup list may still be loading right after start
       if (tier === 'cfg') await loadSiteConfig().catch(() => { });
       if (!Src.has(tier)) continue;
       try { const r = await fn(tier); if (r && (!Array.isArray(r) || r.length)) return r; }
       catch (e) { if (e.skip) continue; err = e; if (e.soft) break; }
     }
-    throw err || Object.assign(new Error('JioSaavn unavailable'), { skip: !(tiers || Src.tiers()).some(t => Src.has(t)) });
+    throw err || Object.assign(new Error('JioSaavn unavailable'), { skip: true });
+  },
+  async run(fn, tiers) {
+    const list = tiers || ['free', 'backup', ...Src.servers()];
+    const freeT = list.filter(t => t === 'free' || t === 'backup'), srvT = list.filter(t => t === 'own' || t === 'cfg');
+    if (!freeT.length || !srvT.length) return this.seq(fn, list);
+    // free routes always go first; your servers are asked only if free ones are known to be down, fail, or are slow
+    const freeP = this.seq(fn, freeT); freeP.catch(() => { });
+    const head = Src.freeDown() ? 0 : HEDGE_MS;
+    const early = await Promise.race([freeP.then(v => ({ v }), e => ({ e })), new Promise(r => setTimeout(() => r(null), head))]);
+    if (early && 'v' in early) return early.v;
+    if (early && early.e && early.e.soft) throw early.e;          // a free route answered: JioSaavn doesn't have it
+    const srvP = this.seq(fn, srvT);
+    if (early) return srvP;                                          // free routes already failed
+    return Promise.any([freeP, srvP]).catch(e => { const errs = (e && e.errors) || []; throw errs.find(x => x && x.soft) || errs[0] || e; });
   },
   songs(q, tiers) { return this.run(tier => firstOkSoft([() => JSA.songs(q, tier), () => SvC.songs(q, tier)]), tiers); },
   colls(q, kind, tiers) { return this.run(tier => firstOkSoft([() => JSA.colls(q, kind, tier), () => SvC.colls(q, kind, tier)]), tiers); },
@@ -2084,7 +2141,7 @@ const Player = {
     const wantFx = (!!S.settings.eqOn && !IS_IOS) || Party.react();
     if (!blob && wantFx && /saavncdn\.com/.test(src)) {
       let h0 = ''; try { h0 = new URL(src).host; } catch (e) { }
-      const srv = this.badCors.has(h0) && (JSA.relays('cfg')[0] || JSA.relays('own')[0]);
+      const srv = this.badCors.has(h0) && (JSA.relays('own')[0] || JSA.relays('cfg')[0]);
       if (srv) { src = srv.wrap(src); this.audioVia = srv.id; }
     }
     if (this.cleanTry && this.via === 'saavn') { this.cleanTry = false; if (!document.hidden) toast('Clean audio — ' + (Src.describe(this.srcPath) || 'JioSaavn').toLowerCase()); }
@@ -2132,10 +2189,17 @@ const Player = {
         return { src: s.url, via: s.via, quality: qLabel(s.mime, s.bitrate), norm: S.settings.normalize && s.loud > 0 ? clamp(Math.pow(10, -s.loud / 20), 0.25, 1) : 0, route: { tier: 'free', relay: s.via } };
       } catch (e) { if (!DIRECT() && !e.soft) MirrorHealth.bad(true); this.avoid.add('streams'); return null; }
     };
-    let r, yid = '';
+    let r, yid = '', srvTried = false;
+    const servers = async () => {   // your own server first, then the tunetune-config musicServers last
+      if (!Src.on() || srvTried) return null; srvTried = true;
+      if ((r = await own(Src.servers()))) return r; if (stale()) return null;
+      return match(Src.servers());
+    };
     // 1 — free sources
     if ((r = await own())) return r; if (stale()) return null;
     if (t.source === 'deezer' && (r = await match())) return r; if (stale()) return null;
+    // every free route is known to be down and YouTube's free audio isn't working either: ask your servers now, not after slow timeouts
+    if (Src.on() && Src.freeDown() && !(DIRECT() || MirrorHealth.ok())) { if ((r = await servers())) return r; if (stale()) return null; }
     yid = ytIdOf(t);
     if (!yid) { try { const m = await YT.ytMatch(t); if (m) yid = t.ytId = m.sid; } catch (e) { } if (stale()) return null; }
     if ((r = await streams(yid))) return r; if (stale()) return null;
@@ -2147,10 +2211,7 @@ const Player = {
       if ((r = await match(['backup']))) return r; if (stale()) return null;
     }
     // 2 — your servers, only when switched on and every free source failed
-    if (Src.on()) {
-      if ((r = await own(Src.servers()))) return r; if (stale()) return null;
-      if ((r = await match(Src.servers()))) return r; if (stale()) return null;
-    }
+    if ((r = await servers())) return r; if (stale()) return null;
     // 3 — YouTube player
     if (yid && (eng === 'player' || (eng !== 'audio' && (S.settings.ytPlayer || this.ytOnce)))) { const id = await this.pickEmbed(t, yid); if (stale()) return null; if (id) return { embedId: id }; }
     if (yid && t.source === 'yt' && !document.hidden && eng !== 'audio' && !S.settings.ytPlayer && !this.ytOnce) return 'ask';
@@ -3258,7 +3319,7 @@ function aqInner() {
   const big = x.tier === 'hires' || x.tier === 'lossless' || x.tier === 'hq'
     ? `<div class="aq-hero ${x.tier}"><span class="aq-medal">${x.tier === 'hq' ? 'HQ' : I.wave}</span><div><b>${esc(x.label)}</b><small>${esc(x.spec || '')}</small></div></div>`
     : `<div class="aq-hero"><div><b>${esc(x.label || 'Standard')}</b><small>${yt ? 'Quality is chosen by YouTube' : 'Standard quality'}</small></div></div>`;
-  const order = Src.on() ? 'Free sources → your tunetune-config server → your own server → YouTube player' : 'Free sources → YouTube player';
+  const order = Src.on() ? 'Free sources → backup free sources → your own server → your tunetune-config servers → YouTube player' : 'Free sources → backup free sources → YouTube player';
   return `<div class="aq-h"><b>Audio Quality</b><small>${esc(t.title)} · ${esc(t.artist)}</small></div>${big}
     <div class="sub-h">Playing from</div>${srcCard}
     <div class="li"><div class="lb"><span class="lx">My server<small class="lh">${esc(order)}</small></span>${sSw('ownSrc', Src.on())}</div></div>
@@ -3522,7 +3583,7 @@ async function fetchMediaAny(url, mime, onP) {
   catch (e) {
     if (/googlevideo|\/api\/stream/.test(url)) throw e;
     const free = JSA.order('free').filter(x => !x.unwrap && x.id !== 'direct' && !JSA.bad(x)).slice(0, 4);
-    for (const p of [...free, ...JSA.relays('cfg'), ...JSA.relays('own')]) {
+    for (const p of [...free, ...JSA.relays('own'), ...JSA.relays('cfg')]) {
       try { const r = await fetchT(p.wrap(url), {}, 120000); if (!r.ok) continue; const b = await readWithProgress(r, onP); if (b.size > 50000) return new Blob([b], { type: /mp4|m4a/.test(url) ? 'audio/mp4' : (b.type || 'audio/mpeg') }); } catch (x) { }
     }
     throw e;
@@ -3987,7 +4048,14 @@ async function testSources() {
   toast('Testing music sources…'); BYPASS = true; setTimeout(() => { BYPASS = false; }, 25000);
   const lines = [], step = (ok, label, d) => lines.push(`${ok ? '✓' : '✗'} ${label}${d ? ' — ' + d : ''}`);
   lines.push('FREE SOURCES (always tried first)');
-  JSA.reset(); SvC.fails.clear();
+  JSA.reset(); SvC.fails.clear(); Health.clear();   // a full test re-checks every route from scratch
+  await loadBackupSources().catch(() => { });
+  // every single route, so you can see which ones work from your device and network
+  const each = await JSA.diagnose().catch(() => []);
+  const svEach = await Promise.all([...SvC.list('free'), ...SvC.list('backup')].map(b => getJSON(b.base + (b.shape === 'B' ? '/search/songs?query=hits&page=1&limit=1' : '/search/songs?query=hits&limit=1'), 7000)
+    .then(j => { const ok = j && j.data != null; ok ? Health.ok('s:' + b.base) : Health.fail('s:' + b.base); return `${ok ? '✓' : '✗'} ${hostOf(b.base)}`; }, () => { Health.fail('s:' + b.base); return `✗ ${hostOf(b.base)}`; })));
+  const okN = each.filter(x => x[0] === '✓').length + svEach.filter(x => x[0] === '✓').length;
+  lines.push(`${okN} of ${each.length + svEach.length} free routes answered from this device`);
   try { const r = await JSA.songs('ilaiyaraaja', 'free'); step(true, 'JioSaavn relays', `${r.length} songs via ${Src.describe(Src.last)}`); } catch (e) { step(false, 'JioSaavn relays', String(e.message || e).slice(0, 40)); }
   try { const r = await SvC.songs('ilaiyaraaja', 'free'); step(true, 'Free JioSaavn servers', `${r.length} songs via ${hostOf(SvC.best)}`); } catch (e) { step(false, 'Free JioSaavn servers', 'not answering'); }
   let tr = null;
@@ -4001,8 +4069,14 @@ async function testSources() {
   lines.push('', `YOUR SERVERS (${Src.on() ? 'on — used after free sources' : 'off'})`);
   if (Src.on()) {
     await loadSiteConfig();
-    for (const [tier, label] of [['cfg', 'tunetune-config server'], ['own', 'Your own server']]) {
+    for (const [tier, label] of [['own', 'Your own server'], ['cfg', 'tunetune-config servers']]) {
       if (!Src.has(tier)) { lines.push(`– ${label} — not set up`); continue; }
+      if (tier === 'cfg') {   // each musicServer on its own line
+        const u = 'https://www.jiosaavn.com/api.php?' + new URLSearchParams({ __call: 'autocomplete.get', query: 'hits', _format: 'json', _marker: '0', api_version: '4', ctx: 'web6dot0' });
+        let any = false;
+        for (const p of JSA.relays('cfg')) { try { await JSA.attempt(p, u); JSA.markOk(p); any = true; step(true, `${p.name} (${p.host})`, `working · used ${Src.usedToday('cfg')}× today`); } catch (e) { JSA.markBad(p); step(false, `${p.name} (${p.host})`, 'not answering'); } }
+        Src.state.cfg = any ? 'ok' : 'down'; continue;
+      }
       try { JSA.fails.delete(tier === 'cfg' ? 'config' : 'own'); if (tier === 'own' && !Src.ownServer()) await SvC.songs('hits', 'own'); else await JSA.call({ __call: 'autocomplete.get', query: 'hits' }, tier); Src.state[tier] = 'ok'; step(true, label, 'working'); }
       catch (e) { Src.state[tier] = 'down'; step(false, label, 'not answering'); }
     }
@@ -4012,6 +4086,7 @@ async function testSources() {
   if (S.settings.ytPlayer || S.settings.engine === 'player') { try { await Embed.ensure(); step(true, 'YouTube player', 'ready'); } catch (e) { step(false, 'YouTube player', 'blocked on this network'); } }
   else lines.push('– YouTube player — turned off in Advanced');
   BYPASS = false;
+  lines.push('', 'EVERY FREE ROUTE', ...each, ...svEach);
   if (Server.ok) lines.unshift(`Home Server: connected (${Server.base.replace(/^https?:\/\//, '')})`, '');
   actionSheet({ head: `<div class="sh col"><div class="m-t">Music sources</div><div class="m-s pre">${esc(lines.join('\n'))}</div></div>`, acts: [], cancel: 'Done' });
 }
@@ -4775,7 +4850,7 @@ function renderSettings() {
       sLi({ icon: 'download', color: '#0a84ff', label: 'Preload next song', hint: 'No gaps or buffering between songs', ctl: sSw('preload', s.preload) }) +
       (IS_IOS ? '' : `<div class="li"><div class="lb"><span class="lx">Crossfade<small class="lh">Blend the end of one song into the next</small></span><span class="lv" id="v-crossfade">${+s.crossfade ? s.crossfade + ' s' : 'Off'}</span></div></div><div class="pad"><input class="slider" type="range" min="0" max="12" step="1" value="${+s.crossfade || 0}" data-set="crossfade" style="--p:${((+s.crossfade || 0) / 12) * 100}%" aria-label="Crossfade seconds"></div>`)) +
     sGrp('Music sources',
-      sLi({ icon: 'server', color: Src.on() ? '#30d158' : '#8e8e93', label: 'My server', hint: Src.on() ? 'On · free sources first, then your tunetune-config server, then your own server, then YouTube' : 'Off · free sources first, then YouTube. Turn on to try your servers before YouTube.', ctl: sSw('ownSrc', Src.on()) }) +
+      sLi({ icon: 'server', color: Src.on() ? '#30d158' : '#8e8e93', label: 'My server', hint: Src.on() ? 'On · free sources first, then your own server, then your tunetune-config servers, then YouTube' : 'Off · free sources first, then YouTube. Turn on to try your servers before YouTube.', ctl: sSw('ownSrc', Src.on()) }) +
       sLi({ icon: 'link', color: '#0a84ff', label: 'Your own music server', value: s.proxy ? hostOf(s.proxy) : 'Set up', a: 'setproxy', chev: true }) +
       (Player.cur ? sLi({ label: 'Now playing from', value: (srcInfo() || {}).title || '—', a: 'srcinfo', chev: true }) : '') +
       sLi({ icon: 'pulse', color: '#30d158', label: 'Test music sources', a: 'testsrc', chev: true }),
@@ -4856,12 +4931,12 @@ function renderAdvanced() {
     sGrp('Music sources',
       sLi({ label: 'Use YouTube’s player as a last resort', hint: 'Only for songs no clean source has. Can show ads and pauses when locked.', ctl: sSw('ytPlayer', s.ytPlayer) }) +
       sLi({ icon: 'pulse', color: '#30d158', label: 'Free route in use', hint: JSA.via && !JSA.down() ? Src.describe({ tier: 'free', relay: JSA.via }) : SvC.best ? Src.describe({ tier: 'free', relay: SvC.best }) : JSA.down() ? 'Busy — retrying soon' : 'Checking…' }) +
-      sLi({ icon: 'globe', color: '#30d158', label: 'Free sources', hint: `${JSA.relays('free').length - 1} relays · ${SvC.list('free').length} JioSaavn servers · YouTube mirrors found automatically` }) +
+      sLi({ icon: 'globe', color: '#30d158', label: 'Free sources', hint: `${JSA.relays('free').length - 1} relays · ${SvC.list('free').length} JioSaavn servers · YouTube mirrors found automatically · ${routeSummary()}` }) +
       sLi({ icon: 'globe', color: '#0a84ff', label: 'Backup free sources', hint: 'tunetune-sources.json · always on, tried after the free sources · ' + (!BK.p ? 'loading…' : BK.found ? `${BK.relays.length} relays · ${SvC.list('backup').length} JioSaavn servers · ${BK.piped.length + BK.inv.length} mirrors` : 'not on this site') + (JSA.viaB ? ' · last used: ' + Src.describe({ tier: 'backup', relay: JSA.viaB }) : '') }) +
       sLi({ icon: 'server', color: Src.on() ? '#30d158' : '#8e8e93', label: 'My server', hint: 'Only used after every free source failed, before YouTube', ctl: sSw('ownSrc', Src.on()) }) +
       sLi({ label: 'tunetune-config.json', value: !CFG.p ? '—' : CFG.found ? (CFG.servers.length ? `${plural(CFG.servers.length, 'server')}${Src.on() ? ' · ' + srvState(Src.state.cfg) : ' · off'}` : 'Free sources only') : 'Not on this site' }) +
-      CFG.servers.map(s => sLi({ label: s.name, small: true, hint: s.host, value: !Src.on() ? 'Off' : JSA.bad({ id: s.id, srv: true }) ? 'Not answering' : (Src.last.tier === 'cfg' && Src.last.relay === s.id) ? 'In use' : 'Ready' })).join('') +
-      sLi({ label: 'Your own music server', hint: 'Free Cloudflare Worker', value: s.proxy ? (Src.on() ? srvState(Src.state.own) : 'Saved · off') : 'Set up', a: 'setproxy', chev: true }) +
+      CFG.servers.map(s => sLi({ label: s.name, small: true, hint: `${s.host} · tried last · used ${Src.usedToday('cfg')}× today`, value: !Src.on() ? 'Off' : JSA.bad({ id: s.id, srv: true }) ? 'Not answering' : (Src.last.tier === 'cfg' && Src.last.relay === s.id) ? 'In use' : 'Ready' })).join('') +
+      sLi({ label: 'Your own music server', hint: 'Free Cloudflare Worker' + (s.proxy ? ` · used ${Src.usedToday('own')}× today` : ''), value: s.proxy ? (Src.on() ? srvState(Src.state.own) : 'Saved · off') : 'Set up', a: 'setproxy', chev: true }) +
       sLi({ label: 'Your JioSaavn API', value: s.saavn ? hostOf(s.saavn) : 'None', a: 'setsaavn', chev: true }),
       'Songs play as clean audio from JioSaavn (up to 320 kbps). Lyrics: LRCLIB · Podcasts: Apple Podcasts directory · Radio: Radio Browser.') +
     sGrp('Playback engine', sSeg('engine', [['auto', 'Automatic'], ['player', 'YouTube player'], ['audio', 'Audio only']], s.engine) +
@@ -4892,6 +4967,12 @@ async function serverPanel() {
   box.innerHTML = sLi({ icon: 'server', color: info.enabled ? '#30d158' : '#8e8e93', label: 'Share music to phones & tablets', ctl: `<label class="sw"><input type="checkbox" id="srvon" ${info.enabled ? 'checked' : ''}><span></span></label>` }) +
     (info.enabled && addr ? `<div class="srv"><div id="qr" class="qr"></div><div class="srv-t"><b>On your iPhone or iPad</b><span>Connect to the same Wi-Fi, scan this code with the Camera, then tap Share → Add to Home Screen.</span><code class="selectable">${esc(addr)}</code>${(info.addresses || []).slice(1).map(x => `<code class="selectable">${esc(x)}</code>`).join('')}<button class="btn sm ghost" data-a="copysrv" data-u="${esc(addr)}">${I.copy}Copy address</button></div></div>` : info.enabled ? sLi({ label: 'Not connected to a network', small: true }) : '');
   if (info.enabled && addr && await loadQR()) { const q = $('#qr'); if (q) { q.innerHTML = ''; try { new window.QRCode(q, { text: addr, width: 132, height: 132, colorDark: '#000000', colorLight: '#ffffff' }); } catch (e) { } } }
+}
+// “3 of 17 working” — from the remembered route health
+function routeSummary() {
+  const ids = [...JSA.relays('free').filter(p => p.id !== 'direct' || NATIVE).map(p => 'r:' + p.id), ...JSA.relays('backup').map(p => 'r:' + p.id), ...SvC.list('free').map(b => 's:' + b.base), ...SvC.list('backup').map(b => 's:' + b.base)];
+  const ok = ids.filter(i => Health.state(i) === 'ok').length, down = ids.filter(i => Health.state(i) === 'down').length;
+  return ok || down ? `${ok} working, ${down} down right now` : 'not checked yet';
 }
 const srvState = s => s === 'ok' ? 'Working' : s === 'down' ? 'Not answering' : 'On';
 const VIEWS = { advanced: renderAdvanced, home: renderHome, explore: renderExplore, search: renderSearch, radio: renderRadio, podcasts: renderPodcasts, library: renderLibrary, coll: renderColl, settings: renderSettings };
@@ -5534,6 +5615,7 @@ function init() {
   const idle = window.requestIdleCallback ? f => requestIdleCallback(f, { timeout: 4000 }) : f => setTimeout(f, 300);
   setTimeout(() => idle(() => { Audius.discover(); Mirrors.load(); IT.probe(); Promise.all([loadSiteConfig(), loadBackupSources()]).then(() => Src.warm()).catch(() => { }); }), 1200);
   addEventListener('online', () => { JSA.reset(); setTimeout(() => Src.warm().catch(() => { }), 1500); });
+  setTimeout(() => Health.recheck().catch(() => { }), 20000); setInterval(() => Health.recheck().catch(() => { }), 15 * 60e3);
   if (!S.settings.langs) setTimeout(() => { if (!S.settings.langs && !sheetOpen) langPicker(true); }, 600);
   else if (!String(S.settings.name || '').trim()) setTimeout(() => { if (!String(S.settings.name || '').trim()) { if (sheetOpen) needName = true; else nameSheet(true); } }, /[?&](play|pl|share|text|url)=/.test(location.search) ? 6000 : 1500);
   Server.detect().then(ok => { if (!DIRECT() && (S.settings.ytPlayer || S.settings.engine === 'player')) setTimeout(() => Embed.ensure().catch(() => { }), 2500); if (ok) { IT.ok = null; softRender(); } });
@@ -5542,7 +5624,7 @@ function init() {
     navigator.serviceWorker.register('sw.js').catch(() => { });
   }
   window.TuneTune = { version: VER, engine: () => (IT.ok ? 'direct' : 'mirrors') };
-  if (window.__TT_TEST__) window.TuneTune._ = { BK, loadBackupSources, rowDl, Pod, go, Marquee, UI, podSave, podProg, rowHTML, dlProgress, sleepMenu, Src, CFG, ytWebSearch, srcInfo, Native, JSA, DES, Saavn, Player, Streams, Mirrors, IT, YT, S, nav, cv, Actions, itShelves, mem, Embed, MirrorHealth, download, share, probeAudio, qInfo, sharePlaylist, SvC, translit, Deck, SITE, Offline, landCheck, Party, offlineList, playOffline, offlineSheet, JS_RELAYS, SAAVN_DEFAULT, PIPED_DEFAULT, INV_DEFAULT, loadSiteConfig, Pre, deviceLangs, langSuggest, eqName, eqPins, Haptic, rtags: () => rtags(), podCats: () => podCats(), lyrSet: r => { lyrState = { id: Player.cur && Player.cur.id, ...r }; renderLyrics(); } };
+  if (window.__TT_TEST__) window.TuneTune._ = { Health, HEDGE_MS, BK, loadBackupSources, rowDl, Pod, go, Marquee, UI, podSave, podProg, rowHTML, dlProgress, sleepMenu, Src, CFG, ytWebSearch, srcInfo, Native, JSA, DES, Saavn, Player, Streams, Mirrors, IT, YT, S, nav, cv, Actions, itShelves, mem, Embed, MirrorHealth, download, share, probeAudio, qInfo, sharePlaylist, SvC, translit, Deck, SITE, Offline, landCheck, Party, offlineList, playOffline, offlineSheet, JS_RELAYS, SAAVN_DEFAULT, PIPED_DEFAULT, INV_DEFAULT, loadSiteConfig, Pre, deviceLangs, langSuggest, eqName, eqPins, Haptic, rtags: () => rtags(), podCats: () => podCats(), lyrSet: r => { lyrState = { id: Player.cur && Player.cur.id, ...r }; renderLyrics(); } };
 }
 try { init(); }
 catch (err) {
