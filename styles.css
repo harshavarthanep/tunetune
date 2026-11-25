@@ -730,7 +730,7 @@ kbd{font:600 12px ui-monospace,Menlo,monospace;padding:2px 6px;border-radius:5px
 .aq-hero{display:flex;align-items:center;gap:14px;margin:14px 0 6px;padding:14px;border-radius:14px;background:var(--fill)}
 .aq-hero b{display:block;font-size:17px}.aq-hero small{display:block;font-size:13px;color:var(--text2);margin-top:2px}
 .aq-hero.hires,.aq-hero.lossless,.aq-hero.hq{background:linear-gradient(135deg,rgba(249,226,156,.22),rgba(200,146,42,.16));box-shadow:inset 0 0 0 1px rgba(232,184,74,.35)}
-.aq-medal{flex:none;width:44px;height:44px;border-radius:12px;display:grid;place-items:center;font:800 14px/1 inherit;letter-spacing:.5px;color:#2b1d00;
+.aq-medal{flex:none;width:44px;height:44px;border-radius:12px;display:grid;place-items:center;font:800 14px/1 var(--font);letter-spacing:.5px;color:#2b1d00;
   background:linear-gradient(135deg,#f9e29c,#e8b84a 50%,#c8922a);box-shadow:0 4px 14px rgba(232,184,74,.4)}
 .aq-medal .ic{width:22px;height:22px;stroke-width:2.6}
 .sg.aq .info{margin:6px 0 4px}
@@ -774,7 +774,7 @@ kbd{font:600 12px ui-monospace,Menlo,monospace;padding:2px 6px;border-radius:5px
   transform:none;z-index:5;cursor:auto;transition:width .45s cubic-bezier(.22,.9,.28,1),height .45s cubic-bezier(.22,.9,.28,1),margin .45s cubic-bezier(.22,.9,.28,1)}
 #np.ytfull #ytbox iframe,#np.ytfull #ytbox #ytp,#np.needtap #ytbox iframe,#np.needtap #ytbox #ytp{width:100%;left:0;transform:none;pointer-events:auto}
 #np.ytfull .np-art .dk{opacity:0 !important;pointer-events:none}
-.yt-pill{position:absolute;z-index:6;right:8px;bottom:6px;display:none;align-items:center;gap:6px;padding:7px 12px;border-radius:16px;font:600 12.5px/1 inherit;color:#fff;
+.yt-pill{position:absolute;z-index:6;right:8px;bottom:6px;display:none;align-items:center;gap:6px;padding:7px 12px;border-radius:16px;font:600 12.5px/1 var(--font);color:#fff;
   background:rgba(0,0,0,.55);-webkit-backdrop-filter:blur(10px);backdrop-filter:blur(10px)}
 .yt-pill .ic{width:14px;height:14px}
 #np.video .yt-pill{display:inline-flex}
@@ -803,7 +803,7 @@ kbd{font:600 12px ui-monospace,Menlo,monospace;padding:2px 6px;border-radius:5px
   #np:not(.p-q) #ly-tools{display:flex}
   #np:not(.p-q) #np-lyr{-webkit-mask-image:linear-gradient(to bottom,transparent 0,#000 90px,#000 calc(100% - 60px),transparent);mask-image:linear-gradient(to bottom,transparent 0,#000 90px,#000 calc(100% - 60px),transparent)}
 }
-.lyb{display:inline-flex;align-items:center;gap:6px;padding:7px 13px;border-radius:16px;font:600 13px/1 inherit;color:#fff;background:rgba(255,255,255,.14);transition:background .2s,transform .15s}
+.lyb{display:inline-flex;align-items:center;gap:6px;padding:7px 13px;border-radius:16px;font:600 13px/1 var(--font);color:#fff;background:rgba(255,255,255,.14);transition:background .2s,transform .15s}
 .lyb:active{transform:scale(.95)}
 .lyb .ic{width:15px;height:15px}
 .lyb.on{background:#fff;color:#000}
@@ -853,7 +853,7 @@ body:not(.has-track) #view{padding-bottom:calc(var(--tab-h) + var(--sabx) + 14px
 /* ---------- toasts with Undo / View ---------- */
 #toast{display:flex;align-items:center;gap:12px}
 #toast.act{pointer-events:auto;padding-right:8px}
-#toast .tact{flex:none;padding:6px 12px;border-radius:12px;font:700 13.5px/1 inherit;color:var(--accent);background:rgba(127,127,127,.16)}
+#toast .tact{flex:none;padding:6px 12px;border-radius:12px;font:700 13.5px/1 var(--font);color:var(--accent);background:rgba(127,127,127,.16)}
 
 /* ---------- downloads: green marker like Spotify, progress ring ---------- */
 .dlm{color:#1ed760;width:17px;height:17px;border-radius:50%;background:rgba(30,215,96,.14);place-items:center}
@@ -951,7 +951,7 @@ html.still #view > *,html.still #splash .sp-in{animation:none}
 .p-ctl button.big{width:78px;height:78px;background:#fff;color:#000}
 .p-ctl .ic{width:28px;height:28px}
 .p-styles,.p-opts{display:flex;gap:8px;flex-wrap:wrap;justify-content:center}
-.pchip,.popt{display:inline-flex;align-items:center;gap:6px;padding:9px 15px;border-radius:18px;font:700 13.5px/1 inherit;color:#fff;background:rgba(0,0,0,.35);-webkit-backdrop-filter:blur(10px);backdrop-filter:blur(10px);transition:background .2s,transform .15s}
+.pchip,.popt{display:inline-flex;align-items:center;gap:6px;padding:9px 15px;border-radius:18px;font:700 13.5px/1 var(--font);color:#fff;background:rgba(0,0,0,.35);-webkit-backdrop-filter:blur(10px);backdrop-filter:blur(10px);transition:background .2s,transform .15s}
 .pchip:active,.popt:active{transform:scale(.94)}
 .pchip.on,.popt.on{background:#fff;color:#000}
 .popt .ic{width:16px;height:16px}
@@ -975,7 +975,7 @@ body.offline .row[data-id]:not([data-id^="lc:"]):not(:has(.dlm)){opacity:.4}
 #splash .sp-tag{max-width:280px;text-align:center;font-size:12.5px;line-height:1.45;color:var(--text2);animation:spIn .8s .15s cubic-bezier(.2,1.2,.3,1) both}
 
 /* ---------- equalizer: applied sound shown in Now Playing, edit / pin ---------- */
-.eqtag{display:none;align-items:center;gap:4px;margin-left:6px;padding:2px 8px;border-radius:5px;font:700 10.5px/1.4 inherit;letter-spacing:.3px;text-transform:uppercase;color:inherit;background:rgba(255,255,255,.16);max-width:42vw;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;vertical-align:middle}
+.eqtag{display:none;align-items:center;gap:4px;margin-left:6px;padding:2px 8px;border-radius:5px;font:700 10.5px/1.4 var(--font);letter-spacing:.3px;text-transform:uppercase;color:inherit;background:rgba(255,255,255,.16);max-width:42vw;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;vertical-align:middle}
 .eqtag:not(:empty){display:inline-flex}
 .eqtag .ic{width:11px;height:11px;flex:none}
 .eqtag.na{opacity:.45;text-decoration:line-through}
@@ -1326,7 +1326,7 @@ html{-webkit-text-size-adjust:100%;text-size-adjust:100%}
 
 /* ================= v1.1: offline pill, iPhone bottom spacing, landscape art ================= */
 .dlbadge{display:none!important}
-.dlpill{display:none;align-items:center;gap:4px;margin-left:6px;padding:2px 8px 2px 3px;border-radius:10px;font:700 10.5px/1.5 inherit;letter-spacing:.3px;text-transform:uppercase;color:#fff;background:rgba(255,255,255,.16);vertical-align:middle}
+.dlpill{display:none;align-items:center;gap:4px;margin-left:6px;padding:2px 8px 2px 3px;border-radius:10px;font:700 10.5px/1.5 var(--font);letter-spacing:.3px;text-transform:uppercase;color:#fff;background:rgba(255,255,255,.16);vertical-align:middle}
 .dlpill.on{display:inline-flex}
 .dlpill .ic{width:15px;height:15px;padding:2px;border-radius:50%;background:#1ed760;color:#fff;stroke-width:3;box-sizing:border-box}
 .dlpill.auto .ic{background:#8e8e93}
@@ -1435,7 +1435,7 @@ html.still #splash{display:none}
 .heartpop{animation:heartPop .65s cubic-bezier(.3,1.6,.5,1)}
 @keyframes heartPop{0%{transform:scale(1)}25%{transform:scale(.7)}55%{transform:scale(1.28)}100%{transform:scale(1)}}
 /* sleep timer pill + ticking clock */
-.slpill{display:none;align-items:center;gap:4px;margin-left:6px;padding:2px 8px 2px 5px;border-radius:10px;font:700 10.5px/1.5 inherit;font-variant-numeric:tabular-nums;color:inherit;background:rgba(255,255,255,.16);vertical-align:middle}
+.slpill{display:none;align-items:center;gap:4px;margin-left:6px;padding:2px 8px 2px 5px;border-radius:10px;font:700 10.5px/1.5 var(--font);font-variant-numeric:tabular-nums;color:inherit;background:rgba(255,255,255,.16);vertical-align:middle}
 .slpill.on{display:inline-flex}
 .slpill .ic{width:13px;height:13px}
 #np-btimer.on .ic,.slpill.on .ic,#dv-sleep.on .ic{animation:tick 1s steps(2) infinite}
@@ -1591,3 +1591,95 @@ body.partying .greet .streak{animation:none}
 /* nothing animates while it can't be seen: closed Now Playing, or the app in the background */
 #np:not(.open) *,#np:not(.open){animation-play-state:paused!important}
 html.bg-hidden *,html.bg-hidden *::before,html.bg-hidden *::after{animation-play-state:paused!important}
+
+/* ================= v1.1 polish: player chips, landscape, Car Mode, podcasts, paper-white ================= */
+/* light theme: soft paper white, easier on the eyes than pure white */
+:root:not([data-theme="dark"]){
+  --bg:#f7f4ec;--grp:#eeeae0;--side-bg:#f1ede4;--elev:#fbf9f4;--sheet:rgba(250,248,242,.96);
+  --text:#1d1b18;--text2:rgba(58,52,42,.64);--text3:rgba(58,52,42,.32);
+  --sep:rgba(74,62,40,.15);--fill:rgba(120,104,78,.11);--fill2:rgba(120,104,78,.18);
+  --glass:rgba(247,244,236,.84);--shadow:0 10px 34px rgba(60,45,20,.13);--card-sh:0 3px 12px rgba(60,45,20,.07);
+}
+
+/* chip row under the progress bar: times pinned to the edges, chips centred, all the same size and font */
+.times{display:flex;align-items:center;gap:8px}
+#np-cur,#np-rem{flex:none;min-width:34px}
+#np-rem{text-align:right}
+.tchips{flex:1 1 auto;min-width:0;display:flex;align-items:center;justify-content:center;gap:6px;overflow:hidden}
+.tchips > .qbadge,.tchips > .slpill,.tchips > .eqtag,.tchips > .dlpill{margin:0;flex:0 1 auto;min-width:0;height:20px;box-sizing:border-box;
+  font:700 10.5px/1 var(--font);letter-spacing:.4px;text-transform:uppercase;white-space:nowrap;border-radius:6px;padding:0 7px;gap:4px;align-items:center;
+  color:inherit;background:rgba(255,255,255,.16);opacity:1;vertical-align:middle}
+.tchips > .qbadge:empty{display:none}
+.tchips > .slpill:not(.on),.tchips > .dlpill:not(.on),.tchips > .eqtag:empty{display:none}
+.tchips > .slpill.on,.tchips > .dlpill.on,.tchips > .eqtag:not(:empty),.tchips > .qbadge:not(:empty){display:inline-flex}
+.tchips span{overflow:hidden;text-overflow:ellipsis}
+.tchips .ic{width:12px;height:12px;flex:none}
+.tchips > .slpill{font-variant-numeric:tabular-nums;letter-spacing:.2px}
+.tchips > .dlpill .ic{width:13px;height:13px}
+.tchips .livepill{flex:none}
+/* not enough room: labels become icons (equalizer and offline first, then the quality text) */
+.tchips.t1 > .eqtag span,.tchips.t1 > .dlpill span{display:none}
+.tchips.t1 > .eqtag,.tchips.t1 > .dlpill{padding:0 5px}
+.tchips.t2 > .qbadge{letter-spacing:.2px}
+
+/* quality badge: the source light sits inside the pill, evenly spaced */
+.qbadge{gap:5px}
+.qbadge .srcdot{width:6px;height:6px;margin:0 1px 0 0;box-shadow:none;align-self:center}
+.qbadge .srcdot + .gold{margin-left:0}
+.qbadge.t-hq,.qbadge.t-std,.qbadge.t-{padding-left:7px}
+.qbadge.t-hires:has(.srcdot),.qbadge.t-lossless:has(.srcdot){padding-left:6px;background:rgba(255,255,255,.13)}
+.qbadge .gold{line-height:1;padding:3px 6px;border-radius:4px}
+
+/* Party Mode doesn't fit podcasts */
+#np.pod #np-party{display:none}
+
+/* long titles roll instead of being cut off or squeezing the art (landscape player & Car Mode) */
+.roll{text-overflow:clip!important;-webkit-mask-image:linear-gradient(90deg,#000 calc(100% - 22px),transparent);mask-image:linear-gradient(90deg,#000 calc(100% - 22px),transparent)}
+.roll .mq-i{display:inline-block;padding-right:8px;animation:mqRoll var(--mqd,10s) ease-in-out infinite alternate}
+@keyframes mqRoll{0%,14%{transform:translateX(0)}86%,100%{transform:translateX(var(--mq,0))}}
+html.still .roll .mq-i{animation-duration:calc(var(--mqd,10s) * 1.6)}
+
+/* landscape phones: the text column can never push the album art off-screen */
+@media (orientation:landscape) and (max-height:560px){
+  .np-in{grid-template-columns:minmax(0,48%) minmax(0,1fr)}
+  .np-meta,.np-tt,.scrub,.ctrl,.np-bot,.np-top{min-width:0}
+  .np-tt{overflow:hidden}
+  .np-t,.np-a{max-width:100%}
+  #drive{grid-template-columns:minmax(0,50%) minmax(0,1fr)}
+  .dv-info{min-width:0;width:100%;max-width:100%}
+  .dv-t,.dv-a,.dv-up{max-width:100%;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .dv-a{display:block}
+}
+.dv-up{max-width:100%;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+
+/* podcast episodes: listened bar on the artwork (like YouTube), check mark when played */
+.tw{position:relative;flex:none;display:block;border-radius:7px;overflow:hidden}
+.tw .thumb{display:block}
+.epbar{position:absolute;left:0;right:0;bottom:0;height:4px;background:rgba(0,0,0,.45)}
+.epbar i{display:block;height:100%;background:var(--accent);border-radius:0 2px 2px 0}
+.epchk{position:absolute;right:3px;bottom:3px;width:17px;height:17px;border-radius:50%;display:grid;place-items:center;color:#fff;background:#30d158;box-shadow:0 1px 4px rgba(0,0,0,.35)}
+.epchk .ic{width:11px;height:11px;stroke-width:3.2}
+.row.ep-done .rt .tx{color:var(--text2)}
+.row.ep-done .tw .thumb{opacity:.72}
+.qart .epbar,.card .epbar{display:none}
+
+/* podcast notes: Copy sits on the episode's own line, never over the text */
+.ly-notes .ly-meta{display:flex;align-items:center;justify-content:space-between;gap:12px}
+.ly-notes .ly-meta span{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.ly-notes .ly-meta .ly-copy{flex:none;margin:0;opacity:1}
+
+/* nav bar: a long page title never runs into the back button */
+.nb{grid-template-columns:minmax(0,1fr) auto minmax(0,1fr)}
+.nb-l{overflow:hidden}
+.nb-back{max-width:100%;min-width:0}
+@media (max-width:599px){
+  .nb.long .nb-t{max-width:56vw}
+  .nb.long .nb-back span{transition:opacity .2s,max-width .25s;max-width:30vw}
+  #view.scrolled .nb.long .nb-back span{opacity:0;max-width:0}
+}
+.tchips > .qbadge.t-hires,.tchips > .qbadge.t-lossless{background:transparent;padding:0}
+.tchips > .qbadge.t-hires:has(.srcdot),.tchips > .qbadge.t-lossless:has(.srcdot){padding:0 6px 0 7px;background:rgba(255,255,255,.13)}
+#np-chips:not(.t2) > *{flex-shrink:0}
+#np-chips.t2 > .qbadge .qk{display:none}
+#np-chips.t2 > .slpill .ic{display:inline-block}
+#np-chips.t2 > .qbadge{flex-shrink:1}

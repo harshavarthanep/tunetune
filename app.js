@@ -1829,7 +1829,7 @@ const Player = {
         if (dt > 0 && dt < 2.5) { this.listened += dt; const c = !this.counted && this.listened >= 30; if (c) { this.counted = true; setTimeout(() => Offline.keep(t), 1500); if (IS_CAP && !S.askedNotif) setTimeout(() => Native.askNotif(), 5000); } Stats.add(t, dt, c); }
       }
       this.lastStatT = now;
-      if (t && t.source === 'podcast' && Date.now() - this.lastPodSave > 5000) { this.lastPodSave = Date.now(); podSave(t, now, a.duration); }
+      if (t && t.source === 'podcast' && Date.now() - this.lastPodSave > 5000) { this.lastPodSave = Date.now(); const pp = podProg(t.id); if (!(pp && pp.done && pp.manual)) podSave(t, now, a.duration); }
       UI.time(); this.ahead();
     } else if (ev === 'durationchange') UI.time();
     else if (ev === 'play') UI.state();
@@ -1955,6 +1955,7 @@ const Player = {
     if (!quiet) {
       this.attempts = 0; this.avoid = new Set(); this.via = ''; this.prefetched = false; this.previewMode = false; this.listened = 0; this.counted = false; addHistory(t);
       this.ytOnce = false; t.svRetry = 0; t._svNo = false;
+      if (t.source === 'podcast') { const p0 = podProg(t.id); if (p0 && p0.manual) delete p0.manual; }
       if (t.source === 'podcast' && !startAt) { const pp = podProg(t.id); const d = pp && (pp.dur || t.duration); if (pp && !pp.done && pp.pos > 15 && (!d || pp.pos < d - 20)) startAt = pp.pos; }
     }
     this.lastStatT = null; this.norm = 1; this.quality = ''; this.srcPath = null; this.audioVia = ''; this.preWarm = false; this.preWarmPrev = false;
@@ -2217,6 +2218,7 @@ const Player = {
   pos() { return this.seekWant != null ? this.seekWant : (this.loaded ? (this.el.currentTime || 0) : (this.resumeAt || 0)); },
   seek(s) {
     const t = this.cur; if (!t || t.live) return;
+    if (t.source === 'podcast') { const pp = podProg(t.id); if (pp && pp.manual) delete pp.manual; }
     if (!this.loaded) { this.resumeAt = Math.max(0, s); return this.load(true, this.resumeAt, true); }
     const a = this.el; const to = isFinite(a.duration) ? clamp(s, 0, Math.max(0, a.duration - 0.25)) : Math.max(0, s);
     this.seekWant = to; this.resumeAt = to; try { a.currentTime = to; } catch (e) { }
@@ -2355,7 +2357,7 @@ const Player = {
   setRate(r) { this.rate = r; if (this.cur && !this.cur.live) this.el.playbackRate = r; toast(`Speed ${r}×`); },
   sleep(min) {
     clearTimeout(this.sleepT); this.sleepT = null; this.sleepEnd = false; this.sleepAt = 0;
-    if (min === 'end') { this.sleepEnd = true; toast('Will pause when this song ends'); }
+    if (min === 'end') { this.sleepEnd = true; toast('Will pause when the current one ends'); }
     else if (min > 0) { this.sleepAt = Date.now() + min * 60000; this.sleepT = setTimeout(() => this.fadeOut(), min * 60000); toast(`Sleep timer set for ${min} min`); }
     else toast('Sleep timer off');
     UI.timerBtn();
@@ -2481,6 +2483,7 @@ const UI = {
     if (Party.on) Party.ui();
     $('#np-t').textContent = t.title;
     $('#np-a').textContent = t.artist + (Player.previewMode ? ' · Preview' : '');
+    Marquee.all();
     $('#np-from').textContent = Player.from || TITLE;
     $('#np').classList.toggle('live', !!t.live);
     document.title = `${t.title} · ${t.artist}`;
@@ -2510,9 +2513,9 @@ const UI = {
     if (window.ttDesktop && window.ttDesktop.playing) { const on = !!(playing || busy); if (on !== this.deskOn) { this.deskOn = on; window.ttDesktop.playing(on); } }
     if (NativeMS && Player.cur) { const st = playing || busy ? 'playing' : 'paused'; if (st !== this.lastNative) { this.lastNative = st; nms('setPlaybackState', { playbackState: st }); } }
     $('#np').classList.toggle('pod', !!(Player.cur && Player.cur.source === 'podcast'));
-    const qb = $('#np-qb'); if (qb) { const h = Player.cur ? badgeHTML(Player.cur) : ''; if (qb.dataset.h !== h) { qb.dataset.h = h; qb.innerHTML = h; const x = qInfo(Player.cur); qb.className = 'qbadge t-' + x.tier; } }
+    const qb = $('#np-qb'); if (qb) { const h = Player.cur ? badgeHTML(Player.cur) : ''; if (qb.dataset.h !== h) { qb.dataset.h = h; qb.innerHTML = h; const x = qInfo(Player.cur); qb.className = 'qbadge t-' + x.tier; this.fitChips(); } }
     const sp = $('#np-slp'); if (sp) { const on = !!(Player.sleepAt || Player.sleepEnd); sp.classList.toggle('on', on); if (on) { const left = Player.sleepEnd ? 'End of song' : fmt(Math.max(0, (Player.sleepAt - Date.now()) / 1000)); const lb = sp.querySelector('span'); if (lb.textContent !== left) lb.textContent = left; } }
-    const et = $('#np-eqt'); if (et) { const on = S.settings.eqOn && !IS_IOS && Player.cur && !Player.cur.live; const txt = on ? eqName() : ''; if (et.dataset.t !== txt + (Player.el === Player.fx)) { et.dataset.t = txt + (Player.el === Player.fx); et.innerHTML = on ? `${I.eq}${esc(txt)}` : ''; et.classList.toggle('na', on && Player.el !== Player.fx); et.title = on && Player.el !== Player.fx ? 'Equalizer isn’t available for this song' : 'Equalizer: ' + txt; } }
+    const et = $('#np-eqt'); if (et) { const on = S.settings.eqOn && !IS_IOS && Player.cur && !Player.cur.live; const txt = on ? eqName() : ''; if (et.dataset.t !== txt + (Player.el === Player.fx)) { et.dataset.t = txt + (Player.el === Player.fx); et.innerHTML = on ? `${I.eq}<span>${esc(txt)}</span>` : ''; et.classList.toggle('na', on && Player.el !== Player.fx); et.title = on && Player.el !== Player.fx ? 'Equalizer isn’t available for this song' : 'Equalizer: ' + txt; this.fitChips(); } }
     const aq = $('#aqbox'); if (aq) { const k = (Player.cur && Player.cur.id) + '|' + Player.quality + '|' + Player.via + '|' + S.settings.eqOn + '|' + Src.on() + '|' + Src.describe(Player.srcPath); if (aq.dataset.k !== k) { aq.dataset.k = k; setHTML(aq, aqInner()); } }
   },
   slp() { const sp = document.getElementById('np-slp'); if (!sp) return; const on = !!(Player.sleepAt || Player.sleepEnd); sp.classList.toggle('on', on); const b = document.getElementById('np-btimer'); if (b) b.classList.toggle('on', on); if (on) { const left = Player.sleepEnd ? 'End of song' : fmt(Math.max(0, (Player.sleepAt - Date.now()) / 1000)); const lb = sp.querySelector('span'); if (lb && lb.textContent !== left) lb.textContent = left; } },
@@ -2579,15 +2582,26 @@ const UI = {
     const t = Player.cur, el = $('#np-dl'), mm = $('#m-dl'); const on = t && t.source !== 'local' && (isDl(t.id) || Offline.has(t.id)); const auto = on && !isDl(t.id);
     [el, mm].forEach(x => { if (x) { x.classList.remove('on', 'auto'); } });
     const q = $('#np-dlq'); if (q) { q.classList.toggle('on', !!on); q.classList.toggle('auto', !!auto); const sp = q.querySelector('span'); if (sp) sp.textContent = auto ? 'Offline' : 'Downloaded'; }
+    this.fitChips();
   },
-  timerBtn() { $('#np-btimer').classList.toggle('on', !!(Player.sleepAt || Player.sleepEnd)); this.drive(); },
+  timerBtn() { $('#np-btimer').classList.toggle('on', !!(Player.sleepAt || Player.sleepEnd)); this.drive(); this.fitChips(); },
+  // the chip row under the progress bar: when it runs out of room, labels give way to icons (times never get pushed out)
+  fitChips() {
+    const c = $('#np-chips'); if (!c || !npOpen) return;
+    cancelAnimationFrame(this.fitR); this.fitR = requestAnimationFrame(() => {
+      c.classList.remove('t1', 't2');
+      if (c.scrollWidth > c.clientWidth + 1) { c.classList.add('t1'); if (c.scrollWidth > c.clientWidth + 1) c.classList.add('t2'); }
+    });
+  },
   drive() {
     const t = Player.cur; if (!t || !$('#drive')) return;
     const da = $('#dv-art'); const u = artOf(t, true); if (da.getAttribute('src') !== u) { delete da.dataset.fb; da.src = u; }
     const q = Player.queue, i = Player.i, wrap = Player.repeat === 'all' && q.length > 1;
     const pv = i > 0 ? q[i - 1] : wrap ? q[q.length - 1] : null, nx = i < q.length - 1 ? q[i + 1] : wrap ? q[0] : null;
     [['dv-prev', pv], ['dv-next', nx]].forEach(([id, x]) => { const el = $('#' + id); if (!el) return; if (x) { const v = artOf(x, true); if (el.getAttribute('src') !== v) { delete el.dataset.fb; el.src = v; } el.classList.add('show'); } else el.classList.remove('show'); });
-    $('#dv-t').textContent = t.title; $('#dv-a').textContent = t.artist;
+    if ($('#dv-t').dataset.mqt !== t.title) $('#dv-t').textContent = t.title;
+    if ($('#dv-a').dataset.mqt !== t.artist) $('#dv-a').textContent = t.artist;
+    Marquee.all();
     $('#dv-pp').innerHTML = Player.loaded && !Player.el.paused ? I.pause : I.play;
     $('#dv-back').innerHTML = skipIcon(skipSecs(-1), true); $('#dv-fwd').innerHTML = skipIcon(skipSecs(1), false);
     $('#dv-like').innerHTML = isLiked(t.id) ? I.heartFill : I.heart;
@@ -2788,7 +2802,7 @@ function buildShell() {
     <div class="np-meta"><div class="np-tt"><div class="np-t" id="np-t"></div><span class="dlbadge" id="np-dl">${I.dlok}</span><div class="np-a" id="np-a" data-a="npartist"></div></div>
       <button class="np-ib" id="np-party" data-a="party" aria-label="Party Mode">${I.disco}</button><button class="np-ib" id="np-share" data-a="npshare" aria-label="Share">${I.share}</button><button class="np-ib" id="np-like" data-a="nplike" aria-label="Favorite">${I.heart}</button></div>
     <div class="scrub"><input class="rng" id="np-seek" type="range" min="0" max="1000" step="1" value="0" aria-label="Seek">
-      <div class="times"><span id="np-cur">0:00</span><span class="livepill">● LIVE</span><span class="qbadge" id="np-qb" data-a="aq" role="button" tabindex="0" aria-label="Audio quality"></span><button class="slpill" id="np-slp" data-a="sleep" aria-label="Sleep timer">${I.timer}<span></span></button><button class="eqtag" id="np-eqt" data-a="eq" aria-label="Equalizer"></button><button class="dlpill" id="np-dlq" data-a="dlinfo" aria-label="Offline status">${I.offline}<span></span></button><span id="np-rem">-0:00</span></div></div>
+      <div class="times"><span id="np-cur">0:00</span><div class="tchips" id="np-chips"><span class="livepill">● LIVE</span><span class="qbadge" id="np-qb" data-a="aq" role="button" tabindex="0" aria-label="Audio quality"></span><button class="slpill" id="np-slp" data-a="sleep" aria-label="Sleep timer">${I.timer}<span></span></button><button class="eqtag" id="np-eqt" data-a="eq" aria-label="Equalizer"></button><button class="dlpill" id="np-dlq" data-a="dlinfo" aria-label="Offline status">${I.offline}<span></span></button></div><span id="np-rem">-0:00</span></div></div>
     <div class="ctrl">
       <button class="np-ib c-s" id="np-shuf" data-a="shuffle" aria-label="Shuffle">${I.shuffle}</button>
       <button class="np-ib c-k" data-a="skipb" aria-label="Skip back">${skipIcon(S.settings.podBack || 15, true)}</button>
@@ -2808,7 +2822,7 @@ function buildShell() {
 }
 function openNP() {
   if (!Player.cur || npOpen) return;
-  npOpen = true; $('#np').classList.add('open'); document.body.classList.add('np-open'); history.pushState({ np: 1 }, '');
+  npOpen = true; setTimeout(() => { UI.fitChips(); Marquee.all(); }, 60); $('#np').classList.add('open'); document.body.classList.add('np-open'); history.pushState({ np: 1 }, '');
   UI.time(); panelRefresh();
 }
 function closeNP(fromPop) {
@@ -2905,7 +2919,7 @@ async function loadLyrics() {
   if (lyrState && lyrState.id === t.id) return;
   lyrState = { id: t.id }; lyrIdx = -1; const tools = $('#ly-tools'); if (tools) tools.innerHTML = '';
   if (t.live) { box.innerHTML = npMsg('radio', 'Live radio', 'Lyrics aren’t available for live stations.'); return; }
-  if (t.source === 'podcast') { if (t.desc && tools) tools.innerHTML = `<button class="lyb" data-a="copylyr">${I.copy}Copy notes</button>`; box.innerHTML = `<div class="ly-notes"><b>${esc(t.title)}</b><p>${esc([t.artist, fmtDate(t.date)].filter(Boolean).join(' · '))}</p><div class="ly-plain">${esc(t.desc || 'No episode notes for this one.')}</div>${t.desc ? `<p class="ly-src"><button class="ly-copy" data-a="copylyr">${I.copy}Copy notes</button></p>` : ''}</div>`; box.scrollTop = 0; return; }
+  if (t.source === 'podcast') { if (tools) tools.innerHTML = ''; box.innerHTML = `<div class="ly-notes"><b>${esc(t.title)}</b><p class="ly-meta"><span>${esc([t.artist, fmtDate(t.date)].filter(Boolean).join(' · '))}</span>${t.desc ? `<button class="ly-copy" data-a="copylyr" aria-label="Copy notes">${I.copy}Copy</button>` : ''}</p><div class="ly-plain">${esc(t.desc || 'No episode notes for this one.')}</div>${t.desc ? `<p class="ly-src"><button class="ly-copy" data-a="copylyr">${I.copy}Copy notes</button></p>` : ''}</div>`; box.scrollTop = 0; return; }
   box.innerHTML = '<div class="np-msg"><div class="spin light"></div></div>';
   let r = null; try { r = await Lyrics.get(t); } catch (e) { }
   if (!Player.cur || Player.cur.id !== t.id) return;
@@ -3050,7 +3064,12 @@ function trackMenu(t, meta = {}) {
       !meta.np && { label: 'Add to Queue', icon: 'queue', fn: () => Player.enqueue(t) },
       !t.live && t.source !== 'local' && t.source !== 'podcast' && { label: 'Start Radio', icon: 'infinity', fn: () => startRadio(t) },
       t.source === 'podcast' && t.podId && { label: 'Go to Show', icon: 'mic', fn: () => { const open = () => go('coll', { k: 'pod', c: { kind: 'podcast', id: t.podId, title: t.artist, art: t.artLarge || t.art, source: 'pod' }, title: t.artist }); if (npOpen) { closeNP(); setTimeout(open, 380); } else open(); } },
-      t.source === 'podcast' && { label: (podProg(t.id) || {}).done ? 'Mark as Unplayed' : 'Mark as Played', icon: 'check', fn: () => { const pp = podProg(t.id); if (pp && pp.done) delete S.pod.prog[t.id]; else podSave(t, t.duration, t.duration, true); save(); softRender(); } },
+      t.source === 'podcast' && { label: (podProg(t.id) || {}).done ? 'Mark as Unplayed' : 'Mark as Played', icon: 'check', fn: () => {
+        const pp = podProg(t.id), wasDone = !!(pp && pp.done);
+        if (wasDone) delete S.pod.prog[t.id]; else { podSave(t, t.duration, (pp && pp.dur) || t.duration, true); S.pod.prog[t.id].manual = true; }
+        if (Player.cur && Player.cur.id === t.id) Player.lastPodSave = Date.now();
+        save(); softRender(); buzz(); toast(wasDone ? 'Marked as unplayed' : 'Marked as played');
+      } },
       { label: liked ? (t.live ? 'Remove Station' : 'Remove from Favorites') : (t.live ? 'Save Station' : 'Favorite'), icon: liked ? 'heartFill' : 'heart', fn: () => toggleLike(t) },
       !t.live && { label: 'Add to Playlist…', icon: 'playlist', fn: () => pickPlaylist(t) },
       canDownload(t) && !dl && { label: 'Download', icon: 'download', fn: () => download(t) },
@@ -3147,13 +3166,13 @@ function srcInfo() {
 function badgeHTML(t) {
   const x = qInfo(t); if (!x.label) return '';
   const si = Player.cur && Player.cur.id === t.id ? srcInfo() : null;
-  const dot = si && si.k !== 'local' ? `<i class="srcdot s-${si.k}" aria-hidden="true"></i>` : '';
+  const dot = si && si.k !== 'local' && !t.live && !['podcast', 'radio', 'local'].includes(t.source) ? `<i class="srcdot s-${si.k}" aria-hidden="true"></i>` : '';
   return dot + badgeInner(x);
 }
 function badgeInner(x) {
   if (x.tier === 'hires') return `<span class="gold">${I.wave}Hi-Res</span>`;
   if (x.tier === 'lossless') return `<span class="gold">${I.wave}Lossless</span>`;
-  if (x.tier === 'hq') return `<span class="gold">HQ</span>${x.kb} kbps`;
+  if (x.tier === 'hq') return `<span class="gold">HQ</span><span class="qk">${x.kb} kbps</span>`;
   return esc(x.label);
 }
 function aqInner() {
@@ -3299,9 +3318,9 @@ function pickPlaylist(t) {
 function sleepMenu() {
   const rem = Player.sleepAt ? Math.ceil((Player.sleepAt - Date.now()) / 60000) : 0;
   actionSheet({
-    head: textHead('Sleep Timer', Player.sleepEnd ? 'Pausing when this song ends' : rem ? `${rem} min left` : 'Music fades out and pauses'),
+    head: textHead('Sleep Timer', Player.sleepEnd ? 'Pausing when the current one ends' : rem ? `${rem} min left` : 'Fades out and pauses'),
     acts: [...[5, 15, 30, 45, 60, 90].map(m => ({ label: `${m} minutes`, fn: () => Player.sleep(m) })),
-      { label: 'When This Song Ends', fn: () => Player.sleep('end') },
+      !(Player.cur && Player.cur.live) && { label: 'When the Current One Ends', fn: () => Player.sleep('end') },
       (Player.sleepAt || Player.sleepEnd) && { label: 'Turn Off Timer', danger: true, fn: () => Player.sleep(0) }],
   });
 }
@@ -3491,8 +3510,8 @@ function dlProgress(t, p) {
   if (p < 0) dlPct.delete(t.id); else dlPct.set(t.id, p);
   $$('.row[data-id]').filter(r => r.dataset.id === t.id).forEach(r => {
     let ring = r.querySelector('.dlp');
-    if (p < 0) { if (ring) ring.remove(); return; }
-    if (!ring) { const m = r.querySelector('.more'); if (!m) return; m.insertAdjacentHTML('beforebegin', '<span class="dlp"></span>'); ring = r.querySelector('.dlp'); }
+    if (p < 0) { if (ring) ring.remove(); if (!isDl(t.id) && !dlActive.has(t.id)) rowDl(t.id); return; }
+    if (!ring) { const m = r.querySelector('.more'); if (!m) return; r.querySelectorAll('.dlm').forEach(x => x.remove()); m.insertAdjacentHTML('beforebegin', '<span class="dlp"></span>'); ring = r.querySelector('.dlp'); }
     ring.style.setProperty('--d', p + '%');
   });
   if (p >= 0 && (p % 10 === 0 || p > 95) && !document.hidden) { const tt = $('#toast'); if (tt && tt.classList.contains('on') && /^Downloading/.test(tt.textContent)) tt.firstChild.textContent = `Downloading “${t.title}” · ${p}%`; }
@@ -3524,7 +3543,7 @@ async function download(t, quiet) {
     dlProgress(t, -1);
     if (!quiet) toast(`Downloaded “${t.title}” — plays offline`, { label: 'View', fn: () => { if (npOpen) closeNP(); setTimeout(() => go('coll', { k: 'downloads', title: 'Downloaded' }), npOpen ? 400 : 0); } });
     Offline.forget(t.id); UI.dlMark();
-    $$('.row[data-id]').filter(r => r.dataset.id === t.id).forEach(r => { const m = r.querySelector('.more'); if (m && !r.querySelector('.dlm')) m.insertAdjacentHTML('beforebegin', `<span class="dlm">${I.dlok}</span>`); });
+    rowDl(t.id); setTimeout(() => rowDl(t.id), 400);
     return true;
   } catch (e) {
     warn(e);
@@ -3533,7 +3552,7 @@ async function download(t, quiet) {
     if (!quiet) { const s2 = await mediaSource(t).catch(() => null); if (s2 && s2.url && !/googlevideo|\/api\/stream/.test(s2.url)) { offerSave(t, s2.url); return false; } }
     if (!quiet) toast(`Couldn’t download “${t.title}” right now — try again in a moment`);
     return false;
-  } finally { dlActive.delete(t.id); }
+  } finally { dlActive.delete(t.id); rowDl(t.id); }
 }
 function offerSave(t, url) {
   actionSheet({
@@ -3939,7 +3958,7 @@ function applyTheme() {
   r.classList.toggle('still', !st.motion); r.classList.toggle('nobg', !st.animBg); r.classList.toggle('nobadge', !st.badge);
   r.dataset.lyr = st.lyricsSize || 'm';
   r.style.setProperty('--zoom', String(+st.zoom || 1));
-  const m = $('meta[name="theme-color"]'); if (m) m.setAttribute('content', dark ? '#000000' : '#ffffff');
+  const m = $('meta[name="theme-color"]'); if (m) m.setAttribute('content', dark ? '#000000' : '#f7f4ec');
 }
 
 /* ================= navigation ================= */
@@ -4019,9 +4038,26 @@ const LABELS = { advanced: 'Advanced', home: 'Home', explore: 'Explore', search:
 function header(title, o = {}) {
   const st = nav.stacks[nav.tab]; const back = st.length > 1;
   const prev = back ? (LABELS[st[st.length - 2].v] || st[st.length - 2].title || 'Back') : '';
-  return `<div class="nb"><div class="nb-l">${back ? `<button class="nb-back" data-a="back">${I.chevL}<span>${esc(prev)}</span></button>` : (o.left || '')}</div>
+  return `<div class="nb${String(title || '').length > 14 ? ' long' : ''}"><div class="nb-l">${back ? `<button class="nb-back" data-a="back">${I.chevL}<span>${esc(prev)}</span></button>` : (o.left || '')}</div>
     <div class="nb-t">${esc(title)}</div><div class="nb-r">${o.right || ''}</div></div>${o.noLarge ? '' : `<h1 class="lt">${esc(title)}</h1>`}`;
 }
+/* Long titles roll gently (landscape player and Car Mode) instead of squeezing the album art */
+const Marquee = {
+  ids: ['np-t', 'np-a', 'dv-t', 'dv-a'],
+  land: () => matchMedia('(orientation:landscape) and (max-height:560px)').matches,
+  all() { cancelAnimationFrame(this.r); this.r = requestAnimationFrame(() => this.ids.forEach(id => this.one($('#' + id)))); },
+  one(el) {
+    if (!el) return;
+    const txt = el.textContent;
+    if (el.dataset.mqt !== txt || !el.querySelector('.mq-i')) { el.dataset.mqt = txt; el.innerHTML = `<span class="mq-i">${esc(txt)}</span>`; }
+    const inner = el.querySelector('.mq-i'); el.classList.remove('roll');
+    const active = el.id.startsWith('dv-') ? !!$('#drive') : npOpen && this.land();
+    const over = Math.max(el.scrollWidth, inner.getBoundingClientRect().width) - el.clientWidth;
+    if (!active || over < 4) return;
+    el.style.setProperty('--mq', -(over + 14) + 'px'); el.style.setProperty('--mqd', Math.max(7, (over + 14) / 28 + 4).toFixed(1) + 's');
+    el.classList.add('roll');
+  },
+};
 const nbBtn = (a, ic, label, extra = '') => `<button class="nb-btn" data-a="${a}" aria-label="${esc(label)}" ${extra}>${I[ic]}</button>`;
 function sec(title, body, o = {}) {
   const more = o.moreHTML || (o.moreTab ? `<button class="see" data-tab="${o.moreTab}">See All</button>`
@@ -4032,12 +4068,27 @@ function rowHTML(t, k, i, o = {}) {
   if (S.settings.hideExplicit && t.explicit) return '';
   const cur = !!(Player.cur && Player.cur.id === t.id);
   const sub = o.sub ? `${t.artist} · ${o.sub}` : t.live ? t.artist : t.source === 'podcast' ? (o.show ? t.artist + ' · ' : '') + podSub(t) : [t.artist, o.album && t.album].filter(Boolean).join(' · ');
-  return `<div class="row ${cur ? 'is-cur' : ''}" style="--i:${Math.min(i, 14)}" data-a="play" data-l="${k}" data-i="${i}" data-id="${esc(t.id)}">${o.num ? `<span class="num">${i + 1}</span>` : ''}
-    <img class="thumb ${t.live ? 'logo' : ''}" src="${esc(artOf(t))}" alt="" loading="lazy">
+  const pf = t.source === 'podcast' ? podFrac(t) : 0, played = pf >= 1;
+  const thumb = `<img class="thumb ${t.live ? 'logo' : ''}" src="${esc(artOf(t))}" alt="" loading="lazy">`;
+  return `<div class="row ${cur ? 'is-cur' : ''}${played && !cur ? ' ep-done' : ''}" style="--i:${Math.min(i, 14)}" data-a="play" data-l="${k}" data-i="${i}" data-id="${esc(t.id)}">${o.num ? `<span class="num">${i + 1}</span>` : ''}
+    ${t.source === 'podcast' ? `<span class="tw">${thumb}${pf > 0 && !played ? `<span class="epbar" aria-hidden="true"><i style="width:${(pf * 100).toFixed(1)}%"></i></span>` : ''}${played ? `<span class="epchk" title="Played">${I.check}</span>` : ''}</span>` : thumb}
     <div class="rb"><div class="rtx"><div class="rt">${cur ? BARS : ''}<span class="tx">${esc(t.title)}</span></div>
       <div class="rs">${t.live ? '<span class="badge live">LIVE</span>' : ''}${t.explicit ? '<span class="badge">E</span>' : ''}${esc(sub)}</div></div>
-      ${t.source !== 'local' && isDl(t.id) ? `<span class="dlm" title="Downloaded">${I.dlok}</span>` : t.source !== 'local' && Offline.has(t.id) ? `<span class="dlm auto" title="Saved for offline">${I.dlok}</span>` : ''}${o.dur && t.duration && !t.live && t.source !== 'podcast' ? `<span class="dur">${fmt(t.duration)}</span>` : ''}
+      ${dlMarkHTML(t)}${o.dur && t.duration && !t.live && t.source !== 'podcast' ? `<span class="dur">${fmt(t.duration)}</span>` : ''}
       <button class="more" data-a="more" data-l="${k}" data-i="${i}" aria-label="More options for ${esc(t.title)}">${I.more}</button></div></div>`;
+}
+// download state on a row: a progress ring while downloading, then the green mark (grey = saved automatically)
+function dlMarkHTML(t) {
+  if (t.source === 'local') return '';
+  if (dlPct.has(t.id)) return `<span class="dlp" style="--d:${dlPct.get(t.id)}%"></span>`;
+  return isDl(t.id) ? `<span class="dlm" title="Downloaded">${I.dlok}</span>` : Offline.has(t.id) ? `<span class="dlm auto" title="Saved for offline">${I.dlok}</span>` : '';
+}
+function rowDl(id) {
+  $$('.row[data-id]').filter(r => r.dataset.id === id).forEach(r => {
+    const m = r.querySelector('.more'); if (!m) return;
+    r.querySelectorAll('.dlm,.dlp').forEach(x => x.remove());
+    const t = { id, source: id.startsWith('lc:') ? 'local' : '' }; const h = dlMarkHTML(t); if (h) m.insertAdjacentHTML('beforebegin', h);
+  });
 }
 const rowsHTML = (list, k, o) => `<div class="rows">${list.map((t, i) => rowHTML(t, k, i, o)).join('')}</div>`;
 function cardHTML(t, k, i) {
@@ -4126,9 +4177,17 @@ function fmtDate(d) {
   if (days < 1) return 'Today'; if (days < 2) return 'Yesterday'; if (days < 7) return days + ' days ago';
   return x.toLocaleDateString(undefined, { day: 'numeric', month: 'short', ...(x.getFullYear() !== new Date().getFullYear() ? { year: 'numeric' } : {}) });
 }
+const mins = s => { const m = Math.max(1, Math.round(s / 60)); return m >= 60 ? `${Math.floor(m / 60)} hr${m % 60 ? ' ' + (m % 60) + ' min' : ''}` : m + ' min'; };
+// where you are in an episode: 0 = not started, 0–1 = started, 1 = played
+function podFrac(t) {
+  const pp = podProg(t.id); if (!pp) return 0; if (pp.done) return 1;
+  const d = pp.dur || t.duration; return pp.pos > 15 && d ? Math.min(0.99, Math.max(0.02, pp.pos / d)) : 0;
+}
 function podSub(t) {
   const pp = podProg(t.id); const d = (pp && pp.dur) || t.duration; const parts = [fmtDate(t.date)];
-  if (pp && pp.done) parts.push('Played'); else if (pp && pp.pos > 15 && d) parts.push(`${Math.max(1, Math.round((d - pp.pos) / 60))} min left`); else if (d) parts.push(`${Math.max(1, Math.round(d / 60))} min`);
+  if (pp && pp.done) parts.push('Played');
+  else if (pp && pp.pos > 15 && d) parts.push(`${mins(pp.pos)} played · ${mins(d - pp.pos)} left`);
+  else if (d) parts.push(mins(d));
   return parts.filter(Boolean).join(' · ');
 }
 const contList = () => Object.values(S.pod.prog).filter(x => x && !x.done && x.pos > 15 && x.t).sort((a, b) => b.at - a.at).slice(0, 10).map(x => x.t);
@@ -5354,6 +5413,7 @@ function init() {
   loadArtCache();
   UI.ownPill();
   document.addEventListener('visibilitychange', () => document.documentElement.classList.toggle('bg-hidden', document.hidden));
+  let rzT; addEventListener('resize', () => { clearTimeout(rzT); rzT = setTimeout(() => { UI.fitChips(); Marquee.all(); }, 150); });
   // network warm-up waits until the app is on screen and idle, so the first paint stays instant
   const idle = window.requestIdleCallback ? f => requestIdleCallback(f, { timeout: 4000 }) : f => setTimeout(f, 300);
   setTimeout(() => idle(() => { Audius.discover(); Mirrors.load(); IT.probe(); loadSiteConfig().then(() => Src.warm()).catch(() => { }); }), 1200);
@@ -5366,7 +5426,7 @@ function init() {
     navigator.serviceWorker.register('sw.js').catch(() => { });
   }
   window.TuneTune = { version: VER, engine: () => (IT.ok ? 'direct' : 'mirrors') };
-  if (window.__TT_TEST__) window.TuneTune._ = { Src, CFG, ytWebSearch, srcInfo, Native, JSA, DES, Saavn, Player, Streams, Mirrors, IT, YT, S, nav, cv, Actions, itShelves, mem, Embed, MirrorHealth, download, share, probeAudio, qInfo, sharePlaylist, SvC, translit, Deck, SITE, Offline, landCheck, Party, offlineList, playOffline, offlineSheet, JS_RELAYS, SAAVN_DEFAULT, PIPED_DEFAULT, INV_DEFAULT, loadSiteConfig, Pre, deviceLangs, langSuggest, eqName, eqPins, Haptic, rtags: () => rtags(), podCats: () => podCats(), lyrSet: r => { lyrState = { id: Player.cur && Player.cur.id, ...r }; renderLyrics(); } };
+  if (window.__TT_TEST__) window.TuneTune._ = { rowDl, Pod, go, Marquee, UI, podSave, podProg, rowHTML, dlProgress, sleepMenu, Src, CFG, ytWebSearch, srcInfo, Native, JSA, DES, Saavn, Player, Streams, Mirrors, IT, YT, S, nav, cv, Actions, itShelves, mem, Embed, MirrorHealth, download, share, probeAudio, qInfo, sharePlaylist, SvC, translit, Deck, SITE, Offline, landCheck, Party, offlineList, playOffline, offlineSheet, JS_RELAYS, SAAVN_DEFAULT, PIPED_DEFAULT, INV_DEFAULT, loadSiteConfig, Pre, deviceLangs, langSuggest, eqName, eqPins, Haptic, rtags: () => rtags(), podCats: () => podCats(), lyrSet: r => { lyrState = { id: Player.cur && Player.cur.id, ...r }; renderLyrics(); } };
 }
 try { init(); }
 catch (err) {
