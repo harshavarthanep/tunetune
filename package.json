@@ -145,58 +145,63 @@
     },
     "fileAssociations": [
       {
-        "ext": [
-          "mp3"
-        ],
+        "ext": "mp3",
         "name": "MP3 audio",
         "description": "Music file",
         "role": "Viewer",
         "mimeType": "audio/mpeg"
       },
       {
-        "ext": [
-          "m4a",
-          "aac",
-          "alac"
-        ],
-        "name": "AAC audio",
+        "ext": "m4a",
+        "name": "M4A audio",
         "description": "Music file",
         "role": "Viewer",
         "mimeType": "audio/mp4"
       },
       {
-        "ext": [
-          "flac"
-        ],
+        "ext": "aac",
+        "name": "AAC audio",
+        "description": "Music file",
+        "role": "Viewer",
+        "mimeType": "audio/aac"
+      },
+      {
+        "ext": "flac",
         "name": "FLAC audio",
-        "description": "Lossless music file",
+        "description": "Music file",
         "role": "Viewer",
         "mimeType": "audio/flac"
       },
       {
-        "ext": [
-          "wav",
-          "aiff"
-        ],
+        "ext": "wav",
         "name": "WAV audio",
         "description": "Music file",
         "role": "Viewer",
         "mimeType": "audio/wav"
       },
       {
-        "ext": [
-          "ogg",
-          "opus"
-        ],
+        "ext": "ogg",
         "name": "Ogg audio",
         "description": "Music file",
         "role": "Viewer",
         "mimeType": "audio/ogg"
       },
       {
-        "ext": [
-          "wma"
-        ],
+        "ext": "opus",
+        "name": "Opus audio",
+        "description": "Music file",
+        "role": "Viewer",
+        "mimeType": "audio/opus"
+      },
+      {
+        "ext": "aiff",
+        "name": "AIFF audio",
+        "description": "Music file",
+        "role": "Viewer",
+        "mimeType": "audio/aiff"
+      },
+      {
+        "ext": "wma",
         "name": "WMA audio",
         "description": "Music file",
         "role": "Viewer",
