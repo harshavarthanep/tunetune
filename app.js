@@ -899,7 +899,7 @@ const SvC = {
         } catch (e) {
           err = e; if (signal && signal.aborted) throw e;
           const unsupported = e.status >= 400 && e.status < 500 && e.status !== 429;
-          if (!e.soft && !unsupported) { Health.fail('s:' + inst.base); break; }
+          if (!e.soft && !unsupported) { Health.fail('s:' + inst.base, Health.isBusy(e)); break; }
         }
       }
       throw err;
@@ -1095,21 +1095,28 @@ const Health = {
   m: null,
   load() { if (!this.m) { try { this.m = JSON.parse(localStorage.getItem('tunetune.health') || '{}') || {}; } catch (e) { this.m = {}; } } return this.m; },
   save() { clearTimeout(this.t); this.t = setTimeout(() => { try { localStorage.setItem('tunetune.health', JSON.stringify(this.m)); } catch (e) { } }, 1500); },
-  wait(n) { return Math.min(6 * 3600e3, 10 * 60e3 * Math.pow(2, Math.max(0, n - 1))); },
-  bad(id) { const h = this.load()[id]; return !!(h && h.n && Date.now() - h.at < this.wait(h.n)); },
-  fail(id) { const m = this.load(), h = m[id] || { n: 0 }; h.n = Math.min((h.n || 0) + 1, 12); h.at = Date.now(); m[id] = h; this.save(); },
+  wait(n) { return Math.min(2 * 3600e3, 5 * 60e3 * Math.pow(2, Math.max(0, n - 1))); },   // 5 min, 10, 20 … at most 2 h
+  bad(id) { const h = this.load()[id]; if (!h) return false; if (h.cool && Date.now() < h.cool) return true; return !!(h.n && Date.now() - h.at < this.wait(h.n)); },
+  // “busy” (rate-limited, timed out, temporary server error) only pauses a route for 90 s — it is not dead
+  fail(id, busy) {
+    const m = this.load(), h = m[id] || { n: 0 };
+    if (busy) { h.cool = Date.now() + 90e3; m[id] = h; this.save(); return; }
+    h.n = Math.min((h.n || 0) + 1, 12); h.at = Date.now(); delete h.cool; m[id] = h; this.save();
+  },
+  isBusy(e) { const s = e && e.status; return s === 429 || s >= 500 || (e && (e.name === 'AbortError' || /abort|timeout|timed out/i.test(String(e.message || '')))); },
   ok(id) { const m = this.load(); if (m[id] && !m[id].n && Date.now() - (m[id].ok || 0) < 60e3) return; m[id] = { n: 0, at: Date.now(), ok: Date.now() }; this.save(); },
-  state(id) { const h = this.load()[id]; return !h ? '' : h.n ? (this.bad(id) ? 'down' : 'retry') : 'ok'; },
+  state(id) { const h = this.load()[id]; return !h ? '' : (h.n || h.cool) ? (this.bad(id) ? 'down' : 'retry') : 'ok'; },
   clear() { this.m = {}; try { localStorage.removeItem('tunetune.health'); } catch (e) { } },
   // background: re-test routes whose wait has run out (a few at a time), so a route that comes back is used again
-  async recheck() {
+  async recheck(all) {
     if (this.busy || !navigator.onLine || document.hidden) return; this.busy = true;
+    const want = id => { const s = this.state(id); return all ? s === 'down' || s === 'retry' : s === 'retry'; };
     try {
       const url = 'https://www.jiosaavn.com/api.php?' + new URLSearchParams({ __call: 'autocomplete.get', query: 'hits', _format: 'json', _marker: '0', api_version: '4', ctx: 'web6dot0' });
-      const rel = [...JSA.relays('free'), ...JSA.relays('backup')].filter(p => this.state('r:' + p.id) === 'retry').slice(0, 4);
-      await Promise.all(rel.map(p => JSA.attempt(p, url).then(() => JSA.markOk(p), () => JSA.markBad(p))));
-      const sv = [...SvC.list('free'), ...SvC.list('backup')].filter(b => this.state('s:' + b.base) === 'retry').slice(0, 3);
-      await Promise.all(sv.map(b => getJSON(b.base + (b.shape === 'B' ? '/search/songs?query=hits&page=1&limit=1' : '/search/songs?query=hits&limit=1'), 6000).then(j => { if (j && j.data != null) this.ok('s:' + b.base); else this.fail('s:' + b.base); }, () => this.fail('s:' + b.base))));
+      const rel = [...JSA.relays('free'), ...JSA.relays('backup')].filter(p => (p.id !== 'direct' || NATIVE) && want('r:' + p.id)).slice(0, all ? 40 : 4);
+      for (let i = 0; i < rel.length; i += 6) await Promise.all(rel.slice(i, i + 6).map(p => JSA.attempt(p, url).then(() => JSA.markOk(p), e => JSA.markBad(p, e))));
+      const sv = [...SvC.list('free'), ...SvC.list('backup')].filter(b => want('s:' + b.base)).slice(0, all ? 20 : 3);
+      await Promise.all(sv.map(b => getJSON(b.base + (b.shape === 'B' ? '/search/songs?query=hits&page=1&limit=1' : '/search/songs?query=hits&limit=1'), 6000).then(j => { if (j && j.data != null) this.ok('s:' + b.base); else this.fail('s:' + b.base); }, e => this.fail('s:' + b.base, this.isBusy(e)))));
     } finally { this.busy = false; }
   },
 };
@@ -1123,10 +1130,15 @@ const JSA = {
     } catch (e) { }
   },
   bad(p) { return p.srv ? Date.now() - (this.fails.get(p.id) || 0) < 60e3 : Health.bad('r:' + p.id); },
-  markBad(p) { if (p.srv) this.fails.set(p.id, Date.now()); else Health.fail('r:' + p.id); },
+  markBad(p, e) { if (p.srv) this.fails.set(p.id, Date.now()); else Health.fail('r:' + p.id, Health.isBusy(e)); },
   markOk(p) { if (p.srv) this.fails.delete(p.id); else Health.ok('r:' + p.id); },
-  dead() { this.deadUntil = Date.now() + 3 * 60e3; },
+  dead() { },   // each route's own health decides — no blanket pause (a relay back from a rate limit is used at once)
   async attempt(p, url, signal) {
+    const gate = this.gates[p.id] || (this.gates[p.id] = limiter(2));
+    return gate(() => this.attempt1(p, url, signal));
+  },
+  gates: {},
+  async attempt1(p, url, signal) {
     const r = await fetchT(p.wrap(url), { signal }, p.id === 'direct' ? 4500 : p.srv ? 9000 : 5000);
     if (!r.ok) throw Object.assign(new Error('HTTP ' + r.status), { status: r.status });
     let j = p.unwrap ? p.unwrap(await r.json()) : parseLoose(await r.text());
@@ -1148,7 +1160,7 @@ const JSA = {
     const i = o.findIndex(p => p.id === via); if (i > 0) o.unshift(o.splice(i, 1)[0]);
     return o;
   },
-  down() { return Date.now() < this.deadUntil; },
+  down() { return this.relays('free').every(p => this.bad(p)); },
   reset() { this.fails.clear(); this.deadUntil = 0; this.deadB = 0; },
   setVia(id) { if (this.via !== id) { this.via = id; try { localStorage.setItem('tunetune.jsvia', id); } catch (e) { } } },
   keepOk() { clearTimeout(this.okT); this.okT = setTimeout(() => { try { localStorage.setItem('tunetune.jsok', JSON.stringify(this.okAt)); } catch (e) { } }, 2000); },
@@ -1170,11 +1182,11 @@ const JSA = {
       Src.fail(tier); throw err;
     }
     const isB = tier === 'backup';
-    if (isB ? Date.now() < this.deadB : this.down()) throw new Error('JioSaavn relays are busy');
+    if (this.relays(tier).every(p => this.bad(p))) throw new Error('JioSaavn relays are busy');
     const fresh = this.order(tier).filter(p => !this.bad(p));
-    if (!fresh.length) { if (isB) this.deadB = Date.now() + 3 * 60e3; else this.dead(); throw new Error('JioSaavn relays are busy'); }
+    if (!fresh.length) throw new Error('JioSaavn relays are busy');
     const known = fresh[0].id === (isB ? this.viaB : this.via) ? fresh.shift() : null;
-    if (known) { try { return done(known, await lim(() => this.attempt(known, url))); } catch (e) { this.markBad(known); } }
+    if (known) { try { return done(known, await lim(() => this.attempt(known, url))); } catch (e) { this.markBad(known, e); } }
     // another request is already searching for a working relay: wait for it instead of starting a second search
     if (isB) return this.raceRelays(fresh, url, done, all, true);
     if (this.racing && !again) { await this.racing.catch(() => { }); return this.call(params, tier, true); }
@@ -1186,15 +1198,14 @@ const JSA = {
     for (const wave of [fresh.slice(0, 6), fresh.slice(6)]) {
       if (!wave.length) continue;
       try {
-        const { j, p } = await race(wave, (p, signal) => this.attempt(p, url, signal).then(j => ({ j, p }), e => { if (!signal.aborted) this.markBad(p); throw e; }));
+        const { j, p } = await race(wave, (p, signal) => this.attempt(p, url, signal).then(j => ({ j, p }), e => { if (!signal.aborted) this.markBad(p, e); throw e; }));
         return done(p, j);
       } catch (e) { }
     }
-    if (all.every(p => this.bad(p))) { if (isB) this.deadB = Date.now() + 3 * 60e3; else this.dead(); }
     throw new Error('JioSaavn relays are busy');
   },
   async text(url, test) {
-    const L = this.order('free').filter(p => p.id !== 'direct' && !this.bad(p)).slice(0, 8);
+    const L = [...this.order('free'), ...this.order('backup')].filter(p => p.id !== 'direct' && !this.bad(p)).slice(0, 10);
     const get = async (p, signal) => {
       const r = await fetchT(p.wrap(url), { signal }, 9000); if (!r.ok) throw new Error('HTTP ' + r.status);
       const txt = p.unwrap ? String(((await r.json()) || {}).contents || '') : await r.text();
@@ -1206,7 +1217,7 @@ const JSA = {
   async diagnose() {
     const url = 'https://www.jiosaavn.com/api.php?' + new URLSearchParams({ __call: 'autocomplete.get', query: 'ilaiyaraaja', _format: 'json', _marker: '0', api_version: '4', ctx: 'web6dot0' });
     const list = [...this.relays('free').map(p => [p, '']), ...this.relays('backup').map(p => [p, ' (backup)'])];
-    return Promise.all(list.map(([p, tag]) => this.attempt(p, url).then(() => { this.markOk(p); return `✓ ${p.name || p.id}${tag}`; }, e => { this.markBad(p); return `✗ ${p.name || p.id}${tag} — ${String(e.message || e).slice(0, 22)}`; })));
+    return Promise.all(list.map(([p, tag]) => this.attempt(p, url).then(() => { this.markOk(p); return `✓ ${p.name || p.id}${tag}`; }, e => { this.markBad(p, e); return `✗ ${p.name || p.id}${tag} — ${String(e.message || e).slice(0, 22)}`; })));
   },
   img(u, size) { return https(String(u || '').replace(/\d{2,3}x\d{2,3}/, size)); },
   track(x) {
@@ -5615,7 +5626,7 @@ function init() {
   const idle = window.requestIdleCallback ? f => requestIdleCallback(f, { timeout: 4000 }) : f => setTimeout(f, 300);
   setTimeout(() => idle(() => { Audius.discover(); Mirrors.load(); IT.probe(); Promise.all([loadSiteConfig(), loadBackupSources()]).then(() => Src.warm()).catch(() => { }); }), 1200);
   addEventListener('online', () => { JSA.reset(); setTimeout(() => Src.warm().catch(() => { }), 1500); });
-  setTimeout(() => Health.recheck().catch(() => { }), 20000); setInterval(() => Health.recheck().catch(() => { }), 15 * 60e3);
+  setTimeout(() => Health.recheck(true).catch(() => { }), 12000);   // every start: re-test every route that was down setInterval(() => Health.recheck().catch(() => { }), 15 * 60e3);
   if (!S.settings.langs) setTimeout(() => { if (!S.settings.langs && !sheetOpen) langPicker(true); }, 600);
   else if (!String(S.settings.name || '').trim()) setTimeout(() => { if (!String(S.settings.name || '').trim()) { if (sheetOpen) needName = true; else nameSheet(true); } }, /[?&](play|pl|share|text|url)=/.test(location.search) ? 6000 : 1500);
   Server.detect().then(ok => { if (!DIRECT() && (S.settings.ytPlayer || S.settings.engine === 'player')) setTimeout(() => Embed.ensure().catch(() => { }), 2500); if (ok) { IT.ok = null; softRender(); } });

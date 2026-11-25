@@ -36,6 +36,18 @@ Relay links use `{url}` where the target goes: `…?url={url}` (link encoded) or
 The order every song follows: built-in free sources → tunetune-sources.json → (My server on) your tunetune-config
 servers, then your own server → YouTube player. Tap the quality badge to see which one answered.
 
+## Your own extra free relays (recommended)
+Public free relays come and go — most were down in 2026. A free relay of your own is the most reliable free source,
+and it doesn't use your Cloudflare musicServer's daily limit.
+1. Go to Deno Deploy (deno.com/deploy), sign in, create a new project or playground.
+2. Paste all of `free-relay.js` and deploy. You get an address like `https://your-name.deno.dev`.
+3. Add it to `tunetune-sources.json` under `"relays"`:
+   `{ "name": "My Deno relay", "url": "https://your-name.deno.dev/?url={url}" }`
+4. Settings → Test music sources shows ✓ when it works.
+
+You can also deploy your own copy of the open-source JioSaavn API on Vercel (sumitkolhe/jiosaavn-api, set the region to
+Mumbai bom1) and add `https://your-copy.vercel.app/api` under `"saavnServers"`. Each one is free and has its own limits.
+
 ## Other things you can edit
 At the top of `app.js`: `PRODUCTS_URL` and `GITHUB_URL` (shown in Settings → More from H24 Creationz).
 
