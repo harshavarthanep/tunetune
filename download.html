@@ -1,0 +1,753 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Tune Tune — Free music player for every device. No subscription, no account.</title>
+<meta name="description" content="Tune Tune is a free music player for Windows, macOS, Linux, Android, iPhone and the web. Clean audio up to 320 kbps, synced lyrics, podcasts, live radio, downloads and Car Mode — no subscription, no account, no ads from us.">
+<meta name="author" content="H24 Creationz">
+<meta property="og:title" content="Tune Tune — the music player that always finds the song">
+<meta property="og:description" content="Free on every device. Clean audio up to 320 kbps, lyrics, podcasts, radio, downloads and Car Mode. No subscription, no account.">
+<meta property="og:image" content="media/share.jpg">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="theme-color" content="#120a16" media="(prefers-color-scheme: dark)">
+<meta name="theme-color" content="#f7f4ec" media="(prefers-color-scheme: light)">
+<link rel="icon" href="icons/icon-192.png">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,650;12..96,800&display=swap" rel="stylesheet">
+<style>
+:root{
+  color-scheme:dark;
+  --bg:#120a16; --raise:#1c1121; --raise2:#251830; --ink:#fbf2f7; --muted:#bba7b8; --line:#33223b;
+  --pink:#ff375f; --violet:#9a5bff; --green:#30d158; --blue:#0a84ff; --red:#ff453a;
+  --brand:linear-gradient(120deg,#ff375f,#c13bdc 55%,#8b3dff);
+  --shadow:0 40px 80px -30px rgba(0,0,0,.75),0 12px 30px -14px rgba(0,0,0,.55);
+  --display:"Bricolage Grotesque",ui-sans-serif,system-ui,sans-serif;
+  --body:-apple-system,BlinkMacSystemFont,"SF Pro Text","Segoe UI",Roboto,Inter,system-ui,sans-serif;
+}
+@media (prefers-color-scheme:light){
+  :root{ color-scheme:light;
+    --bg:#f7f4ec; --raise:#fffdf8; --raise2:#efe9dc; --ink:#1d1b18; --muted:#6c6259; --line:#e4dccd;
+    --shadow:0 40px 80px -34px rgba(80,50,30,.35),0 12px 30px -16px rgba(80,50,30,.2);
+    --green:#1c8a43; --red:#cf2f26;
+  }
+}
+*{box-sizing:border-box}
+html{scroll-behavior:smooth;scroll-padding-top:calc(72px + env(safe-area-inset-top,0px))}
+html,body{overflow-x:clip}
+body{margin:0;background:var(--bg);color:var(--ink);font:16.5px/1.6 var(--body);-webkit-font-smoothing:antialiased}
+img{max-width:100%;height:auto;display:block}
+a{color:inherit}
+h1,h2,h3{font-family:var(--display);font-weight:800;letter-spacing:-.025em;line-height:1.04;margin:0}
+h2{font-size:clamp(32px,4.6vw,54px);max-width:16ch}
+h3{font-size:clamp(22px,2.4vw,28px);font-weight:650;letter-spacing:-.015em;line-height:1.15}
+p{margin:0}
+.wrap{max-width:1180px;margin:0 auto;padding:0 22px}
+.lead{color:var(--muted);font-size:clamp(17px,1.7vw,19.5px);max-width:60ch;margin-top:18px}
+section{padding:96px 0}
+:focus-visible{outline:2.5px solid var(--pink);outline-offset:3px;border-radius:8px}
+kbd{font:600 13px/1 var(--body);padding:4px 7px;border-radius:6px;background:var(--raise2);box-shadow:inset 0 -1.5px 0 var(--line)}
+
+/* ---------- top bar ---------- */
+header{position:sticky;top:0;z-index:30;padding-top:env(safe-area-inset-top,0px);background:color-mix(in srgb,var(--bg) 80%,transparent);backdrop-filter:saturate(1.5) blur(18px);-webkit-backdrop-filter:saturate(1.5) blur(18px);border-bottom:1px solid color-mix(in srgb,var(--line) 70%,transparent)}
+.nav{display:flex;align-items:center;gap:20px;height:64px}
+.logo{display:flex;align-items:center;gap:10px;font:800 20px/1 var(--display);letter-spacing:-.02em;text-decoration:none}
+.logo img{width:32px;height:32px;border-radius:9px}
+.nav nav{display:flex;gap:2px;margin-left:auto}
+.nav nav a{text-decoration:none;color:var(--muted);font-weight:560;font-size:15px;padding:8px 12px;border-radius:10px}
+.nav nav a:hover{color:var(--ink);background:var(--raise)}
+@media (max-width:860px){.nav nav{display:none}.nav .btn{margin-left:auto}}
+
+/* ---------- buttons ---------- */
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:10px;border:0;cursor:pointer;font:inherit;font-weight:700;text-decoration:none;border-radius:999px;padding:14px 24px;transition:transform .15s,filter .2s}
+.btn:active{transform:scale(.97)}
+.btn-primary{background:var(--brand);color:#fff;box-shadow:0 16px 34px -14px rgba(255,55,95,.75)}
+.btn-primary:hover{filter:brightness(1.08)}
+.btn-ghost{background:var(--raise);color:var(--ink);box-shadow:inset 0 0 0 1px var(--line)}
+.btn-ghost:hover{background:var(--raise2)}
+.btn-sm{padding:9px 16px;font-size:14px}
+.btn .meta{font-weight:550;opacity:.82;font-size:.86em}
+.btn[disabled]{opacity:.45;cursor:not-allowed;box-shadow:none}
+.btn svg{width:18px;height:18px;flex:none}
+.spin{display:inline-block;width:17px;height:17px;border-radius:50%;border:2.5px solid currentColor;border-right-color:transparent;animation:spin .7s linear infinite;flex:none;vertical-align:-3px}
+@keyframes spin{to{transform:rotate(360deg)}}
+.skel{display:inline-block;width:50px;height:.9em;border-radius:6px;vertical-align:-1px;background:linear-gradient(90deg,rgba(255,255,255,.12),rgba(255,255,255,.4),rgba(255,255,255,.12));background-size:200% 100%;animation:sh 1.2s linear infinite}
+@keyframes sh{to{background-position:-200% 0}}
+
+/* ---------- hero ---------- */
+.hero{position:relative;padding:76px 0 30px;isolation:isolate}
+.hero::before{content:"";position:absolute;inset:-120px 0 auto;height:720px;z-index:-1;pointer-events:none;
+  background:radial-gradient(520px 340px at 78% 34%,rgba(154,91,255,.30),transparent 70%),radial-gradient(460px 320px at 58% 64%,rgba(255,55,95,.24),transparent 70%)}
+.hero-grid{display:grid;grid-template-columns:1fr 1.12fr;gap:52px;align-items:center}
+.pill{display:inline-flex;align-items:center;gap:8px;font-size:14px;font-weight:600;color:var(--muted);padding:6px 14px 6px 8px;border-radius:999px;background:var(--raise);box-shadow:inset 0 0 0 1px var(--line)}
+.pill i{width:8px;height:8px;border-radius:50%;background:var(--green);box-shadow:0 0 0 4px rgba(48,209,88,.18)}
+.hero h1{font-size:clamp(46px,6.6vw,84px);margin:22px 0 0;max-width:11ch}
+.cta{display:flex;flex-wrap:wrap;gap:12px;margin:32px 0 14px}
+.hero-meta{color:var(--muted);font-size:14px}
+.hero-meta a{color:var(--pink);font-weight:650;text-decoration:none}
+.devices{position:relative;padding:0 46px 56px 0}
+.win{border-radius:14px;overflow:hidden;background:#000;box-shadow:var(--shadow),0 0 0 1px rgba(255,255,255,.06)}
+.win .bar{display:flex;align-items:center;gap:7px;height:30px;padding:0 12px;background:#17101b}
+.win .bar i{width:11px;height:11px;border-radius:50%;background:#3a2c40}
+.win .bar i:nth-child(1){background:#ff5f57}.win .bar i:nth-child(2){background:#febc2e}.win .bar i:nth-child(3){background:#28c840}
+.phone{position:absolute;right:0;bottom:0;width:30%;min-width:128px;border-radius:34px;background:#0b070d;padding:7px;box-shadow:var(--shadow),0 0 0 1px rgba(255,255,255,.08)}
+.phone img{border-radius:28px}
+@media (max-width:920px){.hero-grid{grid-template-columns:1fr}.devices{max-width:640px}}
+.platforms{display:flex;flex-wrap:wrap;gap:10px 28px;justify-content:center;color:var(--muted);font-weight:600;font-size:15px;padding:34px 22px 0}
+.platforms span{display:flex;align-items:center;gap:8px}
+.platforms svg{width:18px;height:18px}
+
+/* ---------- why ---------- */
+.why{display:grid;grid-template-columns:repeat(3,1fr);gap:40px 44px;margin-top:56px}
+.why div{border-top:2px solid var(--line);padding-top:20px}
+.why h3{font-size:21px;margin-bottom:8px}
+.why p{color:var(--muted);font-size:15.5px}
+.why .g{display:inline-block;width:10px;height:10px;border-radius:3px;margin-right:9px;background:var(--brand);vertical-align:2px}
+@media (max-width:960px){.why{grid-template-columns:repeat(2,1fr)}}
+@media (max-width:600px){.why{grid-template-columns:1fr}}
+
+/* ---------- the source ladder (signature) ---------- */
+.ladder-sec{background:linear-gradient(180deg,transparent,color-mix(in srgb,var(--violet) 7%,transparent) 30%,transparent)}
+.ladder-grid{display:grid;grid-template-columns:.9fr 1.1fr;gap:56px;align-items:start;margin-top:10px}
+.ladder-intro .lead{margin-bottom:26px}
+.scen{display:flex;flex-wrap:wrap;gap:8px;margin-top:8px}
+.scen button{font:inherit;font-size:14.5px;font-weight:650;color:var(--muted);background:var(--raise);border:0;box-shadow:inset 0 0 0 1px var(--line);border-radius:999px;padding:9px 16px;cursor:pointer}
+.scen button[aria-pressed="true"]{color:#fff;background:var(--ink);color:var(--bg);box-shadow:none}
+.req{margin-top:26px;display:flex;align-items:center;gap:14px;padding:14px 16px;border-radius:16px;background:var(--raise);box-shadow:inset 0 0 0 1px var(--line)}
+.req img{width:46px;height:46px;border-radius:10px}
+.req b{display:block;font-size:15.5px}.req small{color:var(--muted);font-size:13.5px}
+.ladder{list-style:none;margin:0;padding:0;position:relative}
+.ladder::before{content:"";position:absolute;left:23px;top:30px;bottom:30px;width:2px;background:var(--line)}
+.rung{position:relative;display:grid;grid-template-columns:48px 1fr auto;gap:16px;align-items:start;padding:16px 16px 16px 0;border-radius:18px;transition:background .35s}
+.rung .n{position:relative;z-index:1;width:48px;height:48px;border-radius:50%;display:grid;place-items:center;font:800 18px/1 var(--display);background:var(--raise);box-shadow:inset 0 0 0 2px var(--line);transition:background .3s,box-shadow .3s,color .3s}
+.rung h3{font-size:19.5px;margin:3px 0 4px}
+.rung p{color:var(--muted);font-size:15px}
+.rung .st{align-self:center;font-size:13.5px;font-weight:700;white-space:nowrap;opacity:0;transform:translateX(-6px);transition:opacity .3s,transform .3s}
+.rung.try{background:color-mix(in srgb,var(--raise) 80%,transparent)}
+.rung.try .n{box-shadow:inset 0 0 0 2px var(--violet)}
+.rung.try .st{opacity:1;transform:none;color:var(--muted)}
+.rung.miss .n{color:var(--muted)}
+.rung.miss .st{opacity:1;transform:none;color:var(--muted)}
+.rung.hit{background:color-mix(in srgb,var(--green) 10%,transparent)}
+.rung.hit .n{background:var(--green);color:#fff;box-shadow:none}
+.rung.hit .st{opacity:1;transform:none;color:var(--green)}
+.rung.last.hit{background:color-mix(in srgb,var(--red) 10%,transparent)}
+.rung.last.hit .n{background:var(--red)}
+.rung.last.hit .st{color:var(--red)}
+.dots{display:flex;flex-wrap:wrap;gap:8px 20px;margin-top:22px;color:var(--muted);font-size:14.5px}
+.dots span{display:flex;align-items:center;gap:8px}
+.dots i{width:9px;height:9px;border-radius:50%}
+@media (max-width:920px){.ladder-grid{grid-template-columns:1fr}}
+@media (max-width:600px){
+  .rung{grid-template-columns:40px 1fr;gap:14px;padding-right:12px}
+  .rung .n{width:40px;height:40px;font-size:16px}
+  .ladder::before{left:19px}
+  .rung .st{grid-column:2;align-self:start;margin-top:-6px;transform:none}
+  .rung .st:empty{display:none}
+}
+
+/* ---------- comparison ---------- */
+.tbl{margin-top:44px;overflow-x:auto;border-radius:20px;box-shadow:inset 0 0 0 1px var(--line);background:var(--raise)}
+table{width:100%;border-collapse:collapse;min-width:720px;font-size:15.5px}
+th,td{text-align:left;padding:15px 18px;border-bottom:1px solid var(--line);vertical-align:top}
+tr:last-child td{border-bottom:0}
+thead th{font:650 16px/1.25 var(--display);letter-spacing:-.01em;color:var(--muted);background:var(--raise2)}
+thead th.us{color:var(--ink)}
+thead th.us div{display:flex;align-items:center;gap:9px}
+thead th.us img{width:24px;height:24px;border-radius:7px}
+tbody th{font-weight:600;color:var(--ink);width:24%}
+td{color:var(--muted)}
+td.us{color:var(--ink);font-weight:600;background:color-mix(in srgb,var(--pink) 6%,transparent)}
+td.us.y{color:var(--green)}
+.y{color:var(--green)}.x{color:var(--red)}
+.fine{color:var(--muted);font-size:13.5px;margin-top:14px;max-width:80ch}
+
+/* ---------- feature showcases ---------- */
+.feature{display:grid;grid-template-columns:1fr 1.2fr;gap:60px;align-items:center;margin-top:96px}
+.feature:first-of-type{margin-top:56px}
+.feature.flip .ftext{order:2}
+.feature h3{font-size:clamp(28px,3.4vw,40px);font-weight:800;letter-spacing:-.025em;line-height:1.06;margin-bottom:14px}
+.feature p{color:var(--muted)}
+.feature ul{margin:18px 0 0;padding:0;list-style:none}
+.feature li{position:relative;padding:6px 0 6px 28px}
+.feature li::before{content:"";position:absolute;left:2px;top:15px;width:12px;height:6px;border-left:2.5px solid var(--pink);border-bottom:2.5px solid var(--pink);transform:rotate(-45deg)}
+.shots{position:relative;display:flex;justify-content:center;gap:18px}
+.shots .phone{position:relative;right:auto;bottom:auto;width:min(46%,300px)}
+.shots .phone.tilt{transform:translateY(34px)}
+.feature .win{width:100%}
+@media (max-width:920px){.feature{grid-template-columns:1fr;gap:34px;margin-top:80px}.feature.flip .ftext{order:0}}
+
+/* ---------- more ---------- */
+.more{display:grid;grid-template-columns:repeat(4,1fr);gap:2px;margin-top:48px;border-radius:22px;overflow:hidden;background:var(--line);box-shadow:inset 0 0 0 1px var(--line)}
+.more div{background:var(--raise);padding:22px}
+.more b{display:block;font:650 17px/1.25 var(--display);margin-bottom:6px}
+.more span{color:var(--muted);font-size:14.5px;line-height:1.5}
+@media (max-width:960px){.more{grid-template-columns:repeat(2,1fr)}}
+@media (max-width:520px){.more{grid-template-columns:1fr}}
+
+/* ---------- how to use ---------- */
+.steps{list-style:none;margin:48px 0 0;padding:0;display:grid;grid-template-columns:repeat(5,1fr);gap:18px;counter-reset:s}
+.steps li{counter-increment:s;padding-top:58px;position:relative}
+.steps li::before{content:counter(s);position:absolute;top:0;left:0;width:42px;height:42px;border-radius:50%;display:grid;place-items:center;font:800 18px/1 var(--display);color:#fff;background:var(--brand)}
+.steps li::after{content:"";position:absolute;top:21px;left:52px;right:-8px;height:2px;background:var(--line)}
+.steps li:last-child::after{display:none}
+.steps b{display:block;font:650 18px/1.2 var(--display);margin-bottom:6px}
+.steps span{color:var(--muted);font-size:15px}
+@media (max-width:980px){.steps{grid-template-columns:1fr 1fr}.steps li::after{display:none}}
+@media (max-width:560px){.steps{grid-template-columns:1fr}}
+.keys{margin-top:44px;padding:22px 24px;border-radius:20px;background:var(--raise);box-shadow:inset 0 0 0 1px var(--line)}
+.keys h3{font-size:19px;margin-bottom:14px}
+.keys dl{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:10px 26px;margin:0}
+.keys div{display:flex;align-items:center;gap:10px;font-size:14.5px;color:var(--muted)}
+.keys dt{flex:none;display:flex;gap:4px}
+
+/* ---------- download ---------- */
+.release{display:inline-flex;align-items:center;gap:8px;color:var(--muted);font-size:14.5px;margin-top:14px}
+.release .dot{width:8px;height:8px;border-radius:50%;background:var(--green)}
+.dl-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:16px;margin-top:40px}
+.os{position:relative;display:flex;flex-direction:column;border-radius:22px;padding:24px;background:var(--raise);box-shadow:inset 0 0 0 1px var(--line)}
+.os.mine{box-shadow:inset 0 0 0 2px var(--pink),0 24px 50px -30px rgba(255,55,95,.6)}
+.os .tag{display:none;position:absolute;top:18px;right:18px;font-size:12.5px;font-weight:700;color:#fff;background:var(--pink);padding:4px 10px;border-radius:999px}
+.os.mine .tag{display:inline-block}
+.os .top{display:flex;align-items:center;gap:12px}
+.os .ico{width:44px;height:44px;border-radius:13px;display:grid;place-items:center;background:var(--raise2);color:var(--ink)}
+.os .ico svg{width:23px;height:23px}
+.os h3{font-size:21px}
+.os .rq{color:var(--muted);font-size:14px;margin:12px 0 18px}
+.os .btns{display:flex;flex-direction:column;gap:9px;margin-top:auto}
+.os .btns .btn{justify-content:space-between;border-radius:14px;padding:12px 16px}
+.os details{margin-top:14px;font-size:14.5px;color:var(--muted)}
+.os summary{cursor:pointer;font-weight:650;color:var(--ink)}
+.os ol{padding-left:20px;margin:10px 0 0}
+.os li{margin:4px 0}
+@media (max-width:960px){.dl-grid{grid-template-columns:1fr 1fr}}
+@media (max-width:620px){.dl-grid{grid-template-columns:1fr}}
+
+/* ---------- FAQ ---------- */
+.faq{max-width:820px;margin-top:40px}
+.faq details{border-bottom:1px solid var(--line);padding:4px 0}
+.faq summary{list-style:none;cursor:pointer;display:flex;justify-content:space-between;gap:20px;align-items:center;padding:18px 0;font:650 18.5px/1.3 var(--display);letter-spacing:-.01em}
+.faq summary::-webkit-details-marker{display:none}
+.faq summary::after{content:"";flex:none;width:11px;height:11px;border-right:2.5px solid var(--muted);border-bottom:2.5px solid var(--muted);transform:rotate(45deg);transition:transform .25s;margin-top:-6px}
+.faq details[open] summary::after{transform:rotate(-135deg);margin-top:4px}
+.faq details p{color:var(--muted);padding:0 0 20px;max-width:70ch}
+
+/* ---------- final + footer ---------- */
+.final{text-align:center;padding:110px 0}
+.final h2{margin:0 auto;max-width:14ch}
+.final .lead{margin:18px auto 0}
+.final .cta{justify-content:center}
+footer{border-top:1px solid var(--line);padding:30px 0 calc(34px + env(safe-area-inset-bottom,0px));color:var(--muted);font-size:14px}
+footer .wrap{display:flex;flex-wrap:wrap;gap:12px 28px;justify-content:space-between}
+footer a{color:var(--muted)}
+footer .disc{flex-basis:100%;font-size:13px;opacity:.85;max-width:90ch}
+
+/* ---------- download sheet ---------- */
+.sheet{position:fixed;inset:0;z-index:60;display:grid;place-items:end center;background:rgba(6,2,8,.55);opacity:0;visibility:hidden;transition:opacity .25s,visibility .25s}
+.sheet.open{opacity:1;visibility:visible}
+.sheet .box{width:min(540px,100%);margin:0 12px calc(12px + env(safe-area-inset-bottom,0px));border-radius:26px;padding:24px;background:var(--raise);box-shadow:var(--shadow),inset 0 0 0 1px var(--line);transform:translateY(24px);transition:transform .35s cubic-bezier(.2,1,.3,1)}
+.sheet.open .box{transform:none}
+@media (min-width:700px){.sheet{place-items:center}.sheet .box{margin:0}}
+.sheet .state{display:flex;align-items:center;gap:10px;font-weight:650;color:var(--muted);font-size:15px}
+.sheet .check{display:grid;place-items:center;width:22px;height:22px;border-radius:50%;background:var(--green);color:#fff;font-size:13px}
+.sheet h3{margin:14px 0 12px;font-size:24px}
+.sheet .file{display:flex;align-items:center;gap:12px;padding:12px;border-radius:14px;background:var(--raise2)}
+.sheet .file img{width:38px;height:38px;border-radius:10px}
+.sheet .file b{display:block;font-size:15px;word-break:break-all}.sheet .file span{color:var(--muted);font-size:13.5px}
+.sheet ol{color:var(--muted);padding-left:20px;margin:16px 0}
+.sheet .row{display:flex;gap:10px}.sheet .row .btn{flex:1;border-radius:14px}
+.sheet .small{color:var(--muted);font-size:13.5px;margin-top:14px}
+.sheet .small a{color:var(--pink);font-weight:650}
+
+/* one orchestrated entrance: the hero; everything else stays still */
+@media (prefers-reduced-motion:no-preference){
+  .hero .intro > *{animation:rise .8s cubic-bezier(.2,1,.3,1) both}
+  .hero .intro > *:nth-child(2){animation-delay:.08s}.hero .intro > *:nth-child(3){animation-delay:.16s}.hero .intro > *:nth-child(4){animation-delay:.24s}.hero .intro > *:nth-child(5){animation-delay:.3s}
+  .hero .devices{animation:rise 1s .15s cubic-bezier(.2,1,.3,1) both}
+  @keyframes rise{from{opacity:0;transform:translateY(18px)}}
+}
+</style>
+</head>
+<body id="top">
+<header>
+  <div class="wrap nav">
+    <a class="logo" href="#top"><img src="icons/icon-192.png" alt="">Tune Tune</a>
+    <nav aria-label="Sections"><a href="#why">Why Tune Tune</a><a href="#how">How it plays</a><a href="#compare">Compare</a><a href="#features">Features</a><a href="#use">How to use</a><a href="#faq">FAQ</a></nav>
+    <a class="btn btn-ghost btn-sm" href="./" data-try>Open web app</a>
+  </div>
+</header>
+
+<main>
+<!-- ================= hero ================= -->
+<section class="hero">
+  <div class="wrap hero-grid">
+    <div class="intro">
+      <span class="pill"><i></i>Free on every device. No account.</span>
+      <h1>The music player that always finds the song.</h1>
+      <p class="lead">Search anything and hear it as clean audio up to 320 kbps — with lyrics, podcasts, live radio, downloads and Car Mode. No subscription, no sign-up, no ads from us. If one source is busy, Tune Tune quietly tries the next.</p>
+      <div class="cta">
+        <button class="btn btn-primary" id="hero-dl" data-platform="web" data-asset="0"><span class="lbl">Download</span><span class="meta"></span></button>
+        <a class="btn btn-ghost" href="./" data-try>Play in your browser</a>
+      </div>
+      <p class="hero-meta"><span id="hero-req"></span> <a href="#download">Other devices</a></p>
+    </div>
+    <div class="devices" aria-hidden="true">
+      <div class="win"><div class="bar"><i></i><i></i><i></i></div><img src="media/player-desktop.jpg" alt="" width="1600" height="1000"></div>
+      <div class="phone"><img src="media/player-phone.jpg" alt="" width="720" height="1566"></div>
+    </div>
+  </div>
+  <div class="platforms" aria-label="Available on">
+    <span><svg viewBox="0 0 24 24" fill="currentColor"><path d="M3 5.5 10.5 4.4v7.1H3zm0 13 7.5 1.1v-7H3zM11.5 4.3 21 3v8.5h-9.5zm0 15.4L21 21v-8.4h-9.5z"/></svg>Windows</span>
+    <span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="4" width="18" height="12" rx="2"/><path d="M2 20h20"/></svg>macOS</span>
+    <span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="m7 9 3 3-3 3M12 15h5"/></svg>Linux</span>
+    <span><svg viewBox="0 0 24 24" fill="currentColor"><path d="M6 9h12v8a2 2 0 0 1-2 2h-1v3h-2v-3h-2v3H9v-3H8a2 2 0 0 1-2-2zm-3 0h2v7H3zm16 0h2v7h-2zM7.5 8a4.5 4.5 0 0 1 9 0z"/></svg>Android</span>
+    <span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="6" y="2" width="12" height="20" rx="3"/><path d="M11 18h2"/></svg>iPhone &amp; iPad</span>
+    <span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3a14 14 0 0 1 0 18M12 3a14 14 0 0 0 0 18"/></svg>Web</span>
+  </div>
+</section>
+
+<!-- ================= why ================= -->
+<section id="why">
+  <div class="wrap">
+    <h2>Why another music player?</h2>
+    <p class="lead">Free apps make you sit through ads and lock the good parts away. Paid apps want a card and a monthly fee. Tune Tune gives you the good parts — without either.</p>
+    <div class="why">
+      <div><h3><span class="g"></span>Free, with nothing to sign up for</h3><p>No subscription, no trial that turns into a bill, no account, no card. Open it and play.</p></div>
+      <div><h3><span class="g"></span>Clean audio, up to 320 kbps</h3><p>Most songs play as ad-free audio in high quality. A small badge shows the exact quality, and Data saver uses less when you’re on mobile data.</p></div>
+      <div><h3><span class="g"></span>It finds the song</h3><p>Tune Tune doesn’t depend on one server. It checks dozens of free routes and plays from whichever answers first.</p></div>
+      <div><h3><span class="g"></span>Songs, podcasts and radio in one place</h3><p>Music in 40 languages, podcasts from around the world, and thousands of live radio stations — one search box.</p></div>
+      <div><h3><span class="g"></span>The same app on every screen</h3><p>Windows, macOS, Linux, Android, iPhone, iPad and the web. Same look, same features, wherever you listen.</p></div>
+      <div><h3><span class="g"></span>Private and light</h3><p>No tracking. Favorites, downloads, history and your listening stats stay on your device. The Android app is about 4.5 MB.</p></div>
+    </div>
+  </div>
+</section>
+
+<!-- ================= how it plays (signature) ================= -->
+<section id="how" class="ladder-sec">
+  <div class="wrap ladder-grid">
+    <div class="ladder-intro">
+      <h2>How every song finds its way to you</h2>
+      <p class="lead">When you press play, Tune Tune walks down this list until something answers — usually in under a second. You never have to choose; it just plays.</p>
+      <div class="scen" role="group" aria-label="Try a scenario">
+        <button data-s="0" aria-pressed="true">A popular song</button>
+        <button data-s="1" aria-pressed="false">A rare remix</button>
+        <button data-s="2" aria-pressed="false">No internet</button>
+        <button data-s="3" aria-pressed="false">Only on YouTube</button>
+      </div>
+      <div class="req"><img src="media/song-cover.jpg" alt=""><div><b id="req-t">Midnight Monsoon</b><small id="req-s">Looking for the cleanest copy…</small></div></div>
+      <div class="dots"><span><i style="background:var(--green)"></i>Free source</span><span><i style="background:var(--red)"></i>YouTube player</span></div>
+      <p class="fine" style="margin-top:12px">Tap the quality badge in the player any time to see exactly where the song is coming from.</p>
+    </div>
+    <ol class="ladder" id="ladder">
+      <li class="rung"><span class="n">1</span><div><h3>Already on your device</h3><p>Songs you downloaded — and the ones Tune Tune saved automatically — start instantly, even with no internet.</p></div><span class="st"></span></li>
+      <li class="rung"><span class="n">2</span><div><h3>JioSaavn, through free routes</h3><p>Over 20 free relays and community servers are tried side by side; the fastest wins and is remembered for next time. Clean audio up to 320 kbps.</p></div><span class="st"></span></li>
+      <li class="rung"><span class="n">3</span><div><h3>Matched from the charts</h3><p>Chart hits and YouTube songs are matched to a clean JioSaavn copy whenever one exists, so you get the better audio.</p></div><span class="st"></span></li>
+      <li class="rung"><span class="n">4</span><div><h3>YouTube Music audio, ad-free</h3><p>Just the audio, through public mirrors that refresh themselves — or the built-in engine in the Windows, Mac, Linux and Android apps.</p></div><span class="st"></span></li>
+      <li class="rung last"><span class="n">5</span><div><h3>The YouTube player</h3><p>The last resort, only for the rare song nothing above has. YouTube’s own ads can appear here — never ads from Tune Tune.</p></div><span class="st"></span></li>
+    </ol>
+  </div>
+</section>
+
+<!-- ================= compare ================= -->
+<section id="compare">
+  <div class="wrap">
+    <h2>How it compares</h2>
+    <p class="lead">An honest side-by-side. Paid apps are great — if you want to pay every month. Free apps cost you in ads and missing features.</p>
+    <div class="tbl">
+      <table>
+        <thead><tr><th></th><th class="us"><div><img src="icons/icon-192.png" alt="">Tune Tune</div></th><th>Typical free music apps</th><th>Paid subscriptions</th></tr></thead>
+        <tbody>
+          <tr><th>Price</th><td class="us">Free</td><td>Free</td><td>Monthly fee</td></tr>
+          <tr><th>Account</th><td class="us">Not needed</td><td>Sign-up required</td><td>Sign-up and payment card</td></tr>
+          <tr><th>Ads</th><td class="us">None from us*</td><td class="x">Audio and video ads</td><td class="y">None</td></tr>
+          <tr><th>Sound quality</th><td class="us">Up to 320 kbps, shown on every song</td><td>Often lower quality</td><td class="y">High, some offer lossless</td></tr>
+          <tr><th>Play with the screen off</th><td class="us y">Yes</td><td>Often limited</td><td class="y">Yes</td></tr>
+          <tr><th>Downloads for offline</th><td class="us y">Yes</td><td class="x">Usually not</td><td class="y">Yes</td></tr>
+          <tr><th>Pick any song, skip freely</th><td class="us y">Yes</td><td>Often limited on phones</td><td class="y">Yes</td></tr>
+          <tr><th>Songs, podcasts and live radio together</th><td class="us y">Yes</td><td>Varies</td><td>Varies</td></tr>
+          <tr><th>Synced lyrics</th><td class="us y">Yes</td><td>Varies</td><td class="y">Yes</td></tr>
+          <tr><th>10-band equalizer</th><td class="us y">Yes, with presets</td><td>Rare</td><td>Basic or none</td></tr>
+          <tr><th>Car Mode and Party Mode</th><td class="us y">Yes</td><td>Rare</td><td>Varies</td></tr>
+          <tr><th>Windows, macOS, Linux, Android, iPhone and web</th><td class="us y">All six</td><td>Some</td><td>Most — Linux often missing</td></tr>
+          <tr><th>Your listening data</th><td class="us">Stays on your device</td><td>Collected for ads</td><td>Collected by the service</td></tr>
+          <tr><th>Official licensed catalog and editors’ playlists</th><td class="us">Plays from public sources</td><td class="y">Yes</td><td class="y">Yes</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p class="fine">* The YouTube player is used only when no clean source has a song, and YouTube may show its own ads there. Comparisons describe typical free and paid plans; every service is different and changes over time.</p>
+  </div>
+</section>
+
+<!-- ================= features ================= -->
+<section id="features">
+  <div class="wrap">
+    <h2>Made for listening, not for selling.</h2>
+
+    <div class="feature">
+      <div class="ftext">
+        <h3>A player that feels like it’s yours.</h3>
+        <p>Big album art that slides as you swipe, colors that follow the music, and lyrics that light up line by line.</p>
+        <ul>
+          <li>Synced lyrics — tap any line to jump there</li>
+          <li>Long titles roll gently; tap to bring them back</li>
+          <li>Queue, shuffle, repeat, crossfade and gap-free playback</li>
+          <li>Lock-screen and headphone controls on every device</li>
+        </ul>
+      </div>
+      <div class="win"><div class="bar"><i></i><i></i><i></i></div><img src="media/player-desktop.jpg" alt="The Tune Tune player on a computer with synced lyrics" loading="lazy" width="1600" height="1000"></div>
+    </div>
+
+    <div class="feature flip">
+      <div class="ftext">
+        <h3>Always know where a song comes from.</h3>
+        <p>Tap the quality badge to see the format, bitrate and source of what’s playing. Green means a free, clean source; red means the YouTube player.</p>
+        <ul>
+          <li>Quality badge on every song — HQ means 320 kbps</li>
+          <li>Auto, Data saver, Normal and High quality</li>
+          <li>Volume levelling keeps every song at a similar loudness</li>
+        </ul>
+      </div>
+      <div class="shots"><div class="phone"><img src="media/source-phone.jpg" alt="The audio quality sheet showing where a song plays from" loading="lazy" width="720" height="1566"></div></div>
+    </div>
+
+    <div class="feature">
+      <div class="ftext">
+        <h3>Shape the sound.</h3>
+        <p>A 10-band equalizer with presets you can pin, plus bass, treble, stereo width and a loudness mode for the car or earbuds.</p>
+        <ul>
+          <li>Presets like Bass Boost, Vocal, Acoustic and Late Night</li>
+          <li>Save your own sound and switch with one tap</li>
+          <li>Works in the Windows, Mac, Linux and Android apps and the web</li>
+        </ul>
+      </div>
+      <div class="shots"><div class="phone"><img src="media/eq-phone.jpg" alt="The 10-band equalizer" loading="lazy" width="720" height="1566"></div></div>
+    </div>
+
+    <div class="feature flip">
+      <div class="ftext">
+        <h3>Car Mode: big, calm and safe.</h3>
+        <p>Huge buttons you can hit without looking, the time at a glance, voice search, and what’s up next. Turn your phone sideways and it can switch to Car Mode on its own.</p>
+        <ul>
+          <li>Swipe the album art to change songs</li>
+          <li>Long titles roll so nothing gets cut off</li>
+          <li>Sleep timer and favorites one tap away</li>
+        </ul>
+      </div>
+      <div class="win"><img src="media/car.jpg" alt="Car Mode with large controls" loading="lazy" width="1200" height="552"></div>
+    </div>
+
+    <div class="feature">
+      <div class="ftext">
+        <h3>Podcasts that remember where you were.</h3>
+        <p>Follow shows from around the world. Every episode shows how much you’ve heard and how much is left, with a progress bar on the artwork.</p>
+        <ul>
+          <li>Continue listening from the exact second</li>
+          <li>Skip 15 seconds back or 30 forward, change speed</li>
+          <li>Mark as played, read show notes, download episodes</li>
+        </ul>
+      </div>
+      <div class="shots"><div class="phone"><img src="media/podcasts-phone.jpg" alt="A podcast with listening progress on each episode" loading="lazy" width="720" height="1566"></div></div>
+    </div>
+
+    <div class="feature flip">
+      <div class="ftext">
+        <h3>Dark, or soft paper white.</h3>
+        <p>Follows your device’s light or dark setting. The light theme is a warm paper white that’s easy on the eyes at any hour.</p>
+        <ul>
+          <li>Home fills with top songs and playlists in your languages</li>
+          <li>Quick picks learn from what you play</li>
+          <li>Text size and motion settings for comfort</li>
+        </ul>
+      </div>
+      <div class="shots"><div class="phone"><img src="media/home-phone.jpg" alt="Home screen in dark theme" loading="lazy" width="720" height="1566"></div><div class="phone tilt"><img src="media/home-phone-light.jpg" alt="Home screen in paper white theme" loading="lazy" width="720" height="1566"></div></div>
+    </div>
+
+    <div class="more">
+      <div><b>Live radio</b><span>Thousands of stations worldwide, by country, language or mood.</span></div>
+      <div><b>Offline Mix</b><span>Downloads and recently played songs, ready when the signal drops.</span></div>
+      <div><b>Sleep timer</b><span>Fades out after a set time, or when the current track ends.</span></div>
+      <div><b>Party Mode</b><span>A full-screen light show that moves with the music.</span></div>
+      <div><b>Your Replay</b><span>Your top songs and artists, kept privately on your device.</span></div>
+      <div><b>Bring your playlists</b><span>Import a YouTube playlist and play it here.</span></div>
+      <div><b>40 languages</b><span>Tamil, Hindi, English, Korean, Spanish, Arabic and many more.</span></div>
+      <div><b>Cast and AirPlay</b><span>Send music to speakers and TVs where your device supports it.</span></div>
+      <div><b>Home-screen widget</b><span>On Android: resume, favorites, offline and Party in one tap.</span></div>
+      <div><b>Taskbar and tray controls</b><span>Play, pause and skip from the Windows taskbar or system tray.</span></div>
+      <div><b>Your default music player</b><span>Open song files from your computer or phone straight into Tune Tune.</span></div>
+      <div><b>Gentle reminders</b><span>An optional nudge if you haven’t listened in a few days. Never more than two.</span></div>
+    </div>
+  </div>
+</section>
+
+<!-- ================= how to use ================= -->
+<section id="use">
+  <div class="wrap">
+    <h2>Up and playing in a minute</h2>
+    <ol class="steps">
+      <li><b>Get the app</b><span>Download it for your device below, or open it in your browser. On iPhone, add it to your Home Screen.</span></li>
+      <li><b>Pick your languages</b><span>Home fills with top songs and playlists in the languages you choose. Change them any time.</span></li>
+      <li><b>Search and play</b><span>Find songs, albums, artists, podcasts or stations — type, or use voice search.</span></li>
+      <li><b>Make it yours</b><span>Tap ♥ for favorites, build playlists, and download songs for when you’re offline.</span></li>
+      <li><b>Open the player</b><span>Tap the mini player for lyrics, queue, equalizer, sleep timer, Car Mode and Party Mode.</span></li>
+    </ol>
+    <div class="keys">
+      <h3>Keyboard shortcuts on a computer</h3>
+      <dl>
+        <div><dt><kbd>Space</kbd></dt><dd>Play or pause</dd></div>
+        <div><dt><kbd>←</kbd><kbd>→</kbd></dt><dd>Back or forward 10 seconds</dd></div>
+        <div><dt><kbd>N</kbd><kbd>P</kbd></dt><dd>Next or previous song</dd></div>
+        <div><dt><kbd>↑</kbd><kbd>↓</kbd></dt><dd>Volume</dd></div>
+        <div><dt><kbd>Y</kbd></dt><dd>Lyrics</dd></div>
+        <div><dt><kbd>Q</kbd></dt><dd>Queue</dd></div>
+        <div><dt><kbd>E</kbd></dt><dd>Equalizer</dd></div>
+        <div><dt><kbd>D</kbd></dt><dd>Car Mode</dd></div>
+        <div><dt><kbd>X</kbd></dt><dd>Party Mode</dd></div>
+        <div><dt><kbd>/</kbd></dt><dd>Search</dd></div>
+        <div><dt><kbd>?</kbd></dt><dd>All shortcuts</dd></div>
+      </dl>
+    </div>
+  </div>
+</section>
+
+<!-- ================= download ================= -->
+<section id="download">
+  <div class="wrap">
+    <h2>Get Tune Tune</h2>
+    <p class="lead">Free for every device. Your favorites and downloads stay on the device you use.</p>
+    <div class="release" id="release"></div>
+    <div class="dl-grid" id="dl-grid"></div>
+  </div>
+</section>
+
+<!-- ================= FAQ ================= -->
+<section id="faq">
+  <div class="wrap">
+    <h2>Questions, answered</h2>
+    <div class="faq">
+      <details><summary>Is Tune Tune really free?</summary><p>Yes. There’s no subscription, no trial and no account. Every feature on this page is included.</p></details>
+      <details><summary>Are there ads?</summary><p>Not from us. Most songs play as clean audio with no ads at all. The YouTube player is used only as a last resort for songs no clean source has, and YouTube may show its own ads there. Those songs show a red dot on the quality badge.</p></details>
+      <details><summary>Why does a song sometimes take a moment to start?</summary><p>Tune Tune is checking its list of sources and picking the fastest one that has the song. It remembers what worked, so the next song usually starts right away.</p></details>
+      <details><summary>Does it work offline?</summary><p>Yes, for songs you’ve downloaded and songs Tune Tune saved automatically. Open Library › Offline Mix to play them with no connection. Searching and new songs need the internet.</p></details>
+      <details><summary>Does music keep playing when my screen is off?</summary><p>Yes, with lock-screen and headphone controls, on every device. On iPhone, songs that play through the YouTube player pause when the screen locks — Apple doesn’t allow those to play in the background.</p></details>
+      <details><summary>Do I need an account? Where is my data kept?</summary><p>No account is needed. Your favorites, playlists, downloads, history and listening stats are stored only on your device. You can back them up and restore them from Settings.</p></details>
+      <details><summary>How much data does it use?</summary><p>High quality streams up to 320 kbps. On a slow or mobile connection, Auto lowers the quality so music never stops, and Data saver uses about 96 kbps.</p></details>
+      <details><summary>Windows or macOS says the app is from an unknown developer. Is it safe?</summary><p>That message appears for new apps without a paid signing certificate. On Windows choose <b>More info → Run anyway</b>. On macOS open <b>System Settings → Privacy &amp; Security</b> and click <b>Open Anyway</b>. You only do this once.</p></details>
+      <details><summary>Why is there no App Store download for iPhone?</summary><p>Apple only allows App Store installs. Open Tune Tune in Safari, tap <b>Share → Add to Home Screen</b>, and it opens full-screen like any other app. The equalizer isn’t available on iPhone and iPad because of Apple’s limits on web apps.</p></details>
+      <details><summary>How do I update?</summary><p>The web app and iPhone version update themselves. For the Windows, Mac, Linux and Android apps, download the new version from this page and install it over the old one — your library stays.</p></details>
+    </div>
+  </div>
+</section>
+
+<section class="final">
+  <div class="wrap">
+    <h2>Press play. It finds the rest.</h2>
+    <p class="lead">Free, private and ready on every device you own.</p>
+    <div class="cta">
+      <button class="btn btn-primary" id="final-dl" data-platform="web" data-asset="0"><span class="lbl">Download</span><span class="meta"></span></button>
+      <a class="btn btn-ghost" href="./" data-try>Play in your browser</a>
+    </div>
+  </div>
+</section>
+</main>
+
+<footer>
+  <div class="wrap">
+    <span>© 2026 Tune Tune · Built by H24 Creationz</span>
+    <a href="./" data-try>Open the web app</a>
+    <p class="disc">Tune Tune is an independent player and isn’t affiliated with JioSaavn, YouTube, Apple, Google or any music service. Music, podcasts and stations are streamed from public sources and belong to their owners.</p>
+  </div>
+</footer>
+
+<div class="sheet" id="sheet" role="dialog" aria-modal="true" aria-labelledby="sheet-title">
+  <div class="box">
+    <div class="state" id="sheet-state"><span class="spin"></span>Preparing your download…</div>
+    <h3 id="sheet-title">Tune Tune</h3>
+    <div class="file"><img src="icons/icon-192.png" alt=""><div><b id="sheet-file"></b><span id="sheet-size"></span></div></div>
+    <ol id="sheet-steps"></ol>
+    <div class="row"><button class="btn btn-ghost" id="sheet-close">Done</button><button class="btn btn-primary" id="sheet-retry">Download again</button></div>
+    <p class="small">Need another device? <a href="#download" id="sheet-other">See all downloads</a></p>
+  </div>
+</div>
+
+<script>
+(function () {
+  /* the app's address and where release files live are worked out automatically on GitHub Pages */
+  var host = location.hostname, seg = location.pathname.split('/').filter(Boolean), gh = /\.github\.io$/.test(host);
+  var REPO = (gh ? host.split('.')[0] : 'harshavarthanep') + '/' + (gh && seg.length && !/\.html?$/.test(seg[0]) ? seg[0] : 'tunetune');
+  var TRY_URL = './';
+  var LATEST = 'https://github.com/' + REPO + '/releases/latest/download/';
+
+  var P = {
+    windows: { name: 'Windows', icon: 'win', req: 'Windows 10 or 11, Intel and AMD',
+      files: [{ label: 'Download installer', asset: 'TuneTune-Windows-Setup-x64.exe' }, { label: 'Portable — no install', asset: 'TuneTune-Windows-Portable.exe' }, { label: 'Windows on ARM', asset: 'TuneTune-Windows-Setup-arm64.exe' }],
+      steps: ['Open <b>TuneTune-Windows-Setup-x64.exe</b> from your Downloads.', 'If Windows shows “Windows protected your PC”, click <b>More info → Run anyway</b>.', 'Tune Tune opens and appears in the Start menu. Music files can open with it too.'] },
+    mac: { name: 'macOS', icon: 'mac', req: 'macOS 10.15 or later, Apple silicon and Intel',
+      files: [{ label: 'Download for Mac', asset: 'TuneTune-Mac.dmg' }, { label: 'Zip version', asset: 'TuneTune-Mac.zip' }],
+      steps: ['Open <b>TuneTune-Mac.dmg</b> and drag Tune Tune into <b>Applications</b>.', 'Open Tune Tune from Applications.', 'If macOS can’t check the developer, open <b>System Settings → Privacy &amp; Security</b> and click <b>Open Anyway</b>. You only do this once.'] },
+    linux: { name: 'Linux', icon: 'linux', req: '64-bit Ubuntu, Debian, Fedora and more; ARM too',
+      files: [{ label: 'Download .deb — Ubuntu, Debian', asset: 'TuneTune-Linux-amd64.deb' }, { label: 'Download AppImage', asset: 'TuneTune-Linux-x86_64.AppImage' }, { label: 'ARM .deb', asset: 'TuneTune-Linux-arm64.deb' }, { label: 'ARM AppImage', asset: 'TuneTune-Linux-arm64.AppImage' }],
+      steps: ['<b>.deb:</b> double-click to install, or run <code>sudo apt install ./TuneTune-Linux-amd64.deb</code>.', '<b>AppImage:</b> right-click → Properties → allow it to run as a program, then double-click it.', 'Find Tune Tune in your app menu.'] },
+    android: { name: 'Android', icon: 'android', req: 'Android 6.0 or later, about 4.5 MB',
+      files: [{ label: 'Download APK', asset: 'TuneTune-Android.apk' }],
+      steps: ['Open <b>TuneTune-Android.apk</b> from your notifications or Downloads.', 'If asked, allow your browser to <b>install unknown apps</b>.', 'Tap <b>Install</b>, then open Tune Tune. Long-press your home screen to add the widget.'] },
+    ios: { name: 'iPhone & iPad', icon: 'ios', req: 'iOS and iPadOS 16 or later, in Safari', web: true,
+      steps: ['Open Tune Tune in <b>Safari</b>.', 'Tap the <b>Share</b> button.', 'Tap <b>Add to Home Screen</b>. Tune Tune now opens full-screen like any app.'] },
+    web: { name: 'Web', icon: 'web', req: 'Chrome, Edge, Firefox or Safari', web: true,
+      steps: ['Open the web app — nothing to install.', 'In Chrome or Edge you can also <b>install</b> it from the address bar to give it its own window.'] }
+  };
+  var ICONS = {
+    win: '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M3 5.5 10.5 4.4v7.1H3zm0 13 7.5 1.1v-7H3zM11.5 4.3 21 3v8.5h-9.5zm0 15.4L21 21v-8.4h-9.5z"/></svg>',
+    mac: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="4" width="18" height="12" rx="2"/><path d="M2 20h20"/></svg>',
+    linux: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="m7 9 3 3-3 3M12 15h5"/></svg>',
+    android: '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M6 9h12v8a2 2 0 0 1-2 2h-1v3h-2v-3h-2v3H9v-3H8a2 2 0 0 1-2-2zm-3 0h2v7H3zm16 0h2v7h-2zM7.5 8a4.5 4.5 0 0 1 9 0z"/></svg>',
+    ios: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="6" y="2" width="12" height="20" rx="3"/><path d="M11 18h2"/></svg>',
+    web: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3a14 14 0 0 1 0 18M12 3a14 14 0 0 0 0 18"/></svg>'
+  };
+
+  /* which device is the visitor on? */
+  var ua = navigator.userAgent;
+  var plat = (navigator.userAgentData && navigator.userAgentData.platform) || navigator.platform || '';
+  var mine = /android/i.test(ua) ? 'android'
+    : (/iPad|iPhone|iPod/.test(ua) || (/Mac/.test(plat) && navigator.maxTouchPoints > 1)) ? 'ios'
+    : (/Win/i.test(plat) || /Windows/i.test(ua)) ? 'windows'
+    : (/Mac/i.test(plat) || /Macintosh/.test(ua)) ? 'mac'
+    : /Linux|X11|CrOS/i.test(plat + ' ' + ua) ? 'linux' : 'web';
+  var armWin = mine === 'windows' && /arm/i.test(ua);
+
+  /* latest release: version, date and file sizes */
+  var release = null, releaseFailed = false;
+  function fmtSize(b) { return b >= 1e6 ? Math.round(b / 1e6) + ' MB' : Math.max(1, Math.round(b / 1e3)) + ' KB'; }
+  function asset(name) {
+    if (!release) return releaseFailed ? { url: LATEST + name, size: null, ok: true } : null;
+    var a = (release.assets || []).filter(function (x) { return x.name === name; })[0];
+    return a ? { url: a.browser_download_url, size: a.size, ok: true } : { ok: false };
+  }
+  function metaFor(a) { return !a ? '<span class="skel"></span>' : (a.ok ? (a.size ? fmtSize(a.size) : '') : 'Coming soon'); }
+
+  var grid = document.getElementById('dl-grid');
+  var order = ['windows', 'mac', 'linux', 'android', 'ios', 'web'];
+  order.sort(function (a, b) { return (b === mine) - (a === mine); });
+
+  function renderCards() {
+    grid.innerHTML = order.map(function (id) {
+      var p = P[id];
+      var btns = p.web
+        ? '<a class="btn btn-primary" data-try href="' + TRY_URL + '"><span>' + (id === 'ios' ? 'Open in Safari' : 'Open the web app') + '</span></a>'
+        : p.files.map(function (f, i) {
+            var a = asset(f.asset);
+            return '<button class="btn ' + (i ? 'btn-ghost' : 'btn-primary') + '" data-platform="' + id + '" data-asset="' + i + '"' + (a && !a.ok ? ' disabled' : '') + '>' +
+              '<span class="lbl">' + f.label + '</span> <span class="meta">' + metaFor(a) + '</span></button>';
+          }).join('');
+      return '<div class="os' + (id === mine ? ' mine' : '') + '" id="os-' + id + '">' +
+        '<span class="tag">Your device</span>' +
+        '<div class="top"><div class="ico">' + ICONS[p.icon] + '</div><h3>' + p.name + '</h3></div>' +
+        '<p class="rq">' + p.req + '</p>' +
+        '<div class="btns">' + btns + '</div>' +
+        '<details><summary>How to install</summary><ol>' + p.steps.map(function (s) { return '<li>' + s + '</li>'; }).join('') + '</ol></details>' +
+        '</div>';
+    }).join('');
+  }
+  function renderHero() {
+    var p = P[mine], idx = armWin ? 2 : 0;
+    ['hero-dl', 'final-dl'].forEach(function (id) {
+      var b = document.getElementById(id);
+      b.dataset.platform = mine; b.dataset.asset = String(idx);
+      if (p.web) { b.querySelector('.lbl').textContent = mine === 'ios' ? 'Add to iPhone' : 'Open the web app'; b.querySelector('.meta').textContent = ''; b.disabled = false; return; }
+      var a = asset(p.files[idx].asset);
+      b.querySelector('.lbl').textContent = 'Download for ' + p.name;
+      b.querySelector('.meta').innerHTML = metaFor(a);
+      b.disabled = !!(a && !a.ok);
+    });
+    document.getElementById('hero-req').textContent = p.req + '.';
+  }
+  function renderRelease() {
+    var el = document.getElementById('release');
+    if (!release) { el.innerHTML = ''; return; }
+    var d = new Date(release.published_at || release.created_at);
+    el.innerHTML = '<span class="dot"></span> Updated ' + d.toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' });
+  }
+  renderCards(); renderHero();
+  fetch('https://api.github.com/repos/' + REPO + '/releases/latest', { headers: { Accept: 'application/vnd.github+json' } })
+    .then(function (r) { if (!r.ok) throw new Error(String(r.status)); return r.json(); })
+    .then(function (j) { release = j; })
+    .catch(function () { releaseFailed = true; })
+    .then(function () { renderCards(); renderHero(); renderRelease(); });
+
+  /* download with clear feedback */
+  var sheet = document.getElementById('sheet'), stateEl = document.getElementById('sheet-state');
+  var lastUrl = '', timers = [];
+  function startDownload(btn) {
+    var id = btn.dataset.platform, p = P[id];
+    if (p.web) { location.href = TRY_URL; return; }
+    var f = p.files[+btn.dataset.asset || 0];
+    var a = asset(f.asset) || { url: LATEST + f.asset, size: null, ok: true };
+    if (!a.ok) return;
+    var label = btn.querySelector('.lbl'), meta = btn.querySelector('.meta');
+    var oldLabel = label.innerHTML, oldMeta = meta.innerHTML;
+    btn.setAttribute('aria-busy', 'true'); btn.disabled = true;
+    label.innerHTML = '<span class="spin"></span>'; meta.textContent = 'Preparing your download…';
+    lastUrl = a.url;
+    document.getElementById('sheet-title').textContent = 'Tune Tune for ' + p.name;
+    document.getElementById('sheet-file').textContent = f.asset;
+    document.getElementById('sheet-size').textContent = a.size ? fmtSize(a.size) : '';
+    document.getElementById('sheet-steps').innerHTML = p.steps.map(function (s) { return '<li>' + s + '</li>'; }).join('');
+    stateEl.innerHTML = '<span class="spin"></span>Starting your download…';
+    sheet.classList.add('open');
+    timers.forEach(clearTimeout); timers = [];
+    timers.push(setTimeout(function () { location.href = a.url; }, 650));
+    timers.push(setTimeout(function () {
+      stateEl.innerHTML = '<span class="check">✓</span>Your download has started — check your Downloads folder.';
+      btn.removeAttribute('aria-busy'); btn.disabled = false; label.innerHTML = oldLabel; meta.innerHTML = oldMeta;
+    }, 1900));
+  }
+  document.addEventListener('click', function (e) {
+    var b = e.target.closest && e.target.closest('button[data-platform]');
+    if (b && !b.disabled) { e.preventDefault(); startDownload(b); }
+  });
+  document.getElementById('sheet-retry').onclick = function () { if (lastUrl) location.href = lastUrl; };
+  function close() { sheet.classList.remove('open'); }
+  document.getElementById('sheet-close').onclick = close;
+  document.getElementById('sheet-other').onclick = close;
+  sheet.addEventListener('click', function (e) { if (e.target === sheet) close(); });
+  document.addEventListener('keydown', function (e) { if (e.key === 'Escape') close(); });
+
+  /* the source ladder: walk down the list until a source answers */
+  var SC = [
+    { t: 'Midnight Monsoon', hit: 1, miss: ['Not downloaded'], ok: 'Found in 0.4 s', done: 'Playing clean audio · 320 kbps' },
+    { t: 'Neon Kites (Late Night Remix)', hit: 3, miss: ['Not downloaded', 'Not on JioSaavn', 'No match'], ok: 'Found on a mirror', done: 'Playing ad-free YouTube Music audio' },
+    { t: 'Saltwater Letters', hit: 0, miss: [], ok: 'Downloaded', done: 'Playing offline — no internet needed' },
+    { t: 'A live set from 2009', hit: 4, miss: ['Not downloaded', 'Not on JioSaavn', 'No match', 'Not available'], ok: 'Last resort', done: 'Playing in the YouTube player' }
+  ];
+  var rungs = [].slice.call(document.querySelectorAll('.rung')), reqT = document.getElementById('req-t'), reqS = document.getElementById('req-s');
+  var still = matchMedia('(prefers-reduced-motion: reduce)').matches, lt = [];
+  function run(i) {
+    var s = SC[i]; lt.forEach(clearTimeout); lt = [];
+    rungs.forEach(function (r) { r.className = 'rung' + (r.classList.contains('last') ? ' last' : ''); r.querySelector('.st').textContent = ''; });
+    reqT.textContent = s.t; reqS.textContent = 'Looking for the cleanest copy…';
+    var step = still ? 0 : 520, k = 0;
+    for (var j = 0; j <= s.hit; j++) (function (j) {
+      lt.push(setTimeout(function () { var r = rungs[j]; r.classList.add('try'); r.querySelector('.st').textContent = 'Checking…'; }, k * step));
+      lt.push(setTimeout(function () {
+        var r = rungs[j]; r.classList.remove('try');
+        if (j < s.hit) { r.classList.add('miss'); r.querySelector('.st').textContent = s.miss[j] || 'Busy'; }
+        else { r.classList.add('hit'); r.querySelector('.st').textContent = s.ok; reqS.textContent = s.done; }
+      }, k * step + (still ? 0 : 380)));
+      k++;
+    })(j);
+  }
+  [].forEach.call(document.querySelectorAll('.scen button'), function (b) {
+    b.addEventListener('click', function () {
+      [].forEach.call(document.querySelectorAll('.scen button'), function (x) { x.setAttribute('aria-pressed', String(x === b)); });
+      run(+b.dataset.s);
+    });
+  });
+  var started = false, lad = document.getElementById('ladder');
+  if ('IntersectionObserver' in window) {
+    new IntersectionObserver(function (es) { es.forEach(function (x) { if (x.isIntersecting && !started) { started = true; run(0); } }); }, { threshold: .4 }).observe(lad);
+  } else run(0);
+})();
+</script>
+</body>
+</html>

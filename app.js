@@ -3238,6 +3238,7 @@ function landCheck() {
 addEventListener('orientationchange', () => setTimeout(landCheck, 350));
 try { matchMedia('(orientation: landscape)').addEventListener('change', () => setTimeout(landCheck, 350)); } catch (e) { }
 function openDrive() {
+  setTimeout(() => Marquee.all(), 450);
   if ($('#drive')) return;
   const d = document.createElement('div'); d.id = 'drive';
   d.innerHTML = `<div class="dv-top"><button class="dv-x" data-a="drivex" aria-label="Close Driving Mode">${I.chevDown}</button><span class="dv-clock" id="dv-clock"></span><button class="dv-x" data-a="voice" aria-label="Voice search">${I.mic}</button></div>
@@ -4056,6 +4057,7 @@ const Marquee = {
       el.addEventListener('pointerleave', e => { if (e.pointerType === 'mouse' && el.classList.contains('mq-hold')) { clearTimeout(el._mqT); el._mqT = setTimeout(() => this.resume(el), 1200); } });
     }
     const inner = el.querySelector('.mq-i'); this.reset(el);
+    if (!el.clientWidth) { clearTimeout(this.later); this.later = setTimeout(() => this.all(), 400); return; }   // not laid out yet (screen still opening)
     const active = el.id.startsWith('dv-') ? !!$('#drive') : npOpen;
     const over = Math.max(el.scrollWidth, inner.getBoundingClientRect().width) - el.clientWidth;
     if (!active || over < 4) return;
