@@ -32,5 +32,9 @@ Permanent "latest" links for your product page:
 - **Android:** first install asks to allow "Install unknown apps" once. Updates install over the old app (fixed signing key in `build/`).
 - **Mac:** the app isn't signed with a paid Apple certificate, so the first time: right-click the app → **Open** → **Open**.
 - **Windows:** SmartScreen may say "unrecognised app" for new apps → **More info → Run anyway**.
-- **Your music server:** set `BUILT_IN_SERVER` in `app.js` (or add `tunetune-config.json`) *before* building and every app ships with clean JioSaavn audio.
+- **Your music server:** add `tunetune-config.json` (or set `BUILT_IN_SERVER` in `app.js`) *before* building. Apps still use free sources first and only use your server when **My server** is switched on.
+- **Default music player:** Windows (installer), Mac and Linux (.deb) register for music files; Settings → Playback → *Make Tune Tune your music player* walks you through it. Android lists Tune Tune as a music app — open a song in Files → Tune Tune → *Always*.
+- **Home-screen widget (Android):** long-press the home screen → Widgets → Tune Tune (Resume, Favorites, Offline, Party).
+- **Windows taskbar:** hover the Tune Tune icon for previous / play-pause / next buttons.
+- **Reminders:** Settings → Playback → *Remind me when I'm away* (off, 3, 7 or 14 days; at most two nudges).
 - Every app uses the same `app.js` / `styles.css` as the website, so website updates and app updates stay identical — just run the build again.

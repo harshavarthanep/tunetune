@@ -78,7 +78,9 @@ const warn = (...a) => { LOG.push(`${new Date().toLocaleTimeString()} ${a.map(x 
 
 async function fetchT(url, opts = {}, ms = 12000) {
   const c = new AbortController(); const t = setTimeout(() => c.abort(), ms);
-  try { return await fetch(url, { ...opts, signal: c.signal }); } finally { clearTimeout(t); }
+  const outer = opts.signal; const stop = () => c.abort();
+  if (outer) { if (outer.aborted) c.abort(); else outer.addEventListener('abort', stop, { once: true }); }
+  try { return await fetch(url, { ...opts, signal: c.signal }); } finally { clearTimeout(t); if (outer) outer.removeEventListener('abort', stop); }
 }
 async function getJSON(url, ms = 12000, opts) {
   const r = await fetchT(url, opts, ms);
@@ -111,7 +113,7 @@ const PC = {
   },
   clear() { this.d = {}; try { localStorage.removeItem(this.k); } catch (e) { } },
 };
-const PERSIST = /^(lt:|ycs:|svr:|ys:|yp:|ya:|yl:|yr:|yc:|it:|dz:|ptop|pq:|pe:|pqe:|rd:|au:)/;
+const PERSIST = /^(lt:|ycs:|svr:|ys:|yy:|yp:|ya:|yl:|yr:|yc:|it:|dz:|ptop|pq:|pe:|pqe:|rd:|au:)/;
 const inflight = new Map(); let BYPASS = false;
 function refresh(key, ttl, fn) {
   if (inflight.has(key)) return inflight.get(key);
@@ -268,7 +270,7 @@ const DEFAULTS = {
   pod: { follows: [], prog: {} }, stats: { plays: {}, days: {} },
   settings: { theme: 'auto', accent: '#ff375f', eqOn: false, eq: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0], eqPreset: 'Flat', eqCustom: [], eqPins: [], eqBoost: 0, eqPre: 0, eqBass: 0, eqTreble: 0, eqLoud: false, eqWidth: 1, autoplay: true, country: '', volume: 1, langs: null, quality: 'auto', mirror: '', server: '', saavn: '', proxy: '', ytPlayer: true, engine: 'auto', normalize: true, hideAppCard: false, apkUrl: '',
     crossfade: 0, preload: true, podSpeed: 1, podBack: 15, podFwd: 30, startTab: 'home', zoom: 1, motion: true, animBg: true, badge: true, haptics: true,
-    pauseHistory: false, hideExplicit: false, smartDl: false, lyricsSize: 'm', tapSound: false, crown: false, partyStyle: 'disco', partyBuzz: false, autoSave: true, autoSaveMax: 30, landCar: true,
+    pauseHistory: false, hideExplicit: false, smartDl: false, lyricsSize: 'm', tapSound: false, crown: false, partyStyle: 'disco', partyBuzz: false, autoSave: true, autoSaveMax: 30, landCar: true, ownSrc: false, remindDays: 3,
     homeSections: { mixes: true, langs: true, chart: true, following: true, radio: true, podcasts: true, free: true, moods: true } },
 };
 const S = (() => {
@@ -286,10 +288,10 @@ const S = (() => {
     return out;
   } catch (e) { return base; }
 })();
-let saveT;
+let saveT, RESET = false;
 function save() {
-  clearTimeout(saveT);
-  saveT = setTimeout(() => { try { localStorage.setItem(KEY, JSON.stringify(S)); } catch (e) { toast('Storage is full — remove some downloads'); } }, 250);
+  clearTimeout(saveT); if (RESET) return;
+  saveT = setTimeout(() => { if (RESET) return; try { localStorage.setItem(KEY, JSON.stringify(S)); } catch (e) { toast('Storage is full — remove some downloads'); } }, 250);
 }
 const KEEP = ['enc', 'hq', 'su', 'albumId', 'year', 'svSu', 'id', 'source', 'sid', 'uid', 'title', 'artist', 'handle', 'album', 'art', 'artLarge', 'duration', 'full', 'genre', 'url', 'live', 'preview', 'explicit', 'plays', 'permalink', 'home', 'hasArt', 'ytId', 'podId', 'date', 'desc', 'codec', 'bitrate', 'fmt', 'q', 'sr', 'bits', 'ch', 'kbps', 'lossless', 'lang', 'label', 'copy'];
 const clean = t => { const o = {}; for (const k of KEEP) if (t[k] !== undefined && t[k] !== null && t[k] !== '') o[k] = t[k]; return o; };
@@ -843,42 +845,69 @@ async function firstOk(fns) {
   return [];
 }
 /* ---- JioSaavn: full songs up to 320 kbps with album art — plays in any browser (lock screen too), no YouTube involved ---- */
-const SAAVN_DEFAULT = [{ base: 'https://jio.shnwaz.dev/api', shape: 'A' }, { base: 'https://saavn.sumit.co/api', shape: 'A' }, { base: 'https://saavn.dev/api', shape: 'A' }, { base: 'https://saavn.me', shape: 'B' }, { base: 'https://jiosaavn-api-privatecvc2.vercel.app', shape: 'B' }];
+// Free community JioSaavn servers (open-source jiosaavn-api deployments). Shape A = /api/search/songs?query=…, B = /search/songs?query=…&page=1
+const SAAVN_DEFAULT = [{ base: 'https://saavn.sumit.co/api', shape: 'A' }, { base: 'https://jio.shnwaz.dev/api', shape: 'A' }, { base: 'https://saavn.dev/api', shape: 'A' },
+  { base: 'https://jiosaavn-api-privatecvc2.vercel.app', shape: 'B' }, { base: 'https://saavn.me', shape: 'B' }, { base: 'https://jiosaavn-api-codyandersan.vercel.app', shape: 'B' }];
 const decodeEnt = x => String(x || '').replace(/&(quot|amp|#039|#39|apos|lt|gt);/g, (m, k) => ({ quot: '"', amp: '&', '#039': "'", '#39': "'", apos: "'", lt: '<', gt: '>' }[k]));
 const https = u => String(u || '').replace(/^http:/, 'https:');
+const hostOf = u => { try { return new URL(String(u).replace('{url}', '')).host; } catch (e) { return String(u || '').replace(/^https?:\/\//, '').split(/[/?#]/)[0]; } };
+const tagRoute = (arr, r) => { if (r) for (const t of arr || []) if (t && typeof t === 'object') t._r = r; return arr; };
+// Runs fn on every candidate at once; the first good answer wins and the others are cancelled (saves data and battery).
+async function race(list, fn) {
+  const ac = new AbortController();
+  try { return await Promise.any(list.map(x => fn(x, ac.signal))); }
+  catch (e) { const errs = (e && e.errors) || []; throw errs.find(x => x && x.soft) || errs[0] || new Error('unavailable'); }
+  finally { ac.abort(); }
+}
+// Like firstOk, but remembers whether a source actually answered ("no results" is soft and stops the search for backups).
+async function firstOkSoft(fns) {
+  const errs = [];
+  for (const f of fns) {
+    try { const r = await f(); if (r && (!Array.isArray(r) || r.length)) return r; errs.push(softErr('empty')); }
+    catch (e) { errs.push(e); }
+  }
+  if (errs.length && errs.every(e => e && e.skip)) throw errs[0];
+  throw errs.find(e => e && e.soft) || errs.filter(e => !e.skip).pop() || softErr('empty');
+}
 const SvC = {
   fails: new Map(), best: null,
-  list() { const c = S.settings.saavn ? [{ base: S.settings.saavn.replace(/\/+$/, ''), shape: '?' }] : []; return [...c, ...SAAVN_DEFAULT.filter(x => !c.some(y => y.base === x.base))]; },
-  down() { const now = Date.now(); return this.list().every(b => now - (this.fails.get(b.base) || 0) < 5 * 60e3); },
-  order() {
-    const now = Date.now(), L = this.list(), recent = b => now - (this.fails.get(b.base) || 0) < 5 * 60e3;
-    const o = L.filter(b => !recent(b)).concat(L.filter(recent));
+  list(tier = 'free') {
+    if (tier === 'own') return S.settings.saavn && Src.on() ? [{ base: S.settings.saavn.replace(/\/+$/, ''), shape: '?' }] : [];
+    if (tier !== 'free') return [];
+    return [...CFG.saavn, ...SAAVN_DEFAULT.filter(x => !CFG.saavn.some(y => y.base === x.base))];
+  },
+  isBad(b) { return Date.now() - (this.fails.get(b.base) || 0) < 5 * 60e3; },
+  down(tier = 'free') { const L = this.list(tier); return !L.length || L.every(b => this.isBad(b)); },
+  order(tier) {
+    const L = this.list(tier); const o = L.filter(b => !this.isBad(b)).concat(L.filter(b => this.isBad(b)));
     const i = o.findIndex(b => b.base === this.best); if (i > 0) o.unshift(o.splice(i, 1)[0]);
     return o;
   },
-  async get(pathA, pathB) {
-    if (this.down()) throw new Error('JioSaavn is busy');
-    const one = async inst => {
+  async get(pathA, pathB, tier = 'free') {
+    if (!this.list(tier).length) throw Object.assign(new Error('not set up'), { skip: true });
+    if (this.down(tier)) throw new Error('JioSaavn servers are busy');
+    const one = async (inst, signal) => {
       let err = new Error('JioSaavn unavailable');
       for (const sh of inst.shape === '?' ? ['A', 'B'] : [inst.shape]) {
         const path = sh === 'A' ? pathA : pathB; if (!path) continue;
         try {
-          let j;
-          try { j = await getJSON(inst.base + path, 6000); }
-          catch (e0) { const px = S.settings.proxy || SITE.server || normServer(BUILT_IN_SERVER); if (!px || e0.status) throw e0; j = await getJSON(px.replace('{url}', enc(inst.base + path)), 7000); }
+          const j = await getJSON(inst.base + path, 6000, { signal });
           if (!j || j.success === false || (j.status && String(j.status).toUpperCase() !== 'SUCCESS') || j.data == null) throw softErr('no data');
-          this.best = inst.base; this.fails.delete(inst.base);
-          return { data: j.data, shape: sh };
-        } catch (e) { err = e; const unsupported = e.status >= 400 && e.status < 500 && e.status !== 429; if (!e.soft && !unsupported) { this.fails.set(inst.base, Date.now()); break; } }
+          this.best = inst.base; this.fails.delete(inst.base); Src.note(tier, inst.base);
+          return { data: j.data, shape: sh, route: { tier, relay: inst.base } };
+        } catch (e) {
+          err = e; if (signal && signal.aborted) throw e;
+          const unsupported = e.status >= 400 && e.status < 500 && e.status !== 429;
+          if (!e.soft && !unsupported) { this.fails.set(inst.base, Date.now()); break; }
+        }
       }
       throw err;
     };
-    const o = this.order().filter(b => Date.now() - (this.fails.get(b.base) || 0) >= 5 * 60e3);
+    const o = this.order(tier).filter(b => !this.isBad(b));
     const first = o[0] && o[0].base === this.best ? o.shift() : null;
     if (first) { try { return await lim(() => one(first)); } catch (e) { if (e.soft) throw e; } }
     if (!o.length) throw new Error('JioSaavn unavailable');
-    try { return await Promise.any(o.map(one)); }
-    catch (e) { const errs = (e && e.errors) || []; throw errs.find(x => x && x.soft) || errs[0] || new Error('JioSaavn unavailable'); }
+    return race(o, one);
   },
   img(x, q) {
     if (!x) return ''; if (typeof x === 'string') return https(x.replace(/\d+x\d+/, q));
@@ -906,25 +935,25 @@ const SvC = {
     return { kind, id: String(x.id), title: decodeEnt(x.name || x.title), sub: kind === 'album' && x.year ? `${sub} · ${x.year}` : sub, art: this.img(x.image, '500x500'), source: 'saavn' };
   },
   list_(d) { return (d && (d.results || d.songs || (Array.isArray(d) ? d : []))) || []; },
-  tracks(d) { return this.list_(d).map(x => this.track(x)).filter(Boolean); },
-  async songs(q) { const { data } = await this.get(`/search/songs?query=${enc(q)}&limit=40`, `/search/songs?query=${enc(q)}&page=1&limit=40`); return this.tracks(data); },
-  async colls(q, kind) { const { data } = await this.get(`/search/${kind}s?query=${enc(q)}&limit=30`, `/search/${kind}s?query=${enc(q)}&page=1&limit=30`); return this.list_(data).map(x => this.coll(x, kind)).filter(Boolean); },
-  async song(id) { const { data } = await this.get(`/songs/${enc(id)}`, `/songs?id=${enc(id)}`); return this.track((Array.isArray(data) ? data : [data])[0]); },
-  async related(t) {
-    try { const { data } = await this.get(`/songs/${enc(t.sid)}/suggestions?limit=25`, null); const r = this.tracks(data); if (r.length) return r; } catch (e) { }
+  tracks(d, r) { return tagRoute(this.list_(d).map(x => this.track(x)).filter(Boolean), r); },
+  async songs(q, tier) { const { data, route } = await this.get(`/search/songs?query=${enc(q)}&limit=40`, `/search/songs?query=${enc(q)}&page=1&limit=40`, tier); return this.tracks(data, route); },
+  async colls(q, kind, tier) { const { data } = await this.get(`/search/${kind}s?query=${enc(q)}&limit=30`, `/search/${kind}s?query=${enc(q)}&page=1&limit=30`, tier); return this.list_(data).map(x => this.coll(x, kind)).filter(Boolean); },
+  async song(id, tier) { const { data, route } = await this.get(`/songs/${enc(id)}`, `/songs?id=${enc(id)}`, tier); return tagRoute([this.track((Array.isArray(data) ? data : [data])[0])], route)[0]; },
+  async related(t, tier) {
+    try { const { data, route } = await this.get(`/songs/${enc(t.sid)}/suggestions?limit=25`, null, tier); const r = this.tracks(data, route); if (r.length) return r; } catch (e) { if (e.skip) throw e; }
     const first = String(t.artist || '').split(',')[0].trim();
-    const r = await this.songs(first ? `${first} hits` : t.title); return r.filter(x => x.id !== t.id);
+    const r = await this.songs(first ? `${first} hits` : t.title, tier); return r.filter(x => x.id !== t.id);
   },
-  async collection(c) {
+  async collection(c, tier) {
     if (c.kind === 'album' || c.kind === 'playlist') {
-      const { data } = await this.get(`/${c.kind}s?id=${enc(c.id)}&limit=150`, `/${c.kind}s?id=${enc(c.id)}`);
-      const tracks = this.tracks(data); if (!tracks.length) throw softErr('empty');
+      const { data, route } = await this.get(`/${c.kind}s?id=${enc(c.id)}&limit=150`, `/${c.kind}s?id=${enc(c.id)}`, tier);
+      const tracks = this.tracks(data, route); if (!tracks.length) throw softErr('empty');
       const by = this.names(data) || data.primaryArtists || '';
       return { title: decodeEnt(data.name) || c.title, art: this.img(data.image, '500x500') || c.art, sub: decodeEnt([by || data.description || c.sub, data.year].filter(Boolean).join(' · ')), tracks };
     }
-    const { data } = await this.get(`/artists/${enc(c.id)}`, `/artists?id=${enc(c.id)}`);
-    let tracks = (data.topSongs || []).map(x => this.track(x)).filter(Boolean);
-    if (!tracks.length) { try { const r = await this.get(`/artists/${enc(c.id)}/songs?sortBy=popularity&sortOrder=desc`, `/artists/${enc(c.id)}/songs?page=1`); tracks = this.tracks(r.data); } catch (e) { } }
+    const { data, route } = await this.get(`/artists/${enc(c.id)}`, `/artists?id=${enc(c.id)}`, tier);
+    let tracks = tagRoute((data.topSongs || []).map(x => this.track(x)).filter(Boolean), route);
+    if (!tracks.length) { try { const r = await this.get(`/artists/${enc(c.id)}/songs?sortBy=popularity&sortOrder=desc`, `/artists/${enc(c.id)}/songs?page=1`, tier); tracks = this.tracks(r.data, r.route); } catch (e) { } }
     const albums = (data.topAlbums || []).map(x => this.coll(x, 'album')).filter(Boolean);
     const singles = (data.singles || []).map(x => this.coll(x, 'album')).filter(Boolean);
     return { title: decodeEnt(data.name) || c.title, art: this.img(data.image, '500x500') || c.art, sub: data.followerCount ? compact(data.followerCount) + ' followers' : 'Artist', tracks,
@@ -979,104 +1008,151 @@ const DES = (() => {
   };
 })();
 
-/* JioSaavn's own API (the one jiosaavn.com uses). Browsers can't call it directly, so requests go through
-   free relay services; the app tries each and remembers the one that works. */
 /* ============================================================================
-   MUSIC SOURCES — swap or add any of these here, or (no code edits) in
-   tunetune-config.json next to index.html:
+   MUSIC SOURCES — the order Tune Tune tries them in:
+     1. FREE  — JioSaavn through free public relays, free community JioSaavn servers,
+                YouTube Music audio through public Piped / Invidious mirrors (no ads)
+     2. YOUR SERVERS — only when “My server” is switched on, and only after every free source failed:
+                the musicServer in tunetune-config.json first, then your own server saved in the app
+     3. YOUTUBE PLAYER — the last resort for songs nothing else has
+   tunetune-config.json (next to index.html, optional — see tunetune-config.example.json):
    {
-     "musicServer":   "https://your-worker.workers.dev",            // your own JioSaavn server (best)
-     "saavnServers":  ["https://some-jiosaavn-api.vercel.app/api"],  // community JioSaavn APIs
-     "relays":        ["https://some-cors-relay/?url={url}"],         // public web relays ({url} = target)
-     "piped":         ["https://pipedapi.example.com"],               // YouTube mirrors (Piped)
-     "invidious":     ["https://invidious.example.com"]               // YouTube mirrors (Invidious)
+     "musicServer":  "https://your-worker.workers.dev",              // used only when “My server” is on
+     "relays":       ["https://some-cors-relay/?url={url}"],          // extra FREE relays ({url} = target)
+     "saavnServers": ["https://some-jiosaavn-api.vercel.app/api"],    // extra FREE JioSaavn servers
+     "piped":        ["https://pipedapi.example.com"],                // extra FREE YouTube mirrors (Piped)
+     "invidious":    ["https://invidious.example.com"]                // extra FREE YouTube mirrors (Invidious)
    }
    ============================================================================ */
+/* JioSaavn's own API (the one jiosaavn.com uses). Browsers can't call it directly, so requests go through
+   free relay services; the app races them, keeps the one that answers first and cancels the rest. */
 const JS_RELAYS = [
   { id: 'direct', wrap: u => u },
   { id: 'allorigins', wrap: u => `https://api.allorigins.win/raw?url=${enc(u)}` },
   { id: 'codetabs', wrap: u => `https://api.codetabs.com/v1/proxy/?quest=${enc(u)}` },
-  { id: 'corsproxy', wrap: u => `https://corsproxy.io/?url=${enc(u)}` },
-  { id: 'cors.eu.org', wrap: u => `https://cors.eu.org/${u}` },
-  { id: 'allorigins-get', wrap: u => `https://api.allorigins.win/get?url=${enc(u)}`, unwrap: j => parseLoose(j && j.contents) },
-  { id: 'afeld', wrap: u => `https://jsonp.afeld.me/?url=${enc(u)}` },
-  { id: 'thingproxy', wrap: u => `https://thingproxy.freeboard.io/fetch/${u}` },
-  { id: 'corsproxy.org', wrap: u => `https://corsproxy.org/?${enc(u)}` },
+  { id: 'corsproxy.io', wrap: u => `https://corsproxy.io/?url=${enc(u)}` },
   { id: 'cors.lol', wrap: u => `https://api.cors.lol/?url=${enc(u)}` },
+  { id: 'allorigins-get', wrap: u => `https://api.allorigins.win/get?url=${enc(u)}`, unwrap: j => parseLoose(j && j.contents) },
+  { id: 'cors.eu.org', wrap: u => `https://cors.eu.org/${u}` },
+  { id: 'corsproxy.org', wrap: u => `https://corsproxy.org/?${enc(u)}` },
+  { id: 'afeld', wrap: u => `https://jsonp.afeld.me/?url=${enc(u)}` },
   { id: 'whateverorigin', wrap: u => `https://whateverorigin.org/get?url=${enc(u)}`, unwrap: j => parseLoose(j && j.contents) },
   { id: 'everyorigin', wrap: u => `https://everyorigin.jwvbremen.nl/get?url=${enc(u)}`, unwrap: j => parseLoose(j && (j.contents || j.html)) },
+  { id: 'cf-cors', wrap: u => `https://test.cors.workers.dev/?${u}` },
+  { id: 'zimjs', wrap: u => `https://cors.zimjs.com/${u}` },
+  { id: 'sirjosh', wrap: u => `https://cors-get-proxy.sirjosh.workers.dev/?url=${enc(u)}` },
+  { id: 'thingproxy', wrap: u => `https://thingproxy.freeboard.io/fetch/${u}` },
+  { id: 'yacdn', wrap: u => `https://yacdn.org/proxy/${u}` },
 ];
 function parseLoose(txt) {
   txt = String(txt || '').trim(); const i = txt.search(/[[{]/); if (i < 0) return null;
   try { return JSON.parse(txt.slice(i)); } catch (e) { return null; }
 }
-const SITE = { server: '' };
+const tplWrap = tpl => u => (tpl.includes('{url}') ? tpl.replace('{url}', enc(u)) : tpl + enc(u));
 function normServer(v) { v = String(v || '').trim(); if (!v) return ''; if (!/^https?:\/\//.test(v)) v = 'https://' + v; return v.includes('{url}') ? v : v.replace(/[?#].*$/, '').replace(/\/+$/, '') + '/?url={url}'; }
-async function loadSiteConfig() {
-  try {
-    const r = await fetchT('tunetune-config.json?v=' + Math.floor(Date.now() / 3600e3), { cache: 'no-store' }, 4000); if (!r.ok) return;
-    const j = await r.json(); if (!j || typeof j !== 'object') return;
-    const arr = x => (Array.isArray(x) ? x : x ? [x] : []).map(v => String(v || '').trim()).filter(v => /^https?:\/\//.test(v));
-    arr(j.relays).forEach((tpl, i) => { if (!JS_RELAYS.some(x => x.tpl === tpl)) JS_RELAYS.splice(1 + i, 0, { id: 'config-' + (i + 1), tpl, wrap: u => tpl.includes('{url}') ? tpl.replace('{url}', enc(u)) : tpl + enc(u) }); });
-    arr(j.saavnServers).reverse().forEach(b => { if (!SAAVN_DEFAULT.some(x => x.base === b)) SAAVN_DEFAULT.unshift({ base: b.replace(/\/+$/, ''), shape: /\/api$/.test(b.replace(/\/+$/, '')) ? 'A' : 'B' }); });
-    arr(j.piped).reverse().forEach(b => { if (!PIPED_DEFAULT.includes(b)) PIPED_DEFAULT.unshift(b.replace(/\/+$/, '')); });
-    arr(j.invidious).reverse().forEach(b => { if (!INV_DEFAULT.includes(b)) INV_DEFAULT.unshift(b.replace(/\/+$/, '')); });
-    let v = String(j.musicServer || j.server || '').trim(); if (!v) return;
-    if (!/^https?:\/\//.test(v)) v = 'https://' + v;
-    SITE.server = v.includes('{url}') ? v : v.replace(/[?#].*$/, '').replace(/\/+$/, '') + '/?url={url}';
-    if (!S.settings.proxy) { JSA.reset(); JSA.setVia('custom'); mem.clear(); }
-  } catch (e) { }
+/* tunetune-config.json: extra free sources are always used; its musicServer only when “My server” is on */
+const CFG = { p: null, found: false, server: '', relays: [], saavn: [] };
+const SITE = { get server() { return Src.cfgServer(); } };
+function loadSiteConfig(force) {
+  if (CFG.p && !force) return CFG.p;
+  CFG.p = (async () => {
+    try {
+      const r = await fetchT('tunetune-config.json?v=' + Math.floor(Date.now() / 3600e3), { cache: 'no-store' }, 4000); if (!r.ok) return;
+      const j = await r.json(); if (!j || typeof j !== 'object') return; CFG.found = true;
+      const arr = x => (Array.isArray(x) ? x : x ? [x] : []).map(v => String(v || '').trim()).filter(v => /^https?:\/\//.test(v));
+      CFG.relays = arr(j.relays).map((tpl, i) => ({ id: 'free relay ' + hostOf(tpl), cfg: true, wrap: tplWrap(tpl) })).filter((x, i, a) => a.findIndex(y => y.id === x.id) === i);
+      CFG.saavn = arr(j.saavnServers).map(b => { b = b.replace(/\/+$/, ''); return { base: b, shape: /\/api$/.test(b) ? 'A' : '?' }; });
+      const p = arr(j.piped).map(b => b.replace(/\/+$/, '')), v = arr(j.invidious).map(b => b.replace(/\/+$/, ''));
+      if (p.length) Mirrors.piped = uniq([...p, ...Mirrors.piped]);
+      if (v.length) Mirrors.inv = uniq([...v, ...Mirrors.inv]);
+      CFG.server = normServer(j.musicServer || j.server || '');
+    } catch (e) { }
+  })();
+  return CFG.p;
 }
 const WORKER_CODE = "// Tune Tune music server \u2014 paste into a free Cloudflare Worker and press Deploy\nconst ALLOW = /(^|\\.)(jiosaavn\\.com|saavncdn\\.com|saavn\\.com|shnwaz\\.dev|sumit\\.co|saavn\\.dev|saavn\\.me)$/;\nconst CORS = {\n  'Access-Control-Allow-Origin': '*',\n  'Access-Control-Allow-Methods': 'GET, HEAD, OPTIONS',\n  'Access-Control-Allow-Headers': '*',\n  'Access-Control-Expose-Headers': 'Content-Length, Content-Range, Accept-Ranges, Content-Type',\n};\nexport default {\n  async fetch(req) {\n    if (req.method === 'OPTIONS') return new Response(null, { headers: CORS });\n    const target = new URL(req.url).searchParams.get('url');\n    if (!target) return new Response('Tune Tune relay is running', { headers: CORS });\n    let t;\n    try { t = new URL(target); } catch (e) { return new Response('Bad link', { status: 400, headers: CORS }); }\n    if (!ALLOW.test(t.hostname)) return new Response('Not allowed', { status: 403, headers: CORS });\n    const h = {\n      'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0 Safari/537.36',\n      'Accept': '*/*', 'Accept-Language': 'en-IN,en;q=0.9', 'Referer': 'https://www.jiosaavn.com/',\n    };\n    const range = req.headers.get('Range');\n    if (range) h['Range'] = range;\n    if (t.hostname.endsWith('jiosaavn.com')) h['Cookie'] = 'gdpr_acceptance=true; DL=english';\n    const media = t.hostname.endsWith('saavncdn.com');\n    const r = await fetch(t.toString(), { method: req.method, headers: h, cf: { cacheTtl: media ? 86400 : 300, cacheEverything: true } });\n    const out = new Headers(r.headers);\n    for (const k in CORS) out.set(k, CORS[k]);\n    out.delete('set-cookie');\n    return new Response(r.body, { status: r.status, headers: out });\n  },\n};\n";
 const JSA = {
-  via: '', fails: new Map(), deadUntil: 0,
-  init() { try { this.via = localStorage.getItem('tunetune.jsvia') || ''; this.deadUntil = (S.settings.proxy || BUILT_IN_SERVER) ? 0 : (+localStorage.getItem('tunetune.jsdead') || 0); } catch (e) { } },
-  bad(p) { return Date.now() - (this.fails.get(p.id) || 0) < 10 * 60e3; },
-  dead() {
-    const own = !!(S.settings.proxy || SITE.server || BUILT_IN_SERVER);
-    this.deadUntil = Date.now() + (own ? 45e3 : 10 * 60e3);
-    try { if (own) localStorage.removeItem('tunetune.jsdead'); else localStorage.setItem('tunetune.jsdead', String(this.deadUntil)); } catch (e) { }
-    if (own && !this.warned && !document.hidden) { this.warned = 1; setTimeout(() => toast('Your music server isn’t answering — songs use backups for now', { label: 'Check', ms: 6000, fn: () => go('advanced') }), 1500); }
+  via: '', fails: new Map(), deadUntil: 0, okAt: {},
+  init() {
+    try {
+      const v = localStorage.getItem('tunetune.jsvia') || ''; this.via = this.relays('free').some(p => p.id === v) ? v : '';
+      this.okAt = JSON.parse(localStorage.getItem('tunetune.jsok') || '{}') || {};
+      localStorage.removeItem('tunetune.jsdead'); // every start re-checks the free relays
+    } catch (e) { }
   },
-  async attempt(p, url) {
-    const r = await fetchT(p.wrap(url), {}, p.id === 'direct' ? 4000 : 7000);
-    if (!r.ok) throw new Error('HTTP ' + r.status);
+  bad(p) { return Date.now() - (this.fails.get(p.id) || 0) < (p.srv ? 60e3 : 10 * 60e3); },
+  dead() { this.deadUntil = Date.now() + 3 * 60e3; },
+  async attempt(p, url, signal) {
+    const r = await fetchT(p.wrap(url), { signal }, p.id === 'direct' ? 4000 : 7000);
+    if (!r.ok) throw Object.assign(new Error('HTTP ' + r.status), { status: r.status });
     const j = p.unwrap ? p.unwrap(await r.json()) : parseLoose(await r.text());
     if (!j || typeof j !== 'object') throw new Error('not JSON');
     return j;
   },
-  relays() {
-    const px = S.settings.proxy || SITE.server || normServer(BUILT_IN_SERVER);
-    const c = px ? [{ id: 'custom', wrap: u => (px.includes('{url}') ? px.replace('{url}', enc(u)) : px + enc(u)) }] : [];
-    return [...c, ...JS_RELAYS];
+  relays(tier = 'free') {
+    if (tier === 'free') return [JS_RELAYS[0], ...CFG.relays, ...JS_RELAYS.slice(1)];
+    const s = tier === 'cfg' ? Src.cfgServer() : tier === 'own' ? Src.ownServer() : '';
+    return s ? [{ id: tier === 'cfg' ? 'config' : 'own', srv: true, wrap: tplWrap(s) }] : [];
   },
-  order() {
-    const now = Date.now(), L = this.relays(), bad = p => now - (this.fails.get(p.id) || 0) < 10 * 60e3;
-    const o = L.filter(p => !bad(p)).concat(L.filter(bad)); const i = o.findIndex(p => p.id === this.via); if (i > 0) o.unshift(o.splice(i, 1)[0]);
+  order(tier = 'free') {
+    const L = this.relays(tier), ok = p => !this.bad(p);
+    const o = L.filter(ok).sort((a, b) => (this.okAt[b.id] || 0) - (this.okAt[a.id] || 0)).concat(L.filter(p => !ok(p)));
+    const i = o.findIndex(p => p.id === this.via); if (i > 0) o.unshift(o.splice(i, 1)[0]);
     return o;
   },
   down() { return Date.now() < this.deadUntil; },
-  reset() { this.fails.clear(); this.deadUntil = 0; try { localStorage.removeItem('tunetune.jsdead'); } catch (e) { } },
+  reset() { this.fails.clear(); this.deadUntil = 0; },
   setVia(id) { if (this.via !== id) { this.via = id; try { localStorage.setItem('tunetune.jsvia', id); } catch (e) { } } },
-  async call(params) {
-    if (this.down()) throw new Error('JioSaavn unreachable');
+  keepOk() { clearTimeout(this.okT); this.okT = setTimeout(() => { try { localStorage.setItem('tunetune.jsok', JSON.stringify(this.okAt)); } catch (e) { } }, 2000); },
+  async call(params, tier = 'free', again) {
+    const all = this.relays(tier);
+    if (!all.length) throw Object.assign(new Error('not set up'), { skip: true });
     const url = 'https://www.jiosaavn.com/api.php?' + new URLSearchParams({ ...params, _format: 'json', _marker: '0', api_version: '4', ctx: 'web6dot0' });
-    const all = this.relays();
-    const known = all.find(p => p.id === this.via && !this.bad(p));
-    if (known) {
-      try { const j = await lim(() => this.attempt(known, url)); this.fails.delete(known.id); return j; }
-      catch (e) { this.fails.set(known.id, Date.now()); }
+    const done = (p, j) => {
+      this.fails.delete(p.id); if (tier === 'free') { this.setVia(p.id); this.okAt[p.id] = Date.now(); this.keepOk(); }
+      Src.note(tier, p.id); try { Object.defineProperty(j, '__r', { value: { tier, relay: p.id }, enumerable: false }); } catch (e) { } return j;
+    };
+    if (tier !== 'free') {
+      const p = all[0]; if (this.bad(p)) throw new Error('server not answering');
+      try { return done(p, await lim(() => this.attempt(p, url))); }
+      catch (e) { this.fails.set(p.id, Date.now()); Src.fail(tier); throw e; }
     }
-    const rest = all.filter(p => p !== known && !this.bad(p));
-    if (!rest.length) { this.dead(); throw new Error('JioSaavn unreachable'); }
-    try {
-      const { j, p } = await Promise.any(rest.map(p => this.attempt(p, url).then(j => ({ j, p }), e => { this.fails.set(p.id, Date.now()); throw e; })));
-      this.setVia(p.id); this.fails.delete(p.id); return j;
-    } catch (e) { if (all.every(p => this.bad(p))) this.dead(); throw new Error('JioSaavn unreachable'); }
+    if (this.down()) throw new Error('Free JioSaavn relays are busy');
+    const fresh = this.order('free').filter(p => !this.bad(p));
+    if (!fresh.length) { this.dead(); throw new Error('Free JioSaavn relays are busy'); }
+    const known = fresh[0].id === this.via ? fresh.shift() : null;
+    if (known) { try { return done(known, await lim(() => this.attempt(known, url))); } catch (e) { this.fails.set(known.id, Date.now()); } }
+    // another request is already searching for a working relay: wait for it instead of starting a second search
+    if (this.racing && !again) { await this.racing.catch(() => { }); return this.call(params, tier, true); }
+    let endRace; this.racing = new Promise(r => { endRace = r; }); this.racing.catch(() => { });
+    try { return await this.raceRelays(fresh, url, done, all); } finally { this.racing = null; endRace(); }
+  },
+  async raceRelays(fresh, url, done, all) {
+    // a cold start races the 6 most reliable relays first, then the rest — never every relay at once
+    for (const wave of [fresh.slice(0, 6), fresh.slice(6)]) {
+      if (!wave.length) continue;
+      try {
+        const { j, p } = await race(wave, (p, signal) => this.attempt(p, url, signal).then(j => ({ j, p }), e => { if (!signal.aborted) this.fails.set(p.id, Date.now()); throw e; }));
+        return done(p, j);
+      } catch (e) { }
+    }
+    if (all.every(p => this.bad(p))) this.dead();
+    throw new Error('Free JioSaavn relays are busy');
+  },
+  async text(url, test) {
+    const L = this.order('free').filter(p => p.id !== 'direct' && !this.bad(p)).slice(0, 8);
+    const get = async (p, signal) => {
+      const r = await fetchT(p.wrap(url), { signal }, 9000); if (!r.ok) throw new Error('HTTP ' + r.status);
+      const txt = p.unwrap ? String(((await r.json()) || {}).contents || '') : await r.text();
+      if (!test(txt)) throw new Error('unexpected reply'); return txt;
+    };
+    if (!L.length) throw new Error('no relay');
+    return race(L, get);
   },
   async diagnose() {
     const url = 'https://www.jiosaavn.com/api.php?' + new URLSearchParams({ __call: 'autocomplete.get', query: 'ilaiyaraaja', _format: 'json', _marker: '0', api_version: '4', ctx: 'web6dot0' });
-    return Promise.all(this.relays().map(p => this.attempt(p, url).then(() => `✓ ${p.id}`, e => `✗ ${p.id} (${String(e.message || e).slice(0, 24)})`)));
+    const list = [...this.relays('free'), ...(Src.on() ? [...this.relays('cfg'), ...this.relays('own')] : [])];
+    return Promise.all(list.map(p => this.attempt(p, url).then(() => { this.fails.delete(p.id); return `✓ ${p.id}`; }, e => `✗ ${p.id} (${String(e.message || e).slice(0, 24)})`)));
   },
   img(u, size) { return https(String(u || '').replace(/\d{2,3}x\d{2,3}/, size)); },
   track(x) {
@@ -1095,34 +1171,94 @@ const JSA = {
     const sub = kind === 'artist' ? 'Artist' : decodeEnt(x.subtitle || x.description || mi.music || mi.artist_name || (kind === 'album' ? 'Album' : 'Playlist'));
     return { kind, id: String(x.id), title: decodeEnt(x.title || x.name), sub, art: this.img(x.image, '500x500'), source: 'saavn' };
   },
-  tracks(arr) { return (Array.isArray(arr) ? arr : []).map(x => this.track(x)).filter(Boolean); },
-  async songs(q) { const j = await this.call({ __call: 'search.getResults', q, n: 40, p: 1 }); const r = this.tracks(j.results); if (!r.length) throw softErr('no results'); return r; },
-  async colls(q, kind) {
+  tracks(arr, r) { return tagRoute((Array.isArray(arr) ? arr : []).map(x => this.track(x)).filter(Boolean), r); },
+  async songs(q, tier) { const j = await this.call({ __call: 'search.getResults', q, n: 40, p: 1 }, tier); const r = this.tracks(j.results, j.__r); if (!r.length) throw softErr('no results'); return r; },
+  async colls(q, kind, tier) {
     const call = { album: 'search.getAlbumResults', artist: 'search.getArtistResults', playlist: 'search.getPlaylistResults' }[kind];
-    const j = await this.call({ __call: call, q, n: 30, p: 1 }); const r = (j.results || []).map(x => this.coll(x, kind)).filter(Boolean); if (!r.length) throw softErr('no results'); return r;
+    const j = await this.call({ __call: call, q, n: 30, p: 1 }, tier); const r = (j.results || []).map(x => this.coll(x, kind)).filter(Boolean); if (!r.length) throw softErr('no results'); return r;
   },
-  async song(id) { const j = await this.call({ __call: 'song.getDetails', pids: id }); const arr = j.songs || Object.values(j).filter(v => v && typeof v === 'object' && v.id); return this.track(arr[0]); },
-  async related(t) { const j = await this.call({ __call: 'reco.getreco', pid: t.sid }); const r = this.tracks(Array.isArray(j) ? j : (j.songs || j.results || j.list)); if (!r.length) throw softErr('no suggestions'); return r.filter(x => x.id !== t.id); },
-  async collection(c) {
+  async song(id, tier) { const j = await this.call({ __call: 'song.getDetails', pids: id }, tier); const arr = j.songs || Object.values(j).filter(v => v && typeof v === 'object' && v.id); return this.tracks(arr.slice(0, 1), j.__r)[0] || null; },
+  async related(t, tier) { const j = await this.call({ __call: 'reco.getreco', pid: t.sid }, tier); const r = this.tracks(Array.isArray(j) ? j : (j.songs || j.results || j.list), j.__r); if (!r.length) throw softErr('no suggestions'); return r.filter(x => x.id !== t.id); },
+  async collection(c, tier) {
     if (c.kind === 'album' || c.kind === 'playlist') {
-      const j = await this.call(c.kind === 'album' ? { __call: 'content.getAlbumDetails', albumid: c.id } : { __call: 'playlist.getDetails', listid: c.id, n: 150, p: 1 });
-      const tracks = this.tracks(j.list || j.songs); if (!tracks.length) throw softErr('empty');
+      const j = await this.call(c.kind === 'album' ? { __call: 'content.getAlbumDetails', albumid: c.id } : { __call: 'playlist.getDetails', listid: c.id, n: 150, p: 1 }, tier);
+      const tracks = this.tracks(j.list || j.songs, j.__r); if (!tracks.length) throw softErr('empty');
       return { title: decodeEnt(j.title || j.name) || c.title, art: this.img(j.image, '500x500') || c.art, sub: decodeEnt([j.subtitle || j.header_desc || c.sub, j.year].filter(Boolean).join(' · ')), tracks };
     }
-    const j = await this.call({ __call: 'artist.getArtistPageDetails', artistId: c.id, n_song: 50, n_album: 20, page: 0, category: '', sort_order: '' });
-    const tracks = this.tracks(j.topSongs); const albums = (j.topAlbums || []).map(x => this.coll(x, 'album')).filter(Boolean); const singles = (j.singles || []).map(x => this.coll(x, 'album')).filter(Boolean);
+    const j = await this.call({ __call: 'artist.getArtistPageDetails', artistId: c.id, n_song: 50, n_album: 20, page: 0, category: '', sort_order: '' }, tier);
+    const tracks = this.tracks(j.topSongs, j.__r); const albums = (j.topAlbums || []).map(x => this.coll(x, 'album')).filter(Boolean); const singles = (j.singles || []).map(x => this.coll(x, 'album')).filter(Boolean);
     if (!tracks.length && !albums.length) throw softErr('empty');
     return { title: decodeEnt(j.name) || c.title, art: this.img(j.image, '500x500') || c.art, sub: +j.follower_count ? compact(j.follower_count) + ' followers' : 'Artist', tracks,
       shelves: [albums.length && { title: 'Albums', items: albums }, singles.length && { title: 'Singles', items: singles }].filter(Boolean) };
   },
-  async suggest(q) {
-    const j = await this.call({ __call: 'autocomplete.get', query: q }); const out = [];
+  async suggest(q, tier) {
+    const j = await this.call({ __call: 'autocomplete.get', query: q }, tier); const out = [];
     for (const k of ['topquery', 'songs', 'artists', 'albums', 'playlists']) for (const x of ((j[k] && j[k].data) || [])) out.push(decodeEnt(x.title || x.name));
     return uniq(out).slice(0, 8);
   },
 };
 
-/* One "Saavn" source for the rest of the app: JioSaavn's own API first, community servers as backup */
+/* ================= source policy: free first, your servers only when switched on, YouTube last ================= */
+const Src = {
+  last: { tier: '', relay: '' }, state: { cfg: '', own: '' }, busy: false,
+  on() { return !!S.settings.ownSrc; },
+  cfgServer() { return this.on() ? (CFG.server || normServer(BUILT_IN_SERVER)) : ''; },
+  ownServer() { return this.on() ? (S.settings.proxy || '') : ''; },
+  has(tier) { return tier === 'free' || (tier === 'cfg' ? !!this.cfgServer() : tier === 'own' ? !!(this.ownServer() || (this.on() && S.settings.saavn)) : false); },
+  tiers() { return this.on() ? ['free', 'cfg', 'own'] : ['free']; },
+  servers() { return this.on() ? ['cfg', 'own'] : []; },
+  note(tier, relay) { this.last = { tier, relay, at: Date.now() }; if (tier !== 'free') this.state[tier] = 'ok'; },
+  fail(tier) { if (tier !== 'free') this.state[tier] = 'down'; },
+  // plain-language name of a route, e.g. “Free relay · corsproxy.io”
+  describe(r) {
+    if (!r || !r.tier) return '';
+    if (r.tier === 'yt') return 'YouTube player';
+    if (r.tier === 'cfg') return 'Your tunetune-config server';
+    if (r.tier === 'own') return r.relay === 'own' ? 'Your own music server' : `Your JioSaavn server · ${hostOf(r.relay)}`;
+    if (r.relay === 'direct') return 'JioSaavn direct';
+    if (r.relay === 'cdn') return 'Link saved with the song';
+    if (/^https?:/.test(r.relay)) return `Free JioSaavn server · ${hostOf(r.relay)}`;
+    return `Free relay · ${String(r.relay).replace(/^free relay /, '')}`;
+  },
+  kind(r) { return !r || !r.tier ? '' : r.tier === 'free' ? 'free' : 'server'; },
+  async set(on, quiet) {
+    S.settings.ownSrc = !!on; save(); buzz();
+    JSA.fails.delete('config'); JSA.fails.delete('own'); this.state = { cfg: '', own: '' };
+    UI.ownPill(); refreshSrcViews();
+    if (!on) { if (!quiet) toast('My server off — free sources, then YouTube'); return; }
+    await loadSiteConfig();
+    if (!this.has('cfg') && !this.has('own')) { toast('On — add your server to use it', { label: 'Set up', ms: 6000, fn: openServerGuide }); return; }
+    toast('Checking your servers…');
+    const ok = await this.check(); UI.ownPill(); refreshSrcViews();
+    const yt = Player.cur && Player.via === 'embed';
+    if (ok) toast(yt ? `${this.describe({ tier: ok, relay: ok === 'cfg' ? 'config' : 'own' })} works — switching to clean audio` : `Ready — ${this.describe({ tier: ok, relay: ok === 'cfg' ? 'config' : 'own' }).toLowerCase()} is the backup before YouTube`);
+    else toast('Your servers aren’t answering — YouTube stays the backup', { label: 'Check', ms: 6000, fn: () => go('advanced') });
+    if (ok && yt) Player.cleanRetry();
+  },
+  // tunetune-config server first, then your own — returns the first tier that answers
+  async check() {
+    this.busy = true; let ok = '';
+    for (const tier of ['cfg', 'own']) {
+      if (!this.has(tier)) continue;
+      try {
+        if (tier === 'own' && !this.ownServer()) await SvC.songs('hits', 'own');
+        else { JSA.fails.delete(tier === 'cfg' ? 'config' : 'own'); await JSA.call({ __call: 'autocomplete.get', query: 'hits' }, tier); }
+        this.state[tier] = 'ok'; ok = ok || tier; break;
+      } catch (e) { this.state[tier] = 'down'; }
+    }
+    this.busy = false; return ok;
+  },
+  // every start: find a working free relay (usually one quick request); your servers are only checked if free ones fail
+  async warm() {
+    if (!navigator.onLine) return;
+    try { await JSA.call({ __call: 'autocomplete.get', query: 'hits' }, 'free'); return; } catch (e) { }
+    try { await SvC.songs('hits', 'free'); return; } catch (e) { }
+    if (this.on()) { await loadSiteConfig(); await this.check(); UI.ownPill(); }
+  },
+};
+function refreshSrcViews() { const e = cv(); if (e && (e.v === 'advanced' || e.v === 'settings')) softRender(); const aq = document.getElementById('aqbox'); if (aq) { aq.dataset.k = ''; UI.state(); } }
+
+/* One "Saavn" source for the rest of the app: every free route first, then your servers (if switched on) */
 function bestMatch(t, list) {
   const title = tidyTitle(t.title).replace(/\s*[([].*?[)\]]/g, '').trim(); const art = tidyArtist(String(t.artist || '').split(/,|&/)[0]).trim();
   let best = null, bs = 0;
@@ -1133,17 +1269,31 @@ function bestMatch(t, list) {
   return best;
 }
 const Saavn = {
-  get best() { return JSA.via && !JSA.down() ? `jiosaavn.com (${JSA.via === 'direct' ? 'direct' : 'via ' + JSA.via})` : SvC.best; },
+  get best() { return Src.describe(Src.last); },
   set best(v) { },
   fails: { clear() { JSA.reset(); SvC.fails.clear(); } },
-  down() { return JSA.down() && SvC.down(); },
-  songs(q) { return firstOk([() => JSA.songs(q), () => SvC.songs(q)]); },
-  colls(q, kind) { return firstOk([() => JSA.colls(q, kind), () => SvC.colls(q, kind)]); },
-  async song(id) { try { const t = await JSA.song(id); if (t) return t; } catch (e) { } return SvC.song(id); },
-  related(t) { return firstOk([() => JSA.related(t), () => SvC.related(t)]); },
-  collection(c) { return firstOk([() => JSA.collection(c), () => SvC.collection(c)]); },
-  suggest(q) { return JSA.suggest(q); },
-  async match(t) { return bestMatch(t, await this.songs(`${tidyTitle(t.title).replace(/\s*[([].*?[)\]]/g, '')} ${tidyArtist(String(t.artist || '').split(/,|&/)[0])}`)); },
+  down() { return JSA.down() && SvC.down('free') && !Src.on(); },
+  // runs fn(tier) for each allowed tier in order; a soft “no results” answer stops early (your servers have the same catalog)
+  async run(fn, tiers) {
+    let err = null;
+    for (const tier of tiers || Src.tiers()) {
+      if (!Src.has(tier)) continue;
+      try { const r = await fn(tier); if (r && (!Array.isArray(r) || r.length)) return r; }
+      catch (e) { if (e.skip) continue; err = e; if (e.soft) break; }
+    }
+    throw err || Object.assign(new Error('JioSaavn unavailable'), { skip: !(tiers || Src.tiers()).some(t => Src.has(t)) });
+  },
+  songs(q, tiers) { return this.run(tier => firstOkSoft([() => JSA.songs(q, tier), () => SvC.songs(q, tier)]), tiers); },
+  colls(q, kind, tiers) { return this.run(tier => firstOkSoft([() => JSA.colls(q, kind, tier), () => SvC.colls(q, kind, tier)]), tiers); },
+  song(id, tiers) { return this.run(tier => firstOkSoft([() => JSA.song(id, tier), () => SvC.song(id, tier)]), tiers); },
+  related(t, tiers) { return this.run(tier => firstOkSoft([() => JSA.related(t, tier), () => SvC.related(t, tier)]), tiers); },
+  collection(c, tiers) { return this.run(tier => firstOkSoft([() => JSA.collection(c, tier), () => SvC.collection(c, tier)]), tiers); },
+  suggest(q, tiers) { return this.run(tier => JSA.suggest(q, tier), tiers); },
+  // finds the same song on JioSaavn; throws a soft error when JioSaavn answered but doesn't have it
+  async match(t, tiers) {
+    const q = `${tidyTitle(t.title).replace(/\s*[([].*?[)\]]/g, '')} ${tidyArtist(String(t.artist || '').split(/,|&/)[0])}`;
+    const m = bestMatch(t, await this.songs(q, tiers)); if (!m) throw softErr('not on JioSaavn'); return m;
+  },
   async langTop(L) {
     const pls = await this.colls(`${L} top 50`, 'playlist').catch(() => []);
     for (const p of pls.slice(0, 2)) { try { const r = await this.collection(p); if (r.tracks.length) return r.tracks; } catch (e) { } }
@@ -1166,13 +1316,46 @@ const Saavn = {
   },
 };
 
+/* YouTube's own search page, read through a free relay — finds songs even when every mirror is down */
+async function ytWebSearch(q) {
+  const html = await JSA.text('https://www.youtube.com/results?hl=en&search_query=' + enc(q) + '&sp=EgIQAQ%3D%3D', t => t.includes('"videoRenderer"'));
+  const out = [], seen = new Set(), re = /"videoRenderer":\{"videoId":"([\w-]{11})"/g; let m;
+  while ((m = re.exec(html)) && out.length < 20) {
+    const id = m[1]; if (seen.has(id)) continue; seen.add(id);
+    let chunk = html.slice(m.index, m.index + 6000); const nx = chunk.indexOf('"videoRenderer"', 20); if (nx > 0) chunk = chunk.slice(0, nx);
+    const title = (chunk.match(/"title":\{"runs":\[\{"text":"((?:[^"\\]|\\.)*)"/) || [])[1];
+    const owner = (chunk.match(/"ownerText":\{"runs":\[\{"text":"((?:[^"\\]|\\.)*)"/) || [])[1];
+    const len = (chunk.match(/"lengthText":\{.{0,400}?"simpleText":"([\d:]+)"/) || [])[1];
+    if (!title) continue;
+    const un = s => { try { return JSON.parse('"' + s + '"'); } catch (e) { return s; } };
+    const dur = len ? len.split(':').reduce((a, x) => a * 60 + +x, 0) : 0;
+    if (dur && (dur < 60 || dur > 1200)) continue;
+    out.push(mkYt({ id, title: un(title), artist: un(owner || ''), duration: dur }));
+  }
+  if (!out.length) throw softErr('no results');
+  return out.filter(Boolean);
+}
 const YT = {
+  // YouTube-only search (no JioSaavn) — finds the YouTube copy of a JioSaavn or chart song
+  ytSongs(q) {
+    return cached('yy:' + q, 6e5, () => firstOk([
+      async () => ((await IT.probe()) ? (await IT.search(q, 'songs')).filter(isTrack) : null),
+      async () => ((await viaMirror('piped', `/search?q=${enc(q)}&filter=music_songs`)).items || []).map(pipedTrack).filter(Boolean),
+      async () => ((await viaMirror('inv', `/api/v1/search?q=${enc(q)}&type=video`)) || []).map(invTrack).filter(Boolean),
+      async () => (NATIVE ? null : ytWebSearch(q)),
+    ]));
+  },
+  async ytMatch(t) {
+    const r = await this.ytSongs(`${tidyTitle(t.title).replace(/\s*[([].*?[)\]]/g, '')} ${tidyArtist(String(t.artist || '').split(/,|&/)[0])}`);
+    return bestMatch(t, r) || (r[0] && matchScore(tidyTitle(t.title), r[0].title) >= 50 ? r[0] : null);
+  },
   songs(q) {
     return cached('ys:' + q, 6e5, () => firstOk([
       () => Saavn.songs(q),
       async () => ((await IT.probe()) ? (await IT.search(q, 'songs')).filter(isTrack) : null),
       async () => ((await viaMirror('piped', `/search?q=${enc(q)}&filter=music_songs`)).items || []).map(pipedTrack).filter(Boolean),
       async () => ((await viaMirror('inv', `/api/v1/search?q=${enc(q)}&type=video`)) || []).map(invTrack).filter(Boolean),
+      async () => (NATIVE ? null : ytWebSearch(q)),
     ]));
   },
   playlists(q) {
@@ -1643,7 +1826,7 @@ const Player = {
       if (now !== this.lastT) { this.lastT = now; this.lastProgress = Date.now(); }
       if (t && !a.paused && this.lastStatT !== null) {
         const dt = now - this.lastStatT;
-        if (dt > 0 && dt < 2.5) { this.listened += dt; const c = !this.counted && this.listened >= 30; if (c) { this.counted = true; setTimeout(() => Offline.keep(t), 1500); } Stats.add(t, dt, c); }
+        if (dt > 0 && dt < 2.5) { this.listened += dt; const c = !this.counted && this.listened >= 30; if (c) { this.counted = true; setTimeout(() => Offline.keep(t), 1500); if (IS_CAP && !S.askedNotif) setTimeout(() => Native.askNotif(), 5000); } Stats.add(t, dt, c); }
       }
       this.lastStatT = now;
       if (t && t.source === 'podcast' && Date.now() - this.lastPodSave > 5000) { this.lastPodSave = Date.now(); podSave(t, now, a.duration); }
@@ -1715,7 +1898,7 @@ const Player = {
     if (n.source === 'yt') Streams.get(n.sid).catch(() => { });
     else if (n.source === 'deezer') {
       const go = id => Streams.get(id).catch(() => { });
-      if (n.ytId) go(n.ytId); else YT.match(n).then(m => { if (m) { n.ytId = m.sid; go(m.sid); } }).catch(() => { });
+      if (n.ytId) go(n.ytId); else YT.ytMatch(n).then(m => { if (m) { n.ytId = m.sid; go(m.sid); } }).catch(() => { });
     }
   },
   async fail() {
@@ -1728,8 +1911,8 @@ const Player = {
       return this.load(true, pos, true);
     }
     if (this.via === 'saavn' && !this.isBlob) {
-      if (t.source === 'saavn') { if (this.attempts < 2) { this.attempts++; return this.load(true, pos, true); } }
-      else { this.avoid.add('saavn'); delete t.svSu; this.attempts++; return this.load(true, pos, true); }
+      if (t.source === 'saavn' && this.attempts < 2) { this.attempts++; return this.load(true, pos, true); }
+      this.avoid.add('saavn'); if (t.source !== 'saavn') delete t.svSu; this.attempts++; return this.load(true, pos, true);
     }
     if (this.via === 'preloaded') { Pre.drop(t.id); this.avoid.add('preloaded'); return this.load(true, pos, true); }
     if (this.isBlob) { toast('This saved file can’t be played'); return this.skipAfterFail(t); }
@@ -1771,10 +1954,10 @@ const Player = {
     const tok = ++this.ltok; this.loaded = true;
     if (!quiet) {
       this.attempts = 0; this.avoid = new Set(); this.via = ''; this.prefetched = false; this.previewMode = false; this.listened = 0; this.counted = false; addHistory(t);
-      this.ytOnce = false;
+      this.ytOnce = false; t.svRetry = 0; t._svNo = false;
       if (t.source === 'podcast' && !startAt) { const pp = podProg(t.id); const d = pp && (pp.dur || t.duration); if (pp && !pp.done && pp.pos > 15 && (!d || pp.pos < d - 20)) startAt = pp.pos; }
     }
-    this.lastStatT = null; this.norm = 1; this.quality = ''; this.preWarm = false; this.preWarmPrev = false;
+    this.lastStatT = null; this.norm = 1; this.quality = ''; this.srcPath = null; this.audioVia = ''; this.preWarm = false; this.preWarmPrev = false;
     if (!xfade) this.stopFade();
     if (autoplay) this.wantPlay = true;
     this.loading = true; this.waitOnline = false;
@@ -1806,55 +1989,24 @@ const Player = {
         if (t.source === 'audius') { await Audius.discover(); src = Audius.streamUrl(t); this.via = 'audius'; this.quality = 'MP3 · 320 kbps'; }
         else if (t.source === 'radio') { src = t.url; this.via = 'radio'; this.quality = t.codec ? `${t.codec}${t.bitrate ? ' · ' + t.bitrate + ' kbps' : ''}` : 'Live'; }
         else if (t.source === 'podcast') { src = t.url; this.via = 'podcast'; this.quality = 'Podcast'; }
-        else if (t.source === 'saavn') {
-          if (this.attempts > 0 || (!t.su && !t.enc)) { try { const f = await Saavn.song(t.sid); if (f) { delete t.su; t.enc = f.enc; t.hq = f.hq; if (f.su) t.su = f.su; } } catch (e) { } }
-          if (tok !== this.ltok) return;
-          const pk = Saavn.pick(t); if (!pk) throw new Error('song unavailable');
-          src = pk.url; this.via = 'saavn'; this.quality = `AAC · ${pk.kbps} kbps`;
-        }
         else {
-          if (t.source === 'deezer' && !this.previewMode && !this.avoid.has('saavn')) {
-            try { if (!t.svSu) { const m = await Saavn.match(t); if (m) t.svSu = Saavn.urls(m); } } catch (e) { }
+          if (this.previewMode && t.source === 'deezer' && t.url) { src = t.url; this.via = 'preview'; this.quality = 'Preview'; }
+          else {
+            const r = await this.resolve(t, tok);
             if (tok !== this.ltok) return;
-            const pk = t.svSu && Saavn.pick(t.svSu); if (pk) { src = pk.url; this.via = 'saavn'; this.quality = `AAC · ${pk.kbps} kbps`; }
+            if (r === 'ask') { this.loading = false; this.wantPlay = false; UI.state(); askYouTube(t); return; }
+            if (r && r.embedId) embedId = r.embedId;
+            else if (r) { src = r.src; this.via = r.via; this.quality = r.quality; if (r.norm) this.norm = r.norm; this.srcPath = r.route || null; }
+            if (!src && !embedId && t.source === 'deezer' && t.url) { this.previewMode = true; src = t.url; this.via = 'preview'; this.quality = 'Preview'; if (!document.hidden) toast('Full song unavailable right now — playing a 30-second preview'); }
+            if (!src && !embedId) throw new Error('no playable source');
           }
-          let yid = src ? '' : ytIdOf(t);
-          if (!src && !yid && t.source === 'deezer' && !this.previewMode) { try { const m = await YT.match(t); if (m && m.source === 'yt') { yid = t.ytId = m.sid; } } catch (e) { } }
-          if (tok !== this.ltok) return;
-          if (yid && !this.previewMode) {
-            const eng = S.settings.engine;
-            const tryStreams = eng !== 'player' && !this.avoid.has('streams') && (DIRECT() || eng === 'audio' || MirrorHealth.ok());
-            if (tryStreams) {
-              try {
-                const s = await Streams.get(yid, this.avoid, DIRECT() ? 30000 : 6000); src = s.url; this.via = s.via; this.quality = qLabel(s.mime, s.bitrate);
-                if (S.settings.normalize && s.loud > 0) this.norm = clamp(Math.pow(10, -s.loud / 20), 0.25, 1);
-              }
-              catch (e) { if (!DIRECT() && !e.soft) MirrorHealth.bad(true); this.avoid.add('streams'); }
-              if (tok !== this.ltok) return;
-            }
-            if (!src && !this.avoid.has('saavn') && t.source === 'yt') {
-              try { if (!t.svSu) { const m = await Saavn.match(t); if (m) t.svSu = Saavn.urls(m); } } catch (e) { }
-              if (tok !== this.ltok) return;
-              const pk = t.svSu && Saavn.pick(t.svSu); if (pk) { src = pk.url; this.via = 'saavn'; this.quality = `AAC · ${pk.kbps} kbps`; }
-            }
-            if (!src && (eng === 'player' || (eng !== 'audio' && (S.settings.ytPlayer || this.ytOnce)))) {
-              embedId = await this.pickEmbed(t, yid);
-              if (tok !== this.ltok) return;
-            }
-            if (!src && !embedId && t.source === 'yt') {
-              if (!document.hidden && eng !== 'audio' && !S.settings.ytPlayer && !this.ytOnce) { this.loading = false; this.wantPlay = false; UI.state(); askYouTube(t); return; }
-              throw new Error('no playable source');
-            }
-          }
-          if (!src && !embedId && t.source === 'deezer' && t.url) { this.previewMode = true; src = t.url; this.via = 'preview'; this.quality = 'Preview'; if (!document.hidden) toast('Full song unavailable right now — playing a 30-second preview'); }
         }
       } catch (e) {
         if (tok !== this.ltok) return;
         warn('stream', e);
-        if (!t.svRetry && t.source !== 'local' && !t.live && t.source !== 'podcast') {
+        if (!t.svRetry && t.source !== 'local' && !t.live && t.source !== 'podcast' && navigator.onLine) {
           t.svRetry = 1; JSA.reset(); try { SvC.fails && SvC.fails.clear(); } catch (x) { }
-          try { const m = await Saavn.match(t); if (tok !== this.ltok) return; if (m) { t.svSu = Saavn.urls(m); return this.load(autoplay, startAt, true); } } catch (x) { }
-          if (tok !== this.ltok) return;
+          return this.load(autoplay, startAt, true);
         }
         if (!document.hidden) toast(`Can’t play “${t.title}” — moving on`);
         return this.skipAfterFail(t);
@@ -1862,7 +2014,8 @@ const Player = {
       if (tok !== this.ltok) return;
     }
     if (embedId) {
-      this.isBlob = false; this.embedId = embedId; this.via = 'embed'; this.quality = 'YouTube player';
+      this.isBlob = false; this.embedId = embedId; this.via = 'embed'; this.quality = 'YouTube player'; this.srcPath = { tier: 'yt', relay: 'youtube' };
+      if (this.cleanTry) { this.cleanTry = false; if (!document.hidden) toast('No clean copy of this song — staying on YouTube'); }
       if (!DIRECT() && /Android|iPhone|iPad/i.test(navigator.userAgent)) { try { if (!sessionStorage.getItem('tt.embedHint')) { sessionStorage.setItem('tt.embedHint', '1'); setTimeout(() => toast(releasesBase() ? 'This song uses YouTube’s player in the browser. For ad-free audio with the screen off, get the Android app in Settings.' : 'This song uses YouTube’s player in the browser, so ads can appear.'), 1500); } } catch (e) { } }
       this.route('embed');
       this.srcAt = Date.now(); this.lastProgress = Date.now(); this.lastT = -1; this.pendingSeek = 0;
@@ -1881,7 +2034,12 @@ const Player = {
     if (!src) return this.skipAfterFail(t);
     this.isBlob = blob;
     const wantFx = (!!S.settings.eqOn && !IS_IOS) || Party.react();
-    if (!blob && wantFx && (S.settings.proxy || SITE.server) && /saavncdn\.com/.test(src)) src = JSA.relays()[0].wrap(src);
+    if (!blob && wantFx && /saavncdn\.com/.test(src)) {
+      let h0 = ''; try { h0 = new URL(src).host; } catch (e) { }
+      const srv = this.badCors.has(h0) && (JSA.relays('cfg')[0] || JSA.relays('own')[0]);
+      if (srv) { src = srv.wrap(src); this.audioVia = srv.id; }
+    }
+    if (this.cleanTry && this.via === 'saavn') { this.cleanTry = false; if (!document.hidden) toast('Clean audio — ' + (Src.describe(this.srcPath) || 'JioSaavn').toLowerCase()); }
     let host = ''; try { host = new URL(src, location.href).host; } catch (e) { }
     const fx = !!(wantFx && !t.live && this.via !== 'preview' && (blob || !this.badCors.has(host)));
     let fadeFrom = null;
@@ -1896,6 +2054,60 @@ const Player = {
     UI.track(t); this.meta(t);
     if (t.live && !quiet) Radio.click(t);
     if (autoplay) this.play(); else { this.loading = false; UI.state(); }
+  },
+  // Finds the cleanest way to play a song, always in this order:
+  //   1. free — JioSaavn (free relays & community servers), YouTube Music audio (free mirrors / the apps' direct engine)
+  //   2. your servers — only when “My server” is on: tunetune-config.json server, then your own server
+  //   3. the YouTube player
+  async resolve(t, tok) {
+    const stale = () => tok !== this.ltok, eng = S.settings.engine, noSv = this.avoid.has('saavn');
+    const sv = (x, route) => { const pk = x && Saavn.pick(x); return pk ? { src: pk.url, via: 'saavn', quality: `AAC · ${pk.kbps} kbps`, route: route || { tier: 'free', relay: 'cdn' } } : null; };
+    const own = async tiers => { // JioSaavn songs carry their own link; it is refreshed only after a failure
+      if (t.source !== 'saavn' || noSv) return null;
+      if (tiers || this.attempts > 0 || (!t.su && !t.enc)) {
+        try { const f = await Saavn.song(t.sid, tiers || ['free']); if (f) { delete t.su; t.enc = f.enc; t.hq = f.hq; if (f.su) t.su = f.su; t._r = f._r; return sv(t, t._r); } }
+        catch (e) { if (e.soft) t._svNo = true; }
+        if (tiers || (!t.su && !t.enc)) return null;
+      }
+      return sv(t, t._r);
+    };
+    const match = async tiers => { // the same song on JioSaavn, for chart and YouTube songs
+      if (noSv || t.source === 'saavn' || t._svNo) return null;
+      if (t.svSu && !tiers) return sv(t.svSu, t._svr);
+      try { const m = await Saavn.match(t, tiers || ['free']); t.svSu = Saavn.urls(m); t._svr = m._r; return sv(t.svSu, t._svr); }
+      catch (e) { if (e.soft) t._svNo = true; return null; }
+    };
+    const streams = async yid => {
+      if (!yid || eng === 'player' || this.avoid.has('streams') || !(DIRECT() || eng === 'audio' || MirrorHealth.ok())) return null;
+      try {
+        const s = await Streams.get(yid, this.avoid, DIRECT() ? 30000 : 6000);
+        return { src: s.url, via: s.via, quality: qLabel(s.mime, s.bitrate), norm: S.settings.normalize && s.loud > 0 ? clamp(Math.pow(10, -s.loud / 20), 0.25, 1) : 0, route: { tier: 'free', relay: s.via } };
+      } catch (e) { if (!DIRECT() && !e.soft) MirrorHealth.bad(true); this.avoid.add('streams'); return null; }
+    };
+    let r, yid = '';
+    // 1 — free sources
+    if ((r = await own())) return r; if (stale()) return null;
+    if (t.source === 'deezer' && (r = await match())) return r; if (stale()) return null;
+    yid = ytIdOf(t);
+    if (!yid) { try { const m = await YT.ytMatch(t); if (m) yid = t.ytId = m.sid; } catch (e) { } if (stale()) return null; }
+    if ((r = await streams(yid))) return r; if (stale()) return null;
+    if (t.source === 'yt' && (r = await match())) return r; if (stale()) return null;
+    // 2 — your servers, only when switched on and every free source failed
+    if (Src.on()) {
+      if ((r = await own(Src.servers()))) return r; if (stale()) return null;
+      if ((r = await match(Src.servers()))) return r; if (stale()) return null;
+    }
+    // 3 — YouTube player
+    if (yid && (eng === 'player' || (eng !== 'audio' && (S.settings.ytPlayer || this.ytOnce)))) { const id = await this.pickEmbed(t, yid); if (stale()) return null; if (id) return { embedId: id }; }
+    if (yid && t.source === 'yt' && !document.hidden && eng !== 'audio' && !S.settings.ytPlayer && !this.ytOnce) return 'ask';
+    return null;
+  },
+  // “My server” was just switched on while YouTube plays: look for clean audio for this song again, from the same spot
+  cleanRetry() {
+    const t = this.cur; if (!t || t.live || !['saavn', 'yt', 'deezer'].includes(t.source) || this.via !== 'embed') return;
+    const pos = this.loaded ? (this.el.currentTime || 0) : (this.resumeAt || 0);
+    this.avoid.delete('saavn'); t._svNo = false; t.svRetry = 0; this.cleanTry = true;
+    this.load(this.wantPlay, pos, true);
   },
   async pickEmbed(t, yid) {
     if (Embed.broken) return '';
@@ -2210,16 +2422,25 @@ const Player = {
     if (!('mediaSession' in navigator) || !navigator.mediaSession.setPositionState) return;
     try { navigator.mediaSession.setPositionState({ duration: a.duration, playbackRate: a.playbackRate || 1, position: Math.min(a.currentTime, a.duration) }); } catch (e) { }
   },
+  // Saves where you are in the queue — only when something changed, and in its own small slot (not your whole library)
   persist() {
-    if (!this.queue.length) delete S.session;
-    else {
-      const start = Math.max(0, this.i - 50);
-      S.session = { q: this.queue.slice(start, start + 300).map(clean), i: this.i - start, t: this.loaded ? (this.el.currentTime || 0) : this.resumeAt, from: this.from, rep: this.repeat };
-    }
-    try { localStorage.setItem(KEY, JSON.stringify(S)); } catch (e) { }
+    if (RESET) return;
+    const pos = Math.floor(this.loaded ? (this.el.currentTime || 0) : (this.resumeAt || 0));
+    const qk = this.queue.length + ':' + this.i + ':' + (this.cur ? this.cur.id : '') + ':' + this.repeat + ':' + this.from + ':' + (this.qVer || 0);
+    if (qk === this._pk && Math.abs(pos - (this._pp || 0)) < 3) return;
+    try {
+      if (!this.queue.length) localStorage.removeItem('tunetune.sess');
+      else {
+        if (qk !== this._pk || !this._pq) { const start = Math.max(0, this.i - 50); this._pq = { q: this.queue.slice(start, start + 300).map(clean), i: this.i - start, from: this.from, rep: this.repeat }; }
+        localStorage.setItem('tunetune.sess', JSON.stringify({ ...this._pq, t: pos }));
+      }
+      this._pk = qk; this._pp = pos;
+    } catch (e) { }
   },
   restore() {
-    const s = S.session; if (!s || !Array.isArray(s.q) || !s.q.length) return;
+    let s = null; try { s = JSON.parse(localStorage.getItem('tunetune.sess') || 'null'); } catch (e) { }
+    if (!s && S.session) { s = S.session; delete S.session; save(); }   // older versions kept it inside the library
+    if (!s || !Array.isArray(s.q) || !s.q.length) return;
     this.queue = s.q; this.i = clamp(s.i || 0, 0, s.q.length - 1);
     this.resumeAt = this.cur.live ? 0 : (s.t || 0); this.from = s.from || ''; this.repeat = s.rep || 'off'; this.loaded = false; this.wantPlay = false;
     UI.track(this.cur); UI.modes(); UI.time(); UI.state();
@@ -2286,12 +2507,13 @@ const UI = {
     $('#m-pp').setAttribute('aria-label', lbl); $('#np-pp').setAttribute('aria-label', lbl);
     if ('mediaSession' in navigator) navigator.mediaSession.playbackState = playing || busy ? 'playing' : 'paused';
     if (Party.on) Party.ui();
+    if (window.ttDesktop && window.ttDesktop.playing) { const on = !!(playing || busy); if (on !== this.deskOn) { this.deskOn = on; window.ttDesktop.playing(on); } }
     if (NativeMS && Player.cur) { const st = playing || busy ? 'playing' : 'paused'; if (st !== this.lastNative) { this.lastNative = st; nms('setPlaybackState', { playbackState: st }); } }
     $('#np').classList.toggle('pod', !!(Player.cur && Player.cur.source === 'podcast'));
     const qb = $('#np-qb'); if (qb) { const h = Player.cur ? badgeHTML(Player.cur) : ''; if (qb.dataset.h !== h) { qb.dataset.h = h; qb.innerHTML = h; const x = qInfo(Player.cur); qb.className = 'qbadge t-' + x.tier; } }
     const sp = $('#np-slp'); if (sp) { const on = !!(Player.sleepAt || Player.sleepEnd); sp.classList.toggle('on', on); if (on) { const left = Player.sleepEnd ? 'End of song' : fmt(Math.max(0, (Player.sleepAt - Date.now()) / 1000)); const lb = sp.querySelector('span'); if (lb.textContent !== left) lb.textContent = left; } }
     const et = $('#np-eqt'); if (et) { const on = S.settings.eqOn && !IS_IOS && Player.cur && !Player.cur.live; const txt = on ? eqName() : ''; if (et.dataset.t !== txt + (Player.el === Player.fx)) { et.dataset.t = txt + (Player.el === Player.fx); et.innerHTML = on ? `${I.eq}${esc(txt)}` : ''; et.classList.toggle('na', on && Player.el !== Player.fx); et.title = on && Player.el !== Player.fx ? 'Equalizer isn’t available for this song' : 'Equalizer: ' + txt; } }
-    const aq = $('#aqbox'); if (aq) { const k = (Player.cur && Player.cur.id) + '|' + Player.quality + '|' + Player.via + '|' + S.settings.eqOn; if (aq.dataset.k !== k) { aq.dataset.k = k; setHTML(aq, aqInner()); } }
+    const aq = $('#aqbox'); if (aq) { const k = (Player.cur && Player.cur.id) + '|' + Player.quality + '|' + Player.via + '|' + S.settings.eqOn + '|' + Src.on() + '|' + Src.describe(Player.srcPath); if (aq.dataset.k !== k) { aq.dataset.k = k; setHTML(aq, aqInner()); } }
   },
   slp() { const sp = document.getElementById('np-slp'); if (!sp) return; const on = !!(Player.sleepAt || Player.sleepEnd); sp.classList.toggle('on', on); const b = document.getElementById('np-btimer'); if (b) b.classList.toggle('on', on); if (on) { const left = Player.sleepEnd ? 'End of song' : fmt(Math.max(0, (Player.sleepAt - Date.now()) / 1000)); const lb = sp.querySelector('span'); if (lb && lb.textContent !== left) lb.textContent = left; } },
   time() {
@@ -2343,7 +2565,15 @@ const UI = {
   },
   ytPill() {
     const b = document.getElementById('yt-pill'); if (!b) return;
-    b.innerHTML = Embed.ad ? `${I.expand}Ad playing — press Skip when it appears` : Embed.pinned ? `${I.expand}Back to album art` : `${I.expand}Show video`;
+    b.innerHTML = Embed.ad ? `${I.expand}<span>Ad playing — press Skip when it appears</span>` : Embed.pinned ? `${I.expand}<span>Album art</span>` : `${I.expand}<span>Show video</span>`;
+  },
+  ownPill() {
+    const on = Src.on(), st = on ? (Src.state.cfg === 'ok' || Src.state.own === 'ok' ? 'ok' : (Src.state.cfg === 'down' || Src.state.own === 'down') && !Src.busy ? 'down' : '') : '';
+    for (const b of $$('.own-pill')) {
+      b.classList.toggle('on', on); b.classList.toggle('busy', !!Src.busy); b.classList.toggle('down', st === 'down');
+      b.setAttribute('aria-pressed', String(on));
+      b.title = !on ? 'Off — free sources, then YouTube. Tap to try your server before YouTube.' : st === 'down' ? 'On — your servers aren’t answering right now' : 'On — your server is tried before YouTube';
+    }
   },
   dlMark() {
     const t = Player.cur, el = $('#np-dl'), mm = $('#m-dl'); const on = t && t.source !== 'local' && (isDl(t.id) || Offline.has(t.id)); const auto = on && !isDl(t.id);
@@ -2551,7 +2781,7 @@ function buildShell() {
       <div class="np-from"><span>Playing from</span><b id="np-from"></b></div>
       <button class="np-ib" data-a="npmore" aria-label="More options">${I.more}</button></div>
     <div class="np-stage">
-      <div class="np-art" id="np-deck"><img class="dk dk-prev" id="dk-prev" alt="Previous" data-a="deckprev"><img id="np-img" alt=""><img class="dk dk-next" id="dk-next" alt="Next" data-a="decknext"><div class="burst" aria-hidden="true">${I.heartFill}</div><div id="ytbox"><div id="ytp"></div></div><button class="yt-pill" id="yt-pill" data-a="ytfull">${I.expand}Show video</button><p class="np-tap">Tap the video to start playing</p></div>
+      <div class="np-art" id="np-deck"><img class="dk dk-prev" id="dk-prev" alt="Previous" data-a="deckprev"><img id="np-img" alt=""><img class="dk dk-next" id="dk-next" alt="Next" data-a="decknext"><div class="burst" aria-hidden="true">${I.heartFill}</div><div id="ytbox"><div id="ytp"></div></div><div class="yt-bar"><button class="own-pill" id="own-pill" data-a="ownsrc" aria-pressed="false" aria-label="My server"><span class="osw"><i></i></span><span class="own-l">My server</span></button><button class="yt-pill" id="yt-pill" data-a="ytfull">${I.expand}<span>Show video</span></button></div><p class="np-tap">Tap the video to start playing</p></div>
       <div class="ly-bar" id="ly-tools"></div><div class="np-panel" id="np-lyr"></div>
       <div class="np-panel" id="np-q"></div>
     </div>
@@ -2598,7 +2828,7 @@ function panelRefresh() {
   if (p === 'lyr') loadLyrics();
   if (p === 'q') renderQueue();
 }
-const qRefresh = () => { UI.deck(); if (npOpen && npPanel === 'q') renderQueue(); if ($('#drive')) UI.drive(); };
+const qRefresh = () => { Player.qVer = (Player.qVer || 0) + 1; UI.deck(); if (npOpen && npPanel === 'q') renderQueue(); if ($('#drive')) UI.drive(); };
 const npMsg = (ic, title, d) => `<div class="np-msg">${I[ic]}<b>${esc(title)}</b><p>${esc(d)}</p></div>`;
 
 let lyrState = null, lyrIdx = -1, lyrHold = 0;
@@ -2838,7 +3068,8 @@ function trackMenu(t, meta = {}) {
       meta.np && { label: 'Driving Mode', icon: 'car', fn: openDrive },
       meta.np && lyrState && lyrState.id === t.id && (lyrState.plain || (lyrState.synced && lyrState.synced.length)) && { label: 'Copy Lyrics', icon: 'lyrics', fn: copyLyrics },
       { label: 'Song Info', icon: 'info', fn: () => songInfo(t) },
-      meta.np && { label: 'Audio Quality', icon: 'wave', fn: openAQ },
+      meta.np && { label: 'Audio Quality & Source', icon: 'wave', fn: openAQ },
+      meta.np && !t.live && !['local', 'podcast', 'audius'].includes(t.source) && { label: Src.on() ? 'My server: On — turn off' : 'My server: Off — use it before YouTube', icon: 'server', fn: () => Src.set(!Src.on()) },
       meta.np && { label: S.settings.badge ? 'Hide Quality Badge' : 'Show Quality Badge', icon: 'eye', fn: () => { S.settings.badge = !S.settings.badge; save(); applyTheme(); toast(S.settings.badge ? 'Quality badge shown' : 'Quality badge hidden'); } },
       { label: 'Copy Song & Artist', icon: 'copy', fn: () => copyText(`${t.title} — ${t.artist}`, 'Copied') },
       !t.live && !['local', 'podcast'].includes(t.source) && { label: 'Don’t Recommend This', icon: 'ban', fn: () => blockTrack(t) },
@@ -2891,8 +3122,35 @@ function qInfo(t) {
   if (kb >= 256) return { tier: 'hq', label: 'High Quality', spec: (q.split('·')[0].trim() || 'AAC') + ' · ' + kb + ' kbps', kb };
   return { tier: 'std', label: q, kb };
 }
+// where the song in the player comes from — shown when you tap the quality badge
+function srcInfo() {
+  const t = Player.cur, v = Player.via; if (!t) return null;
+  const mirror = v.replace(/^(piped|inv):/, '');
+  if (v === 'embed') return { k: 'yt', title: 'YouTube player', sub: Src.on() ? 'Last resort — free sources and your servers didn’t have it' : 'Last resort — no free source had this song', rows: [['Music from', 'YouTube'], ['Ads', 'Possible (YouTube’s own)']] };
+  if (v === 'saved') return { k: 'local', title: t.source === 'local' ? 'This device' : 'Downloaded', sub: 'Plays without internet', rows: [['Music from', t.source === 'local' ? 'Your file' : 'Saved on this device']] };
+  if (v === 'preloaded') return { k: 'free', title: 'Preloaded', sub: 'Loaded in advance for a gap-free start', rows: [['Music from', { saavn: 'JioSaavn', yt: 'YouTube Music', deezer: 'JioSaavn / YouTube Music', audius: 'Audius' }[t.source] || 'Online']] };
+  if (v === 'saavn') {
+    const r = Player.srcPath, srv = Src.kind(r) === 'server';
+    return { k: srv ? 'server' : 'free', title: srv ? 'JioSaavn · your server' : 'JioSaavn · free', sub: srv ? 'Free sources didn’t answer, so your server found it' : 'Clean, ad-free audio from a free source',
+      rows: [['Music from', 'JioSaavn'], ['Found through', Src.describe(r) || 'Link saved with the song'], ['Audio stream', Player.audioVia === 'own' ? 'Your own server (for the equalizer)' : Player.audioVia === 'config' ? 'Your tunetune-config server (for the equalizer)' : 'JioSaavn’s servers, direct']] };
+  }
+  if (/^piped:/.test(v)) return { k: 'free', title: 'YouTube Music audio · free', sub: 'Ad-free audio from a public mirror', rows: [['Music from', 'YouTube Music'], ['Through', 'Piped mirror · ' + hostOf(mirror)]] };
+  if (/^inv:/.test(v)) return { k: 'free', title: 'YouTube Music audio · free', sub: 'Ad-free audio from a public mirror', rows: [['Music from', 'YouTube Music'], ['Through', 'Invidious mirror · ' + hostOf(mirror)]] };
+  if (v === 'direct') return { k: 'free', title: 'YouTube Music audio · direct', sub: 'Ad-free audio fetched by the app itself', rows: [['Music from', 'YouTube Music'], ['Through', IS_DESKTOP ? 'Tune Tune desktop app' : 'Tune Tune Android app']] };
+  if (v === 'server') return { k: 'free', title: 'YouTube Music audio · Home Server', sub: 'Ad-free audio from your computer', rows: [['Music from', 'YouTube Music'], ['Through', 'Home Server · ' + hostOf(Server.base)]] };
+  if (v === 'audius') return { k: 'free', title: 'Audius · free', sub: 'Independent artists, free full songs', rows: [['Music from', 'Audius']] };
+  if (v === 'radio') return { k: 'free', title: 'Live radio', sub: 'Station listed by Radio Browser', rows: [['Station', hostOf(t.url || '')]] };
+  if (v === 'podcast') return { k: 'free', title: 'Podcast', sub: 'Straight from the show’s own feed', rows: [['Episode from', hostOf(t.url || '')]] };
+  if (v === 'preview') return { k: 'yt', title: '30-second preview', sub: 'No full copy was found', rows: [['Music from', 'Deezer preview']] };
+  return null;
+}
 function badgeHTML(t) {
   const x = qInfo(t); if (!x.label) return '';
+  const si = Player.cur && Player.cur.id === t.id ? srcInfo() : null;
+  const dot = si && si.k !== 'local' ? `<i class="srcdot s-${si.k}" aria-hidden="true"></i>` : '';
+  return dot + badgeInner(x);
+}
+function badgeInner(x) {
   if (x.tier === 'hires') return `<span class="gold">${I.wave}Hi-Res</span>`;
   if (x.tier === 'lossless') return `<span class="gold">${I.wave}Lossless</span>`;
   if (x.tier === 'hq') return `<span class="gold">HQ</span>${x.kb} kbps`;
@@ -2908,14 +3166,20 @@ function aqInner() {
     ['Sample rate', t.sr ? `${+(t.sr / 1000).toFixed(1)} kHz` : t.source === 'saavn' && !yt ? '44.1 kHz' : '—'],
     ['Bit depth', t.bits ? `${t.bits}-bit` : x.lossless ? '—' : 'Compressed (lossy)'],
     ['Channels', t.ch === 1 ? 'Mono' : t.ch > 2 ? `${t.ch} channels` : 'Stereo'],
-    ['Playing via', viaLabel(Player.via)],
     ['Equalizer', !st.eqOn ? 'Off' : Player.el === Player.fx ? 'On · ' + st.eqPreset : 'Not available for this song'],
     ['Volume levelling', st.normalize ? 'On' : 'Off'],
   ];
+  const si = srcInfo();
+  const srcCard = si ? `<div class="src-card s-${si.k}"><span class="src-ic">${I[si.k === 'yt' ? 'play' : si.k === 'server' ? 'server' : si.k === 'local' ? 'download' : 'globe']}</span><div><b>${esc(si.title)}</b><small>${esc(si.sub)}</small></div></div>
+    <div class="info">${si.rows.map(([k, v]) => `<div class="inf"><span>${esc(k)}</span><b>${esc(v)}</b></div>`).join('')}</div>` : '';
   const big = x.tier === 'hires' || x.tier === 'lossless' || x.tier === 'hq'
     ? `<div class="aq-hero ${x.tier}"><span class="aq-medal">${x.tier === 'hq' ? 'HQ' : I.wave}</span><div><b>${esc(x.label)}</b><small>${esc(x.spec || '')}</small></div></div>`
-    : `<div class="aq-hero"><div><b>${esc(x.label || 'Standard')}</b><small>${yt ? 'Set up your own music server for clean high-quality audio' : 'Standard quality'}</small></div></div>`;
+    : `<div class="aq-hero"><div><b>${esc(x.label || 'Standard')}</b><small>${yt ? 'Quality is chosen by YouTube' : 'Standard quality'}</small></div></div>`;
+  const order = Src.on() ? 'Free sources → your tunetune-config server → your own server → YouTube player' : 'Free sources → YouTube player';
   return `<div class="aq-h"><b>Audio Quality</b><small>${esc(t.title)} · ${esc(t.artist)}</small></div>${big}
+    <div class="sub-h">Playing from</div>${srcCard}
+    <div class="li"><div class="lb"><span class="lx">My server<small class="lh">${esc(order)}</small></span>${sSw('ownSrc', Src.on())}</div></div>
+    <div class="sub-h">Audio</div>
     <div class="info">${rows.map(([k, v]) => `<div class="inf"><span>${esc(k)}</span><b>${esc(v)}</b></div>`).join('')}</div>
     <div class="sub-h">Streaming quality</div>${sSeg('quality', [['auto', 'Auto'], ['saver', 'Data saver'], ['normal', 'Normal'], ['high', 'High · 320']], st.quality || 'auto')}
     <div class="li"><div class="lb"><span class="lx">Show quality badge<small class="lh">Gold badge for High Quality, Lossless and Hi-Res</small></span>${sSw('badge', st.badge)}</div></div>
@@ -3160,18 +3424,20 @@ async function mediaSource(t) {
   if (t.source === 'podcast') return { url: t.url, mime: 'audio/mpeg' };
   if (t.source === 'saavn') { const pk = Saavn.pick(t); if (pk) return { url: pk.url, mime: 'audio/mp4', bitrate: pk.kbps * 1000 }; }
   if (t.svSu) { const pk = Saavn.pick(t.svSu); if (pk) return { url: pk.url, mime: 'audio/mp4', bitrate: pk.kbps * 1000 }; }
-  if (t.source === 'deezer' || t.source === 'yt') { const m = await Saavn.match(t).catch(() => null); if (m) { t.svSu = Saavn.urls(m); const pk = Saavn.pick(t.svSu); if (pk) return { url: pk.url, mime: 'audio/mp4', bitrate: pk.kbps * 1000 }; } }
+  const svm = async tiers => { if (t.source !== 'deezer' && t.source !== 'yt') return null; const m = await Saavn.match(t, tiers).catch(() => null); if (!m) return null; t.svSu = Saavn.urls(m); const pk = Saavn.pick(t.svSu); return pk ? { url: pk.url, mime: 'audio/mp4', bitrate: pk.kbps * 1000 } : null; };
+  let r = await svm(['free']); if (r) return r;
   let yid = ytIdOf(t);
-  if (!yid && t.source === 'deezer') { const m = await YT.match(t); if (m) { yid = t.ytId = m.sid; } }
-  if (!yid) throw new Error('no source');
-  return Streams.get(yid, new Set(), DIRECT() ? 30000 : 15000);
+  if (!yid && (t.source === 'deezer' || t.source === 'saavn')) { const m = await YT.ytMatch(t).catch(() => null); if (m) yid = t.ytId = m.sid; }
+  if (yid) { try { return await Streams.get(yid, new Set(), DIRECT() ? 30000 : 15000); } catch (e) { if (!Src.on()) throw e; } }
+  if (Src.on() && (r = await svm(Src.servers()))) return r;
+  throw new Error('no source');
 }
 async function fetchMediaAny(url, mime, onP) {
   try { return await fetchMedia(url, mime, onP); }
   catch (e) {
     if (/googlevideo|\/api\/stream/.test(url)) throw e;
-    for (const id of uniq([S.settings.proxy ? 'custom' : '', JSA.via, 'codetabs', 'allorigins', 'corsproxy'].filter(Boolean))) {
-      const p = JSA.relays().find(x => x.id === id && !x.unwrap && x.id !== 'direct'); if (!p) continue;
+    const free = JSA.order('free').filter(x => !x.unwrap && x.id !== 'direct' && !JSA.bad(x)).slice(0, 4);
+    for (const p of [...free, ...JSA.relays('cfg'), ...JSA.relays('own')]) {
       try { const r = await fetchT(p.wrap(url), {}, 120000); if (!r.ok) continue; const b = await readWithProgress(r, onP); if (b.size > 50000) return new Blob([b], { type: /mp4|m4a/.test(url) ? 'audio/mp4' : (b.type || 'audio/mpeg') }); } catch (x) { }
     }
     throw e;
@@ -3503,17 +3769,30 @@ async function handleSharedText(txt) {
 const Native = {
   cap() { return window.Capacitor && window.Capacitor.isNativePlatform && window.Capacitor.isNativePlatform() ? window.Capacitor : null; },
   plug(n) { const c = this.cap(); return c && c.Plugins ? c.Plugins[n] : null; },
+  remindDays() { const d = S.settings.remind3 === false ? 0 : +S.settings.remindDays; return [0, 3, 7, 14].includes(d) ? d : 3; },
+  // At most two gentle nudges per absence (after N days, then 2N+1 days). Opening the app cancels them.
   async remind() {
-    if (S.settings.remind3 === false) return;
     const LN = this.plug('LocalNotifications'); if (!LN) return;
     try {
-      const p = await LN.checkPermissions(); if (p.display !== 'granted') { if (S.askedNotif) return; S.askedNotif = 1; save(); const r = await LN.requestPermissions(); if (r.display !== 'granted') return; }
+      await LN.cancel({ notifications: [{ id: 7301 }, { id: 7302 }] }).catch(() => { });
+      const days = this.remindDays(); if (!days) return;
+      const p = await LN.checkPermissions(); if (p.display !== 'granted') return;   // never asks while you're away
       const nm = String(S.settings.name || '').trim(), t = (Player.cur && !Player.cur.live) ? Player.cur : (S.history || [])[0];
-      await LN.cancel({ notifications: [{ id: 7301 }] }).catch(() => { });
-      await LN.schedule({ notifications: [{ id: 7301, title: nm ? `${nm}, your music misses you 🎧` : 'Your music misses you 🎧',
-        body: t ? `Pick up where you left off — “${t.title}”` : 'New songs in your languages are waiting',
-        schedule: { at: new Date(Date.now() + 3 * 864e5), allowWhileIdle: true }, smallIcon: 'ic_stat_tunetune', iconColor: '#FF375F', extra: { url: 'tunetune://open/resume' } }] });
+      const at = n => new Date(Date.now() + n * 864e5), base = { smallIcon: 'ic_stat_tunetune', iconColor: '#FF375F', extra: { url: 'tunetune://open/resume' } };
+      await LN.schedule({ notifications: [
+        { ...base, id: 7301, title: nm ? `${nm}, your music misses you 🎧` : 'Your music misses you 🎧', body: t ? `Pick up where you left off — “${t.title}”` : 'New songs in your languages are waiting', schedule: { at: at(days) } },
+        { ...base, id: 7302, title: 'Fresh music is waiting 🎶', body: 'New hits in your languages — one tap to play', schedule: { at: at(days * 2 + 1) }, extra: { url: 'tunetune://open/home' } },
+      ] });
     } catch (e) { warn(e); }
+  },
+  cancelRemind() { const LN = this.plug('LocalNotifications'); if (LN) LN.cancel({ notifications: [{ id: 7301 }, { id: 7302 }] }).catch(() => { }); },
+  // asks once, politely, only after you've enjoyed a few songs — never on first launch
+  async askNotif() {
+    const LN = this.plug('LocalNotifications'); if (!LN || S.askedNotif || !this.remindDays()) return;
+    if (Object.keys(S.stats.plays || {}).length < 5 || document.hidden) return;
+    S.askedNotif = 1; save();
+    try { const p = await LN.checkPermissions(); if (p.display === 'granted') return; } catch (e) { return; }
+    toast('Want a gentle nudge if you haven’t listened in a few days?', { label: 'Turn on', ms: 9000, fn: async () => { try { const r = await LN.requestPermissions(); toast(r.display === 'granted' ? 'Reminders on — change them in Settings' : 'Reminders stay off'); } catch (e) { } } });
   },
   async openUrl(url) {
     url = String(url || '');
@@ -3532,17 +3811,18 @@ const Native = {
     if (App) {
       App.addListener('appUrlOpen', d => this.openUrl(d && d.url));
       if (App.getLaunchUrl) App.getLaunchUrl().then(d => { if (d && d.url) setTimeout(() => this.openUrl(d.url), 900); }).catch(() => { });
-      App.addListener('appStateChange', st => { if (!st.isActive) this.remind(); });
+      App.addListener('appStateChange', st => { if (st.isActive) this.cancelRemind(); else this.remind(); });
     }
     if (LN) LN.addListener('localNotificationActionPerformed', a => { const u = a && a.notification && a.notification.extra && a.notification.extra.url; if (u) this.openUrl(u); });
-    if (LN) setTimeout(() => this.remind(), 20000);
+    if (LN) this.cancelRemind();
     const D = window.ttDesktop;
     if (D && D.onOpenFiles) D.onOpenFiles(async files => {
       const fl = files.map(f => new File([f.data], f.name, { type: f.type || '' })); const before = S.locals.length;
       await importFiles(fl); const added = S.locals.slice(0, S.locals.length - before);
       if (added.length) { Player.playList(added, 0, 'On This Device'); setTimeout(openNP, 250); }
     });
-    if (D && D.used) { D.used(); addEventListener('focus', () => D.used()); }
+    if (D && D.onMedia) D.onMedia(a => { if (a === 'toggle') Player.toggle(); else if (a === 'next') Player.next(); else if (a === 'prev') Player.prev(); });
+    if (D && D.used) { D.used(); addEventListener('focus', () => D.used()); if (D.setRemind) D.setRemind(this.remindDays()); }
   },
 };
 function openShortcut(k) {
@@ -3618,26 +3898,35 @@ function openServerGuide() {
     <div class="fbtns">${S.settings.proxy ? '<button class="fb" data-a="relayclear">Remove</button>' : '<button class="fb" data-a="sclose">Later</button>'}<button class="fb pri" data-a="relaysave">Test &amp; Save</button></div></div>`);
 }
 async function testSources() {
-  toast('Testing music sources…'); BYPASS = true; setTimeout(() => { BYPASS = false; }, 20000);
-  const lines = [];
-  lines.push(`Engine: ${IT.ok ? 'YouTube Music direct' : 'public mirrors'}`);
-  try { JSA.reset(); lines.push('JioSaavn relays: ' + (await JSA.diagnose()).join(' · ')); } catch (e) { }
+  toast('Testing music sources…'); BYPASS = true; setTimeout(() => { BYPASS = false; }, 25000);
+  const lines = [], step = (ok, label, d) => lines.push(`${ok ? '✓' : '✗'} ${label}${d ? ' — ' + d : ''}`);
+  lines.push('FREE SOURCES (always tried first)');
+  JSA.reset(); SvC.fails.clear();
+  try { const r = await JSA.songs('ilaiyaraaja', 'free'); step(true, 'JioSaavn relays', `${r.length} songs via ${Src.describe(Src.last)}`); } catch (e) { step(false, 'JioSaavn relays', String(e.message || e).slice(0, 40)); }
+  try { const r = await SvC.songs('ilaiyaraaja', 'free'); step(true, 'Free JioSaavn servers', `${r.length} songs via ${hostOf(SvC.best)}`); } catch (e) { step(false, 'Free JioSaavn servers', 'not answering'); }
   let tr = null;
-  try { mem.delete('ys:top hits ' + YEAR); const r = await YT.songs('top hits ' + YEAR); tr = r[0]; lines.push(`Search: working (${r.length} songs)`); } catch (e) { lines.push('Search: not responding'); }
+  try { mem.delete('yy:top hits ' + YEAR); const r = await YT.ytSongs('top hits ' + YEAR); tr = r[0]; step(true, 'YouTube Music search', `${r.length} songs`); } catch (e) { step(false, 'YouTube Music search', 'mirrors busy'); }
   if (tr) {
-    try { Streams.drop(tr.sid); const s = await Streams.get(tr.sid, new Set(), 12000); lines.push(`Audio streams: working via ${s.via.replace(/^(piped|inv):https?:\/\//, '')}`); }
-    catch (e) { lines.push('Audio streams: busy (songs play through the YouTube player instead)'); }
+    try { Streams.drop(tr.sid); const s = await Streams.get(tr.sid, new Set(), 12000); step(true, 'Ad-free YouTube audio', s.via.replace(/^(piped|inv):https?:\/\//, '')); }
+    catch (e) { step(false, 'Ad-free YouTube audio', 'mirrors busy'); }
   }
-  try {
-    Saavn.fails.clear(); const r = await Saavn.songs('ilaiyaraaja'); const pk = r[0] && Saavn.pick(r[0]);
-    lines.unshift(`JioSaavn: ${r.length ? `working — ${r.length} songs via ${Saavn.best || 'a backup server'}${pk ? ', audio ' + pk.kbps + ' kbps' : ''}` : 'no results'}`);
-  } catch (e) { lines.unshift(`JioSaavn: not responding (${String(e.message || e).slice(0, 40)})`); }
-  if (S.settings.ytPlayer) { try { await Embed.ensure(); lines.push('YouTube player: ready'); } catch (e) { lines.push('YouTube player: blocked'); } }
-  lines.push(`Audio mirrors: ${MirrorHealth.ok() ? 'in use when they respond' : 'busy, skipped for now'}`);
-  try { mem.delete('au:tr:week'); const a = await Audius.trending(); lines.push(`Audius: ${a.length ? 'working' : 'empty'}`); } catch (e) { lines.push('Audius: not responding'); }
-  try { const r = await Radio.top(); lines.push(`Radio: ${r.length ? 'working' : 'empty'}`); } catch (e) { lines.push('Radio: not responding'); }
+  try { mem.delete('au:tr:week'); const a = await Audius.trending(); step(!!a.length, 'Audius', a.length ? 'working' : 'empty'); } catch (e) { step(false, 'Audius', 'not answering'); }
+  try { const r = await Radio.top(); step(!!r.length, 'Live radio', r.length ? 'working' : 'empty'); } catch (e) { step(false, 'Live radio', 'not answering'); }
+  lines.push('', `YOUR SERVERS (${Src.on() ? 'on — used after free sources' : 'off'})`);
+  if (Src.on()) {
+    await loadSiteConfig();
+    for (const [tier, label] of [['cfg', 'tunetune-config server'], ['own', 'Your own server']]) {
+      if (!Src.has(tier)) { lines.push(`– ${label} — not set up`); continue; }
+      try { JSA.fails.delete(tier === 'cfg' ? 'config' : 'own'); if (tier === 'own' && !Src.ownServer()) await SvC.songs('hits', 'own'); else await JSA.call({ __call: 'autocomplete.get', query: 'hits' }, tier); Src.state[tier] = 'ok'; step(true, label, 'working'); }
+      catch (e) { Src.state[tier] = 'down'; step(false, label, 'not answering'); }
+    }
+    UI.ownPill();
+  } else lines.push('Switch on “My server” to try them before YouTube');
+  lines.push('', 'LAST RESORT');
+  if (S.settings.ytPlayer || S.settings.engine === 'player') { try { await Embed.ensure(); step(true, 'YouTube player', 'ready'); } catch (e) { step(false, 'YouTube player', 'blocked on this network'); } }
+  else lines.push('– YouTube player — turned off in Advanced');
   BYPASS = false;
-  if (Server.ok) lines.unshift(`Home Server: connected (${Server.base.replace(/^https?:\/\//, '')})`);
+  if (Server.ok) lines.unshift(`Home Server: connected (${Server.base.replace(/^https?:\/\//, '')})`, '');
   actionSheet({ head: `<div class="sh col"><div class="m-t">Music sources</div><div class="m-s pre">${esc(lines.join('\n'))}</div></div>`, acts: [], cancel: 'Done' });
 }
 
@@ -4327,13 +4616,20 @@ function renderSettings() {
       sLi({ icon: 'volHigh', color: '#bf5af2', label: 'Normalize volume', hint: 'Every song plays at a similar loudness', ctl: sSw('normalize', s.normalize) }) +
       sLi({ icon: 'download', color: '#0a84ff', label: 'Preload next song', hint: 'No gaps or buffering between songs', ctl: sSw('preload', s.preload) }) +
       (IS_IOS ? '' : `<div class="li"><div class="lb"><span class="lx">Crossfade<small class="lh">Blend the end of one song into the next</small></span><span class="lv" id="v-crossfade">${+s.crossfade ? s.crossfade + ' s' : 'Off'}</span></div></div><div class="pad"><input class="slider" type="range" min="0" max="12" step="1" value="${+s.crossfade || 0}" data-set="crossfade" style="--p:${((+s.crossfade || 0) / 12) * 100}%" aria-label="Crossfade seconds"></div>`)) +
+    sGrp('Music sources',
+      sLi({ icon: 'server', color: Src.on() ? '#30d158' : '#8e8e93', label: 'My server', hint: Src.on() ? 'On · free sources first, then your tunetune-config server, then your own server, then YouTube' : 'Off · free sources first, then YouTube. Turn on to try your servers before YouTube.', ctl: sSw('ownSrc', Src.on()) }) +
+      sLi({ label: 'Your own music server', value: s.proxy ? hostOf(s.proxy) : 'Set up', a: 'setproxy', chev: true }) +
+      (Player.cur ? sLi({ label: 'Now playing from', value: (srcInfo() || {}).title || '—', a: 'srcinfo', chev: true }) : '') +
+      sLi({ label: 'Test music sources', a: 'testsrc', chev: true }),
+      'Tune Tune always looks for a free, ad-free source first. Your servers are only a backup when they’re switched on.') +
     sGrp('Playback',
       sLi({ icon: 'eq', color: '#ff9f0a', label: 'Equalizer', value: IS_IOS ? 'Not on iPhone' : s.eqOn ? eqName() : 'Off', a: 'eq', chev: true }) +
       (!IS_IOS && eqPins().length ? `<div class="pad"><div class="chips eqpins">${eqPins().filter(n => eqFind(n)).map(n => `<button class="chip ${s.eqOn && eqName() === n ? 'on' : ''}" data-a="eqp" data-n="${esc(n)}">${I.pin}${esc(n)}</button>`).join('')}</div></div>` : '') +
       sLi({ icon: 'infinity', color: '#30d158', label: 'Autoplay similar songs', ctl: sSw('autoplay', s.autoplay) }) +
       sLi({ label: 'Resume after calls', hint: 'Music continues by itself when a phone call or alarm ends', ctl: sSw('autoResume', S.settings.autoResume !== false) }) +
       sLi({ label: 'Mix podcasts with songs', hint: 'Off keeps podcasts and songs in separate queues', ctl: sSw('mixPods', !!S.settings.mixPods) }) +
-      (IS_CAP || window.ttDesktop ? sLi({ label: 'Remind me after 3 days away', hint: 'A gentle notification if you haven’t listened for a while', ctl: sSw('remind3', S.settings.remind3 !== false) }) + '' : '') +
+      (IS_CAP || window.ttDesktop ? sRow('Remind me when I’m away', sSeg('remindDays', [[0, 'Off'], [3, '3 days'], [7, '7 days'], [14, '14 days']], Native.remindDays()), 'At most two gentle notifications, then it stays quiet until you listen again') : '') +
+      (NATIVE ? sLi({ icon: 'music', color: '#ff375f', label: 'Make Tune Tune your music player', hint: 'Songs you open from files play here', a: 'defaultapp', chev: true }) : '') +
       sLi({ label: 'Tap sounds', hint: 'Soft musical sounds when you tap, like, add, delete, play or pause', ctl: sSw('tapSound', !!S.settings.tapSound) }) +
       sLi({ label: 'Haptic scroll', hint: 'A soft tick as you scroll through lists', ctl: sSw('crown', !!S.settings.crown) }) +
       sLi({ label: 'Car Mode in landscape', hint: 'Phones switch to big Car Mode controls when turned sideways', ctl: sSw('landCar', S.settings.landCar) }) +
@@ -4393,9 +4689,12 @@ function renderAdvanced() {
   return header('Advanced') +
     sGrp('Music sources',
       sLi({ label: 'Use YouTube’s player as a last resort', hint: 'Only for songs no clean source has. Can show ads and pauses when locked.', ctl: sSw('ytPlayer', s.ytPlayer) }) +
-      sLi({ label: 'JioSaavn server', value: s.saavn ? s.saavn.replace(/^https?:\/\//, '') : 'Automatic', a: 'setsaavn', chev: true }) +
-      sLi({ label: 'JioSaavn status', value: Saavn.best ? 'Working · ' + Saavn.best.replace(/^https?:\/\//, '') : Saavn.down() ? 'Busy — retrying soon' : 'Ready' }) +
-      sLi({ label: 'Your own music server', hint: 'Free · makes JioSaavn work: clean songs, no ads, downloads, EQ', value: s.proxy ? 'Connected' : 'Set up', a: 'setproxy', chev: true }),
+      sLi({ label: 'Free route in use', value: JSA.via && !JSA.down() ? Src.describe({ tier: 'free', relay: JSA.via }) : SvC.best ? Src.describe({ tier: 'free', relay: SvC.best }) : JSA.down() ? 'Busy — retrying soon' : 'Checking…' }) +
+      sLi({ label: 'Free sources', value: `${JSA.relays('free').length - 1} relays · ${SvC.list('free').length} servers` }) +
+      sLi({ icon: 'server', color: Src.on() ? '#30d158' : '#8e8e93', label: 'My server', hint: 'Only used after every free source failed, before YouTube', ctl: sSw('ownSrc', Src.on()) }) +
+      sLi({ label: 'tunetune-config.json', value: !CFG.p ? '—' : CFG.found ? (CFG.server ? (Src.on() ? srvState(Src.state.cfg) : 'Has a server · off') : 'Free sources only') : 'Not on this site' }) +
+      sLi({ label: 'Your own music server', hint: 'Free Cloudflare Worker', value: s.proxy ? (Src.on() ? srvState(Src.state.own) : 'Saved · off') : 'Set up', a: 'setproxy', chev: true }) +
+      sLi({ label: 'Your JioSaavn API', value: s.saavn ? hostOf(s.saavn) : 'None', a: 'setsaavn', chev: true }),
       'Songs play as clean audio from JioSaavn (up to 320 kbps). Lyrics: LRCLIB · Podcasts: Apple Podcasts directory · Radio: Radio Browser.') +
     sGrp('Playback engine', sSeg('engine', [['auto', 'Automatic'], ['player', 'YouTube player'], ['audio', 'Audio only']], s.engine) +
       sLi({ label: 'Last song played via', value: viaLabel(Player.via) }) + sLi({ label: 'Catalog', value: engine }) + sLi({ label: 'Mirror in use', value: mirror }) +
@@ -4426,6 +4725,7 @@ async function serverPanel() {
     (info.enabled && addr ? `<div class="srv"><div id="qr" class="qr"></div><div class="srv-t"><b>On your iPhone or iPad</b><span>Connect to the same Wi-Fi, scan this code with the Camera, then tap Share → Add to Home Screen.</span><code class="selectable">${esc(addr)}</code>${(info.addresses || []).slice(1).map(x => `<code class="selectable">${esc(x)}</code>`).join('')}<button class="btn sm ghost" data-a="copysrv" data-u="${esc(addr)}">${I.copy}Copy address</button></div></div>` : info.enabled ? sLi({ label: 'Not connected to a network', small: true }) : '');
   if (info.enabled && addr && await loadQR()) { const q = $('#qr'); if (q) { q.innerHTML = ''; try { new window.QRCode(q, { text: addr, width: 132, height: 132, colorDark: '#000000', colorLight: '#ffffff' }); } catch (e) { } } }
 }
+const srvState = s => s === 'ok' ? 'Working' : s === 'down' ? 'Not answering' : 'On';
 const VIEWS = { advanced: renderAdvanced, home: renderHome, explore: renderExplore, search: renderSearch, radio: renderRadio, podcasts: renderPodcasts, library: renderLibrary, coll: renderColl, settings: renderSettings };
 
 /* ================= actions ================= */
@@ -4534,6 +4834,11 @@ const Actions = {
     if (k === 'quality') { Streams.c.clear(); if (Player.cur && Player.loaded && Player.via === 'saavn') Player.reroute(); toast({ auto: 'Quality: Auto', saver: 'Quality: Data saver (96 kbps)', normal: 'Quality: Normal (160 kbps)', high: 'Quality: High (320 kbps)' }[v] || 'Quality changed'); }
     if (k === 'podBack' || k === 'podFwd') { const b = $('[data-a="skipb"]'), f = $('[data-a="skipf"]'); if (b) b.innerHTML = skipIcon(S.settings.podBack, true); if (f) f.innerHTML = skipIcon(S.settings.podFwd, false); }
     if (k === 'podSpeed' && Player.cur && Player.cur.source === 'podcast') Player.el.playbackRate = v;
+    if (k === 'remindDays') {
+      S.settings.remind3 = v > 0; if (window.ttDesktop && window.ttDesktop.setRemind) window.ttDesktop.setRemind(v);
+      if (!v) Native.cancelRemind(); else if (IS_CAP) { const LN = Native.plug('LocalNotifications'); if (LN) LN.requestPermissions().catch(() => { }); }
+      toast(v ? `Reminder after ${v} days away` : 'Reminders off');
+    }
     $$(`[data-a="setv"][data-k="${k}"]`).forEach(b => b.classList.toggle('on', b === el));
   },
   async connectsrv() {
@@ -4547,7 +4852,7 @@ const Actions = {
     softRender();
   },
   async setsaavn() {
-    const v = await ask('JioSaavn server', 'Optional: your own jiosaavn-api address (e.g. https://my-saavn.vercel.app/api)', S.settings.saavn || '', 'Save');
+    const v = await ask('Your JioSaavn API', 'Optional: your own jiosaavn-api address (e.g. https://my-saavn.vercel.app/api). Used with “My server” on, after free sources.', S.settings.saavn || '', 'Save');
     if (v === null) return;
     if (v && !/^https:\/\/[^\s]+$/.test(v)) return toast('Enter a full https:// address');
     S.settings.saavn = v.replace(/\/+$/, ''); Saavn.fails.clear(); Saavn.best = null; mem.clear(); PC.clear(); save(); softRender(); toast(v ? 'Saved' : 'Using automatic servers');
@@ -4563,15 +4868,15 @@ const Actions = {
     if (st) { st.className = 'relay-st busy'; st.textContent = 'Testing your server…'; }
     const old = S.settings.proxy; S.settings.proxy = base; JSA.reset();
     try {
-      const j = await JSA.attempt(JSA.relays()[0], 'https://www.jiosaavn.com/api.php?' + new URLSearchParams({ __call: 'autocomplete.get', query: 'anirudh', _format: 'json', _marker: '0', api_version: '4', ctx: 'web6dot0' }));
+      const j = await JSA.attempt({ id: 'own', wrap: tplWrap(base) }, 'https://www.jiosaavn.com/api.php?' + new URLSearchParams({ __call: 'autocomplete.get', query: 'anirudh', _format: 'json', _marker: '0', api_version: '4', ctx: 'web6dot0' }));
       if (!j) throw new Error('no reply');
-      JSA.setVia('custom'); save(); mem.clear(); if (st) { st.className = 'relay-st ok'; st.textContent = '✓ Working! JioSaavn songs now play clean, with downloads and the equalizer.'; }
-      toast('Your music server works'); setTimeout(() => { closeSheet(); softRender(); }, 1400);
+      save(); Src.state.own = 'ok'; if (st) { st.className = 'relay-st ok'; st.textContent = Src.on() ? '✓ Working! It’s used whenever free sources fail, before YouTube.' : '✓ Working! Switch on “My server” to use it before YouTube.'; }
+      setTimeout(() => { closeSheet(); softRender(); if (!Src.on()) toast('Your server works — use it before YouTube?', { label: 'Turn on', ms: 7000, fn: () => Src.set(true) }); else toast('Your music server works'); }, 1400);
     } catch (e) {
       S.settings.proxy = old; save(); if (st) st.className = 'relay-st bad'; if (st) st.textContent = '✗ Couldn’t reach JioSaavn through it (' + String(e.message || e).slice(0, 40) + '). Check you pasted the code and pressed Deploy, then try again.';
     }
   },
-  relayclear() { S.settings.proxy = ''; save(); JSA.reset(); if (JSA.via === 'custom') JSA.setVia(''); closeSheet(); toast('Removed your music server'); softRender(); },
+  relayclear() { S.settings.proxy = ''; save(); JSA.fails.delete('own'); Src.state.own = ''; closeSheet(); toast('Removed your music server'); softRender(); UI.ownPill(); },
   async setapk() { const v = await ask('Android app link', 'https://github.com/you/repo/releases/latest/download/TuneTune.apk', S.settings.apkUrl || '', 'Save'); if (v === null) return; S.settings.apkUrl = v; save(); softRender(); },
   copysrv(el, d) { copyText(d.u, 'Address copied'); },
   clearcache() { PC.clear(); mem.clear(); Streams.c.clear(); toast('Cache cleared'); },
@@ -4633,6 +4938,20 @@ const Actions = {
   pbuzz() { S.settings.partyBuzz = !S.settings.partyBuzz; save(); const b = $('#p-buzz'); if (b) b.classList.toggle('on', S.settings.partyBuzz); toast(S.settings.partyBuzz ? 'Vibrates with the beat' : 'Vibration off'); },
   clearOffline() { confirmSheet('Remove songs saved for offline?', 'Your downloads stay. Songs you play will be saved again as you listen.', 'Remove', async () => { await Offline.clear(); toast('Removed offline copies'); softRender(); }); },
   toastact() { const f = toastFn; toastFn = null; $('#toast').classList.remove('on'); if (f) f(); },
+  ownsrc() { if (Src.busy) return; Src.set(!Src.on()); },
+  srcinfo() { openAQ(); },
+  async defaultapp() {
+    const D = window.ttDesktop; let how = IS_CAP ? 'android' : 'mac';
+    if (D && D.defaultApp) { try { how = await D.defaultApp(); } catch (e) { } }
+    if (how === 'linux-ok') return toast('Done — music files now open in Tune Tune');
+    const steps = {
+      win: ['Windows Settings just opened at Default apps.', 'Search for “Tune Tune”, or pick a type like .mp3 and choose Tune Tune.', 'Do the same for .m4a, .flac and .wav if you like.'],
+      mac: ['In Finder, select any song file and press ⌘ I (Get Info).', 'Under “Open with”, choose Tune Tune.', 'Press “Change All…” so every song of that type opens in Tune Tune.'],
+      android: ['Open any song in your Files app.', 'Choose Tune Tune, then tap “Always”.', 'To change it later: Settings → Apps → Default apps.'],
+      'linux-manual': ['Right-click any song file → Properties → Open With.', 'Choose Tune Tune and set it as default.'],
+    }[how] || [];
+    openSheet(`<div class="sg form"><b class="ft">Make Tune Tune your music player</b><ol class="steps">${steps.map(x => `<li>${esc(x)}</li>`).join('')}</ol><div class="fbtns"><button class="fb pri" data-a="sclose">Done</button></div></div>`);
+  },
   ytfull() { Embed.pinned = !Embed.pinned; $('#np').classList.toggle('ytfull', Embed.pinned || Embed.ad); UI.ytPill(); },
   npshare() { if (Player.cur) share(Player.cur); },
   shareColl(el, d) { const L = listOf(d); if (L && L.tracks.length) sharePlaylist(cv().title || L.meta.from || 'Playlist', L.tracks); },
@@ -4681,7 +5000,8 @@ const Actions = {
   clearHist() { confirmSheet('Clear listening history?', 'Recently Played will be emptied.', 'Clear History', () => { S.history = []; save(); softRender(); toast('History cleared'); }); },
   resetAll() {
     confirmSheet(`Reset ${TITLE}?`, 'This deletes favorites, playlists, downloads, device music and settings on this device.', 'Reset Everything', () => {
-      try { localStorage.removeItem(KEY); localStorage.removeItem('tunetune.mirrors'); } catch (e) { }
+      RESET = true; clearTimeout(saveT); try { Player.el.pause(); } catch (e) { }
+      try { for (const k of Object.keys(localStorage)) if (/^tunetune\b|^tt\./.test(k)) localStorage.removeItem(k); } catch (e) { }
       const r = indexedDB.deleteDatabase('tunetune'); r.onsuccess = r.onerror = r.onblocked = () => location.reload();
     });
   },
@@ -4792,6 +5112,7 @@ document.addEventListener('change', e => {
     if (k === 'normalize') Player.applyVol();
     if (k === 'remind3') { if (window.ttDesktop && window.ttDesktop.setRemind) window.ttDesktop.setRemind(t.checked); const LN = Native.plug('LocalNotifications'); if (!t.checked && LN) LN.cancel({ notifications: [{ id: 7301 }] }).catch(() => { }); else Native.remind(); }
     if (k === 'autoplay') toast(t.checked ? 'Autoplay on' : 'Autoplay off');
+    if (k === 'ownSrc') Src.set(t.checked);
     if (k === 'country') { mem.clear(); toast(`Region: ${countryName(detectCC())}`); }
   } else if (t.id === 'f-audio') { importFiles(t.files); t.value = ''; }
   else if (t.id === 'f-backup') { importBackup(t.files[0]); t.value = ''; }
@@ -4996,7 +5317,7 @@ function init() {
   if (!navigator.onLine) { document.body.classList.add('offline'); setTimeout(() => { if (!navigator.onLine && S.settings.offlineTips !== false && String(S.settings.name || '').trim()) { offShown = true; offlineNudge(); } }, 1600); }
   try { Native.init(); } catch (e) { warn(e); }
   loadSiteConfig().then(() => { const add = h => { try { const l = document.createElement('link'); l.rel = 'preconnect'; l.href = h; l.crossOrigin = ''; document.head.appendChild(l); } catch (e) { } };
-    const px = S.settings.proxy || SITE.server; if (px) { try { add(new URL(px.replace('{url}', '')).origin); } catch (e) { } } add('https://aac.saavncdn.com'); add('https://c.saavncdn.com'); });
+    add('https://aac.saavncdn.com'); add('https://c.saavncdn.com'); });
   try { if (navigator.storage && navigator.storage.persist) navigator.storage.persisted().then(p => { if (!p) navigator.storage.persist().catch(() => { }); }).catch(() => { }); } catch (e) { }
   try {
     if ('launchQueue' in window) window.launchQueue.setConsumer(async p => {
@@ -5031,9 +5352,12 @@ function init() {
   document.addEventListener('visibilitychange', () => { if (document.hidden) keepPlace(); });
   addEventListener('pagehide', keepPlace);
   loadArtCache();
-  Audius.discover();
-  Mirrors.load();
-  IT.probe();
+  UI.ownPill();
+  document.addEventListener('visibilitychange', () => document.documentElement.classList.toggle('bg-hidden', document.hidden));
+  // network warm-up waits until the app is on screen and idle, so the first paint stays instant
+  const idle = window.requestIdleCallback ? f => requestIdleCallback(f, { timeout: 4000 }) : f => setTimeout(f, 300);
+  setTimeout(() => idle(() => { Audius.discover(); Mirrors.load(); IT.probe(); loadSiteConfig().then(() => Src.warm()).catch(() => { }); }), 1200);
+  addEventListener('online', () => { JSA.reset(); setTimeout(() => Src.warm().catch(() => { }), 1500); });
   if (!S.settings.langs) setTimeout(() => { if (!S.settings.langs && !sheetOpen) langPicker(true); }, 600);
   else if (!String(S.settings.name || '').trim()) setTimeout(() => { if (!String(S.settings.name || '').trim()) { if (sheetOpen) needName = true; else nameSheet(true); } }, /[?&](play|pl|share|text|url)=/.test(location.search) ? 6000 : 1500);
   Server.detect().then(ok => { if (!DIRECT() && (S.settings.ytPlayer || S.settings.engine === 'player')) setTimeout(() => Embed.ensure().catch(() => { }), 2500); if (ok) { IT.ok = null; softRender(); } });
@@ -5042,7 +5366,7 @@ function init() {
     navigator.serviceWorker.register('sw.js').catch(() => { });
   }
   window.TuneTune = { version: VER, engine: () => (IT.ok ? 'direct' : 'mirrors') };
-  if (window.__TT_TEST__) window.TuneTune._ = { JSA, DES, Saavn, Player, Streams, Mirrors, IT, YT, S, nav, cv, Actions, itShelves, mem, Embed, MirrorHealth, download, share, probeAudio, qInfo, sharePlaylist, SvC, translit, Deck, SITE, Offline, landCheck, Party, offlineList, playOffline, offlineSheet, JS_RELAYS, SAAVN_DEFAULT, PIPED_DEFAULT, INV_DEFAULT, loadSiteConfig, Pre, deviceLangs, langSuggest, eqName, eqPins, Haptic, rtags: () => rtags(), podCats: () => podCats(), lyrSet: r => { lyrState = { id: Player.cur && Player.cur.id, ...r }; renderLyrics(); } };
+  if (window.__TT_TEST__) window.TuneTune._ = { Src, CFG, ytWebSearch, srcInfo, Native, JSA, DES, Saavn, Player, Streams, Mirrors, IT, YT, S, nav, cv, Actions, itShelves, mem, Embed, MirrorHealth, download, share, probeAudio, qInfo, sharePlaylist, SvC, translit, Deck, SITE, Offline, landCheck, Party, offlineList, playOffline, offlineSheet, JS_RELAYS, SAAVN_DEFAULT, PIPED_DEFAULT, INV_DEFAULT, loadSiteConfig, Pre, deviceLangs, langSuggest, eqName, eqPins, Haptic, rtags: () => rtags(), podCats: () => podCats(), lyrSet: r => { lyrState = { id: Player.cur && Player.cur.id, ...r }; renderLyrics(); } };
 }
 try { init(); }
 catch (err) {

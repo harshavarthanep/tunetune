@@ -6,5 +6,8 @@ contextBridge.exposeInMainWorld('ttDesktop', {
   // music files opened with Tune Tune (double-click, "Open with", default app)
   onOpenFiles: cb => { ipcRenderer.on('tt:open-files', (e, files) => cb(files)); ipcRenderer.send('tt:ready'); },
   used: () => ipcRenderer.send('tt:used'),
-  setRemind: on => ipcRenderer.send('tt:remind', !!on),
+  setRemind: d => ipcRenderer.send('tt:remind', typeof d === 'number' ? d : !!d),
+  playing: on => ipcRenderer.send('tt:playing', !!on),
+  onMedia: cb => ipcRenderer.on('tt:media', (e, a) => cb(a)),
+  defaultApp: () => ipcRenderer.invoke('tt:default-app'),
 });

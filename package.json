@@ -2,7 +2,7 @@
   "name": "tunetune",
   "productName": "Tune Tune",
   "version": "1.1.0",
-  "description": "Tune Tune \u2014 free music & podcast player: JioSaavn-quality songs, synced lyrics, equalizer, Party Mode, offline downloads.",
+  "description": "Tune Tune — free music & podcast player: JioSaavn-quality songs, synced lyrics, equalizer, Party Mode, offline downloads.",
   "author": {
     "name": "H24 Creationz",
     "email": "h24creationz@users.noreply.github.com"
@@ -118,7 +118,24 @@
       "category": "Audio",
       "maintainer": "H24 Creationz",
       "synopsis": "Free music & podcast player",
-      "artifactName": "TuneTune-Linux-${arch}.${ext}"
+      "artifactName": "TuneTune-Linux-${arch}.${ext}",
+      "executableName": "tunetune",
+      "mimeTypes": [
+        "audio/mpeg",
+        "audio/mp3",
+        "audio/mp4",
+        "audio/x-m4a",
+        "audio/aac",
+        "audio/flac",
+        "audio/x-flac",
+        "audio/wav",
+        "audio/x-wav",
+        "audio/ogg",
+        "audio/opus",
+        "audio/webm",
+        "audio/x-aiff",
+        "x-scheme-handler/tunetune"
+      ]
     },
     "portable": {
       "artifactName": "TuneTune-Windows-Portable.${ext}"
@@ -129,21 +146,61 @@
     "fileAssociations": [
       {
         "ext": [
-          "mp3",
-          "m4a",
-          "aac",
-          "flac",
-          "wav",
-          "ogg",
-          "opus",
-          "aiff",
-          "alac",
-          "wma"
+          "mp3"
         ],
-        "name": "Audio",
+        "name": "MP3 audio",
         "description": "Music file",
         "role": "Viewer",
         "mimeType": "audio/mpeg"
+      },
+      {
+        "ext": [
+          "m4a",
+          "aac",
+          "alac"
+        ],
+        "name": "AAC audio",
+        "description": "Music file",
+        "role": "Viewer",
+        "mimeType": "audio/mp4"
+      },
+      {
+        "ext": [
+          "flac"
+        ],
+        "name": "FLAC audio",
+        "description": "Lossless music file",
+        "role": "Viewer",
+        "mimeType": "audio/flac"
+      },
+      {
+        "ext": [
+          "wav",
+          "aiff"
+        ],
+        "name": "WAV audio",
+        "description": "Music file",
+        "role": "Viewer",
+        "mimeType": "audio/wav"
+      },
+      {
+        "ext": [
+          "ogg",
+          "opus"
+        ],
+        "name": "Ogg audio",
+        "description": "Music file",
+        "role": "Viewer",
+        "mimeType": "audio/ogg"
+      },
+      {
+        "ext": [
+          "wma"
+        ],
+        "name": "WMA audio",
+        "description": "Music file",
+        "role": "Viewer",
+        "mimeType": "audio/x-ms-wma"
       }
     ],
     "protocols": [

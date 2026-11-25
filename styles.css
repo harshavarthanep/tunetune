@@ -1546,3 +1546,48 @@ body.partying .greet .streak{animation:heartPop .6s infinite}
 @keyframes fireFlicker{0%{transform:scale(1) rotate(-6deg);filter:brightness(1)}50%{transform:scale(1.25,1.4) rotate(4deg);filter:brightness(1.4) saturate(1.3)}100%{transform:scale(1.1,1.2) rotate(-3deg);filter:brightness(1.2)}}
 body.partying .greet .streak{animation:none}
 @media (min-width:700px) and (min-height:560px){.sp{bottom:auto}}
+
+/* ---------- v1.1: music sources — “My server” switch beside Show video ---------- */
+/* sits on the video's own bottom-right corner (square art, or the 16:9 video when it's shown) */
+.yt-bar{position:absolute;z-index:6;display:none;align-items:center;gap:6px;pointer-events:none;
+  right:calc(50% - var(--S) * var(--sc,1) / 2 + 8px);bottom:calc(50% - var(--S) * var(--sc,1) / 2 + 8px);
+  transition:right .45s cubic-bezier(.22,.9,.28,1),bottom .45s cubic-bezier(.22,.9,.28,1)}
+#np.ytfull .yt-bar{right:calc(50% - min(100cqw,calc(100cqh * 16 / 9)) / 2 + 8px);bottom:calc(50% - min(100cqw,calc(100cqh * 16 / 9)) * 9 / 32 + 8px)}
+#np.video .yt-bar{display:flex;animation:ytBarIn .45s .15s cubic-bezier(.2,1.2,.4,1) both}
+@keyframes ytBarIn{from{opacity:0;transform:translateY(8px) scale(.92)}}
+.yt-bar>button{pointer-events:auto}
+.yt-bar .yt-pill{position:static;display:inline-flex;height:28px;padding:0 11px;font-size:12px;white-space:nowrap}
+.yt-pill span{line-height:1}
+.own-pill{display:inline-flex;align-items:center;gap:7px;height:28px;padding:0 11px 0 6px;border-radius:14px;font:600 12px/1 var(--font);color:#fff;white-space:nowrap;
+  background:rgba(0,0,0,.55);-webkit-backdrop-filter:blur(10px);backdrop-filter:blur(10px);transition:background .25s,transform .15s}
+.own-pill:active{transform:scale(.94)}
+.osw{position:relative;flex:none;width:26px;height:16px;border-radius:8px;background:rgba(255,255,255,.3);transition:background .25s}
+.osw i{position:absolute;left:2px;top:2px;width:12px;height:12px;border-radius:50%;background:#fff;box-shadow:0 1px 3px rgba(0,0,0,.3);transition:transform .32s cubic-bezier(.3,1.5,.5,1)}
+.own-pill.on .osw{background:#30d158}
+.own-pill.on .osw i{transform:translateX(10px)}
+.own-pill.on.down .osw{background:#ff9f0a}
+.own-pill.busy .osw i{animation:oswPulse .8s ease-in-out infinite alternate}
+@keyframes oswPulse{to{box-shadow:0 0 0 4px rgba(255,255,255,.35)}}
+#np.ytad .own-pill{display:none}                       /* keep the Skip-ad hint uncluttered */
+#np.p-lyr .yt-bar,#np.p-q .yt-bar{opacity:0;pointer-events:none}
+@media (min-width:900px) and (min-height:561px){#np.p-lyr .yt-bar,#np.p-q .yt-bar{opacity:1}#np.p-lyr .yt-bar>button,#np.p-q .yt-bar>button{pointer-events:auto}}
+@media (max-width:360px){.own-pill .own-l{display:none}.own-pill{padding:0 6px}}
+#drive .yt-bar,#drive .own-pill{display:none!important}
+
+/* source dot inside the quality badge: green free · blue your server · red YouTube */
+.srcdot{width:6px;height:6px;border-radius:50%;flex:none;background:#30d158;box-shadow:0 0 0 2px rgba(48,209,88,.25)}
+.srcdot.s-server{background:#0a84ff;box-shadow:0 0 0 2px rgba(10,132,255,.25)}
+.srcdot.s-yt{background:#ff453a;box-shadow:0 0 0 2px rgba(255,69,58,.25)}
+.qbadge.t-hires .srcdot,.qbadge.t-lossless .srcdot{margin-right:2px}
+
+/* “Playing from” card in the Audio Quality sheet */
+.src-card{display:flex;align-items:center;gap:12px;padding:12px 14px;border-radius:14px;background:var(--fill);animation:srcIn .4s cubic-bezier(.2,1,.3,1) both}
+.src-card b{display:block;font-size:16px}.src-card small{display:block;font-size:13px;color:var(--text2);margin-top:2px}
+.src-ic{flex:none;width:38px;height:38px;border-radius:11px;display:grid;place-items:center;color:#fff;background:#30d158}
+.src-ic .ic{width:20px;height:20px}
+.src-card.s-server .src-ic{background:#0a84ff}.src-card.s-yt .src-ic{background:#ff453a}.src-card.s-local .src-ic{background:#8e8e93}
+@keyframes srcIn{from{opacity:0;transform:translateY(6px)}}
+
+/* nothing animates while it can't be seen: closed Now Playing, or the app in the background */
+#np:not(.open) *,#np:not(.open){animation-play-state:paused!important}
+html.bg-hidden *,html.bg-hidden *::before,html.bg-hidden *::after{animation-play-state:paused!important}

@@ -14,7 +14,8 @@ const perms = [
 ];
 for (const p of perms) if (!m.includes(`"${p}"`)) m = m.replace('</manifest>', `    <uses-permission android:name="${p}" />\n</manifest>`);
 if (!m.includes('usesCleartextTraffic')) m = m.replace('<application', '<application\n        android:usesCleartextTraffic="true"');
-// "Open with Tune Tune" for music files + tunetune:// links (widget buttons, notifications)
+// Listed as a music app (default music player pickers, headset music key), "Open with Tune Tune" for music files,
+// and tunetune:// links (widget buttons, notifications)
 if (!m.includes('android:scheme="tunetune"')) {
   const filters = `
             <intent-filter>
@@ -22,6 +23,12 @@ if (!m.includes('android:scheme="tunetune"')) {
                 <category android:name="android.intent.category.DEFAULT" />
                 <category android:name="android.intent.category.BROWSABLE" />
                 <data android:scheme="tunetune" />
+            </intent-filter>
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <action android:name="android.intent.action.MUSIC_PLAYER" />
+                <category android:name="android.intent.category.APP_MUSIC" />
+                <category android:name="android.intent.category.DEFAULT" />
             </intent-filter>
             <intent-filter>
                 <action android:name="android.intent.action.VIEW" />
