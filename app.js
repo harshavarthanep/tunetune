@@ -796,7 +796,7 @@ const Mirrors = {
   order(kind) {
     const now = Date.now();
     const custom = S.settings.mirror ? [S.settings.mirror.replace(/\/+$/, '')] : [];
-    const L = uniq([...custom, this.best[kind], ...this[kind]]);
+    const L = uniq([...custom, this.best[kind], ...this[kind], ...(BK[kind] || [])]);
     const recent = b => now - (this.fails.get(b) || 0) < 6e5;
     return L.filter(b => !recent(b)).concat(L.filter(recent));
   },
@@ -873,6 +873,7 @@ const SvC = {
   fails: new Map(), best: null,
   list(tier = 'free') {
     if (tier === 'own') return S.settings.saavn && Src.on() ? [{ base: S.settings.saavn.replace(/\/+$/, ''), shape: '?' }] : [];
+    if (tier === 'backup') return BK.saavn.filter(x => !SAAVN_DEFAULT.some(y => y.base === x.base) && !CFG.saavn.some(y => y.base === x.base));
     if (tier !== 'free') return [];
     return [...CFG.saavn, ...SAAVN_DEFAULT.filter(x => !CFG.saavn.some(y => y.base === x.base))];
   },
@@ -1048,10 +1049,29 @@ function parseLoose(txt) {
   txt = String(txt || '').trim(); const i = txt.search(/[[{]/); if (i < 0) return null;
   try { return JSON.parse(txt.slice(i)); } catch (e) { return null; }
 }
-const tplWrap = tpl => u => (tpl.includes('{url}') ? tpl.replace('{url}', enc(u)) : tpl + enc(u));
+// “…?url={url}” gets the link encoded; path style “…/{url}” or “…?{url}” gets it as is
+const tplWrap = tpl => u => (tpl.includes('{url}') ? tpl.replace('{url}', /=\{url\}/.test(tpl) ? enc(u) : u) : tpl + enc(u));
 function normServer(v) { v = String(v || '').trim(); if (!v) return ''; if (!/^https?:\/\//.test(v)) v = 'https://' + v; return v.includes('{url}') ? v : v.replace(/[?#].*$/, '').replace(/\/+$/, '') + '/?url={url}'; }
 /* tunetune-config.json: extra free sources are always used; its musicServer only when “My server” is on */
-const CFG = { p: null, found: false, server: '', relays: [], saavn: [] };
+const CFG = { p: null, found: false, server: '', servers: [], relays: [], saavn: [] };
+/* tunetune-sources.json — BACKUP FREE SOURCES, always used (no switch): tried after the built-in free sources
+   and before your own servers and the YouTube player. Add or remove entries any time; dead ones are skipped. */
+const BK = { p: null, found: false, relays: [], saavn: [], piped: [], inv: [] };
+const srcEntries = x => (Array.isArray(x) ? x : x ? [x] : []).map(v => typeof v === 'object' && v ? { name: String(v.name || '').trim(), url: String(v.url || v.link || '').trim() } : { name: '', url: String(v || '').trim() }).filter(v => /^https?:\/\//.test(v.url));
+function loadBackupSources(force) {
+  if (BK.p && !force) return BK.p;
+  BK.p = (async () => {
+    try {
+      const r = await fetchT('tunetune-sources.json?v=' + Math.floor(Date.now() / 3600e3), { cache: 'no-store' }, 4000); if (!r.ok) return;
+      const j = await r.json(); if (!j || typeof j !== 'object') return; BK.found = true;
+      BK.relays = srcEntries(j.relays).map(e => ({ id: 'backup ' + (e.name || hostOf(e.url)), name: e.name, host: hostOf(e.url), wrap: tplWrap(e.url) })).filter((x, i, a) => a.findIndex(y => y.id === x.id) === i);
+      BK.saavn = srcEntries(j.saavnServers).map(e => { const b = e.url.replace(/\/+$/, ''); return { base: b, name: e.name, shape: /\/api$/.test(b) ? 'A' : '?' }; });
+      BK.piped = srcEntries(j.piped).map(e => e.url.replace(/\/+$/, ''));
+      BK.inv = srcEntries(j.invidious).map(e => e.url.replace(/\/+$/, ''));
+    } catch (e) { }
+  })();
+  return BK.p;
+}
 const SITE = { get server() { return Src.cfgServer(); } };
 function loadSiteConfig(force) {
   if (CFG.p && !force) return CFG.p;
@@ -1065,14 +1085,16 @@ function loadSiteConfig(force) {
       const p = arr(j.piped).map(b => b.replace(/\/+$/, '')), v = arr(j.invidious).map(b => b.replace(/\/+$/, ''));
       if (p.length) Mirrors.piped = uniq([...p, ...Mirrors.piped]);
       if (v.length) Mirrors.inv = uniq([...v, ...Mirrors.inv]);
-      CFG.server = normServer(j.musicServer || j.server || '');
+      CFG.servers = srcEntries([].concat(j.musicServer || j.server || [], j.musicServers || [])).map((e, i) => ({ id: 'config:' + i, name: e.name || (i ? 'musicServer ' + (i + 1) : 'musicServer'), host: hostOf(e.url), url: normServer(e.url) }))
+        .filter((x, i, a) => x.url && a.findIndex(y => y.url === x.url) === i);
+      CFG.server = CFG.servers[0] ? CFG.servers[0].url : '';
     } catch (e) { }
   })();
   return CFG.p;
 }
 const WORKER_CODE = "// Tune Tune music server \u2014 paste into a free Cloudflare Worker and press Deploy\nconst ALLOW = /(^|\\.)(jiosaavn\\.com|saavncdn\\.com|saavn\\.com|shnwaz\\.dev|sumit\\.co|saavn\\.dev|saavn\\.me)$/;\nconst CORS = {\n  'Access-Control-Allow-Origin': '*',\n  'Access-Control-Allow-Methods': 'GET, HEAD, OPTIONS',\n  'Access-Control-Allow-Headers': '*',\n  'Access-Control-Expose-Headers': 'Content-Length, Content-Range, Accept-Ranges, Content-Type',\n};\nexport default {\n  async fetch(req) {\n    if (req.method === 'OPTIONS') return new Response(null, { headers: CORS });\n    const target = new URL(req.url).searchParams.get('url');\n    if (!target) return new Response('Tune Tune relay is running', { headers: CORS });\n    let t;\n    try { t = new URL(target); } catch (e) { return new Response('Bad link', { status: 400, headers: CORS }); }\n    if (!ALLOW.test(t.hostname)) return new Response('Not allowed', { status: 403, headers: CORS });\n    const h = {\n      'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0 Safari/537.36',\n      'Accept': '*/*', 'Accept-Language': 'en-IN,en;q=0.9', 'Referer': 'https://www.jiosaavn.com/',\n    };\n    const range = req.headers.get('Range');\n    if (range) h['Range'] = range;\n    if (t.hostname.endsWith('jiosaavn.com')) h['Cookie'] = 'gdpr_acceptance=true; DL=english';\n    const media = t.hostname.endsWith('saavncdn.com');\n    const r = await fetch(t.toString(), { method: req.method, headers: h, cf: { cacheTtl: media ? 86400 : 300, cacheEverything: true } });\n    const out = new Headers(r.headers);\n    for (const k in CORS) out.set(k, CORS[k]);\n    out.delete('set-cookie');\n    return new Response(r.body, { status: r.status, headers: out });\n  },\n};\n";
 const JSA = {
-  via: '', fails: new Map(), deadUntil: 0, okAt: {},
+  via: '', viaB: '', deadB: 0, fails: new Map(), deadUntil: 0, okAt: {},
   init() {
     try {
       const v = localStorage.getItem('tunetune.jsvia') || ''; this.via = this.relays('free').some(p => p.id === v) ? v : '';
@@ -1091,17 +1113,19 @@ const JSA = {
   },
   relays(tier = 'free') {
     if (tier === 'free') return [JS_RELAYS[0], ...CFG.relays, ...JS_RELAYS.slice(1)];
-    const s = tier === 'cfg' ? Src.cfgServer() : tier === 'own' ? Src.ownServer() : '';
-    return s ? [{ id: tier === 'cfg' ? 'config' : 'own', srv: true, wrap: tplWrap(s) }] : [];
+    if (tier === 'backup') return BK.relays;
+    if (tier === 'cfg') return Src.cfgServers().map(s => ({ id: s.id, name: s.name, host: s.host, srv: true, wrap: tplWrap(s.url) }));
+    const s = tier === 'own' ? Src.ownServer() : '';
+    return s ? [{ id: 'own', srv: true, wrap: tplWrap(s) }] : [];
   },
   order(tier = 'free') {
-    const L = this.relays(tier), ok = p => !this.bad(p);
+    const L = this.relays(tier), ok = p => !this.bad(p), via = tier === 'backup' ? this.viaB : this.via;
     const o = L.filter(ok).sort((a, b) => (this.okAt[b.id] || 0) - (this.okAt[a.id] || 0)).concat(L.filter(p => !ok(p)));
-    const i = o.findIndex(p => p.id === this.via); if (i > 0) o.unshift(o.splice(i, 1)[0]);
+    const i = o.findIndex(p => p.id === via); if (i > 0) o.unshift(o.splice(i, 1)[0]);
     return o;
   },
   down() { return Date.now() < this.deadUntil; },
-  reset() { this.fails.clear(); this.deadUntil = 0; },
+  reset() { this.fails.clear(); this.deadUntil = 0; this.deadB = 0; },
   setVia(id) { if (this.via !== id) { this.via = id; try { localStorage.setItem('tunetune.jsvia', id); } catch (e) { } } },
   keepOk() { clearTimeout(this.okT); this.okT = setTimeout(() => { try { localStorage.setItem('tunetune.jsok', JSON.stringify(this.okAt)); } catch (e) { } }, 2000); },
   async call(params, tier = 'free', again) {
@@ -1109,25 +1133,31 @@ const JSA = {
     if (!all.length) throw Object.assign(new Error('not set up'), { skip: true });
     const url = 'https://www.jiosaavn.com/api.php?' + new URLSearchParams({ ...params, _format: 'json', _marker: '0', api_version: '4', ctx: 'web6dot0' });
     const done = (p, j) => {
-      this.fails.delete(p.id); if (tier === 'free') { this.setVia(p.id); this.okAt[p.id] = Date.now(); this.keepOk(); }
+      this.fails.delete(p.id); if (tier === 'free') { this.setVia(p.id); this.okAt[p.id] = Date.now(); this.keepOk(); } else if (tier === 'backup') this.viaB = p.id;
       Src.note(tier, p.id); try { Object.defineProperty(j, '__r', { value: { tier, relay: p.id }, enumerable: false }); } catch (e) { } return j;
     };
-    if (tier !== 'free') {
-      const p = all[0]; if (this.bad(p)) throw new Error('server not answering');
-      try { return done(p, await lim(() => this.attempt(p, url))); }
-      catch (e) { this.fails.set(p.id, Date.now()); Src.fail(tier); throw e; }
+    if (tier === 'cfg' || tier === 'own') {
+      let err = new Error('server not answering');
+      for (const p of all) {
+        if (this.bad(p)) continue;
+        try { return done(p, await lim(() => this.attempt(p, url))); }
+        catch (e) { err = e; this.fails.set(p.id, Date.now()); }
+      }
+      Src.fail(tier); throw err;
     }
-    if (this.down()) throw new Error('Free JioSaavn relays are busy');
-    const fresh = this.order('free').filter(p => !this.bad(p));
-    if (!fresh.length) { this.dead(); throw new Error('Free JioSaavn relays are busy'); }
-    const known = fresh[0].id === this.via ? fresh.shift() : null;
+    const isB = tier === 'backup';
+    if (isB ? Date.now() < this.deadB : this.down()) throw new Error('JioSaavn relays are busy');
+    const fresh = this.order(tier).filter(p => !this.bad(p));
+    if (!fresh.length) { if (isB) this.deadB = Date.now() + 3 * 60e3; else this.dead(); throw new Error('JioSaavn relays are busy'); }
+    const known = fresh[0].id === (isB ? this.viaB : this.via) ? fresh.shift() : null;
     if (known) { try { return done(known, await lim(() => this.attempt(known, url))); } catch (e) { this.fails.set(known.id, Date.now()); } }
     // another request is already searching for a working relay: wait for it instead of starting a second search
+    if (isB) return this.raceRelays(fresh, url, done, all, true);
     if (this.racing && !again) { await this.racing.catch(() => { }); return this.call(params, tier, true); }
     let endRace; this.racing = new Promise(r => { endRace = r; }); this.racing.catch(() => { });
     try { return await this.raceRelays(fresh, url, done, all); } finally { this.racing = null; endRace(); }
   },
-  async raceRelays(fresh, url, done, all) {
+  async raceRelays(fresh, url, done, all, isB) {
     // a cold start races the 6 most reliable relays first, then the rest — never every relay at once
     for (const wave of [fresh.slice(0, 6), fresh.slice(6)]) {
       if (!wave.length) continue;
@@ -1136,8 +1166,8 @@ const JSA = {
         return done(p, j);
       } catch (e) { }
     }
-    if (all.every(p => this.bad(p))) this.dead();
-    throw new Error('Free JioSaavn relays are busy');
+    if (all.every(p => this.bad(p))) { if (isB) this.deadB = Date.now() + 3 * 60e3; else this.dead(); }
+    throw new Error('JioSaavn relays are busy');
   },
   async text(url, test) {
     const L = this.order('free').filter(p => p.id !== 'direct' && !this.bad(p)).slice(0, 8);
@@ -1151,7 +1181,7 @@ const JSA = {
   },
   async diagnose() {
     const url = 'https://www.jiosaavn.com/api.php?' + new URLSearchParams({ __call: 'autocomplete.get', query: 'ilaiyaraaja', _format: 'json', _marker: '0', api_version: '4', ctx: 'web6dot0' });
-    const list = [...this.relays('free'), ...(Src.on() ? [...this.relays('cfg'), ...this.relays('own')] : [])];
+    const list = [...this.relays('free'), ...this.relays('backup'), ...(Src.on() ? [...this.relays('cfg'), ...this.relays('own')] : [])];
     return Promise.all(list.map(p => this.attempt(p, url).then(() => { this.fails.delete(p.id); return `✓ ${p.id}`; }, e => `✗ ${p.id} (${String(e.message || e).slice(0, 24)})`)));
   },
   img(u, size) { return https(String(u || '').replace(/\d{2,3}x\d{2,3}/, size)); },
@@ -1202,10 +1232,12 @@ const JSA = {
 const Src = {
   last: { tier: '', relay: '' }, state: { cfg: '', own: '' }, busy: false,
   on() { return !!S.settings.ownSrc; },
-  cfgServer() { return this.on() ? (CFG.server || normServer(BUILT_IN_SERVER)) : ''; },
+  cfgServer() { return (this.cfgServers()[0] || {}).url || ''; },
+  cfgServers() { return !this.on() ? [] : CFG.servers.length ? CFG.servers : BUILT_IN_SERVER ? [{ id: 'config:0', name: 'musicServer', host: hostOf(BUILT_IN_SERVER), url: normServer(BUILT_IN_SERVER) }] : []; },
+  backup() { return this.has('backup') ? ['backup'] : []; },
   ownServer() { return this.on() ? (S.settings.proxy || '') : ''; },
-  has(tier) { return tier === 'free' || (tier === 'cfg' ? !!this.cfgServer() : tier === 'own' ? !!(this.ownServer() || (this.on() && S.settings.saavn)) : false); },
-  tiers() { return this.on() ? ['free', 'cfg', 'own'] : ['free']; },
+  has(tier) { return tier === 'free' || (tier === 'backup' ? !!(BK.relays.length || SvC.list('backup').length) : tier === 'cfg' ? !!this.cfgServer() : tier === 'own' ? !!(this.ownServer() || (this.on() && S.settings.saavn)) : false); },
+  tiers() { return ['free', 'backup', ...this.servers()]; },
   servers() { return this.on() ? ['cfg', 'own'] : []; },
   note(tier, relay) { this.last = { tier, relay, at: Date.now() }; if (tier !== 'free') this.state[tier] = 'ok'; },
   fail(tier) { if (tier !== 'free') this.state[tier] = 'down'; },
@@ -1213,17 +1245,18 @@ const Src = {
   describe(r) {
     if (!r || !r.tier) return '';
     if (r.tier === 'yt') return 'YouTube player';
-    if (r.tier === 'cfg') return 'Your tunetune-config server';
+    if (r.tier === 'cfg') { const s = CFG.servers.find(x => x.id === r.relay) || CFG.servers[0]; return s ? `Your server · ${s.name} (${s.host})` : 'Your tunetune-config server'; }
+    if (r.tier === 'backup') { if (/^https?:/.test(r.relay)) return `Backup JioSaavn server · ${hostOf(r.relay)}`; const b = BK.relays.find(x => x.id === r.relay); return `Backup free relay · ${b ? (b.name ? b.name + ' (' + b.host + ')' : b.host) : String(r.relay).replace(/^backup /, '')}`; }
     if (r.tier === 'own') return r.relay === 'own' ? 'Your own music server' : `Your JioSaavn server · ${hostOf(r.relay)}`;
     if (r.relay === 'direct') return 'JioSaavn direct';
     if (r.relay === 'cdn') return 'Link saved with the song';
     if (/^https?:/.test(r.relay)) return `Free JioSaavn server · ${hostOf(r.relay)}`;
     return `Free relay · ${String(r.relay).replace(/^free relay /, '')}`;
   },
-  kind(r) { return !r || !r.tier ? '' : r.tier === 'free' ? 'free' : 'server'; },
+  kind(r) { return !r || !r.tier ? '' : r.tier === 'free' || r.tier === 'backup' ? 'free' : 'server'; },
   async set(on, quiet) {
     S.settings.ownSrc = !!on; save(); buzz();
-    JSA.fails.delete('config'); JSA.fails.delete('own'); this.state = { cfg: '', own: '' };
+    JSA.relays('cfg').forEach(p => JSA.fails.delete(p.id)); JSA.fails.delete('own'); this.state = { cfg: '', own: '' };
     UI.ownPill(); refreshSrcViews();
     if (!on) { if (!quiet) toast('My server off — free sources, then YouTube'); return; }
     await loadSiteConfig();
@@ -1231,7 +1264,7 @@ const Src = {
     toast('Checking your servers…');
     const ok = await this.check(); UI.ownPill(); refreshSrcViews();
     const yt = Player.cur && Player.via === 'embed';
-    if (ok) toast(yt ? `${this.describe({ tier: ok, relay: ok === 'cfg' ? 'config' : 'own' })} works — switching to clean audio` : `Ready — ${this.describe({ tier: ok, relay: ok === 'cfg' ? 'config' : 'own' }).toLowerCase()} is the backup before YouTube`);
+    if (ok) toast(yt ? `${this.describe(this.okRoute)} works — switching to clean audio` : `Ready — ${this.describe(this.okRoute)} is the backup before YouTube`);
     else toast('Your servers aren’t answering — YouTube stays the backup', { label: 'Check', ms: 6000, fn: () => go('advanced') });
     if (ok && yt) Player.cleanRetry();
   },
@@ -1241,8 +1274,8 @@ const Src = {
     for (const tier of ['cfg', 'own']) {
       if (!this.has(tier)) continue;
       try {
-        if (tier === 'own' && !this.ownServer()) await SvC.songs('hits', 'own');
-        else { JSA.fails.delete(tier === 'cfg' ? 'config' : 'own'); await JSA.call({ __call: 'autocomplete.get', query: 'hits' }, tier); }
+        if (tier === 'own' && !this.ownServer()) { await SvC.songs('hits', 'own'); this.okRoute = { tier, relay: S.settings.saavn }; }
+        else { JSA.relays(tier).forEach(p => JSA.fails.delete(p.id)); const j = await JSA.call({ __call: 'autocomplete.get', query: 'hits' }, tier); this.okRoute = j.__r || { tier, relay: tier }; }
         this.state[tier] = 'ok'; ok = ok || tier; break;
       } catch (e) { this.state[tier] = 'down'; }
     }
@@ -1253,6 +1286,8 @@ const Src = {
     if (!navigator.onLine) return;
     try { await JSA.call({ __call: 'autocomplete.get', query: 'hits' }, 'free'); return; } catch (e) { }
     try { await SvC.songs('hits', 'free'); return; } catch (e) { }
+    await loadBackupSources();
+    if (this.has('backup')) { try { await Saavn.songs('hits', ['backup']); return; } catch (e) { } }
     if (this.on()) { await loadSiteConfig(); await this.check(); UI.ownPill(); }
   },
 };
@@ -1276,7 +1311,9 @@ const Saavn = {
   // runs fn(tier) for each allowed tier in order; a soft “no results” answer stops early (your servers have the same catalog)
   async run(fn, tiers) {
     let err = null;
-    for (const tier of tiers || Src.tiers()) {
+    for (const tier of tiers || ['free', 'backup', ...Src.servers()]) {
+      if (tier === 'backup') await loadBackupSources().catch(() => { });   // the backup list may still be loading right after start
+      if (tier === 'cfg') await loadSiteConfig().catch(() => { });
       if (!Src.has(tier)) continue;
       try { const r = await fn(tier); if (r && (!Array.isArray(r) || r.length)) return r; }
       catch (e) { if (e.skip) continue; err = e; if (e.soft) break; }
@@ -1654,6 +1691,16 @@ const Pod = {
   },
 };
 const podProg = id => S.pod.prog[id];
+function podRowLive(t) {
+  const pf = podFrac(t); if (pf <= 0 || pf >= 1) return;
+  $$('.row[data-id]').filter(r => r.dataset.id === t.id).forEach(r => {
+    const tx = r.querySelector('.tx'); if (tx) { tx.classList.add('ep-prog'); tx.style.setProperty('--pf', (pf * 100).toFixed(1) + '%'); }
+    const tw = r.querySelector('.tw'); if (!tw) return;
+    let bar = tw.querySelector('.epbar i'); if (!bar) { tw.insertAdjacentHTML('beforeend', '<span class="epbar" aria-hidden="true"><i></i></span>'); bar = tw.querySelector('.epbar i'); }
+    bar.style.width = (pf * 100).toFixed(1) + '%';
+    const rs = r.querySelector('.rs'); if (rs && !r.closest('.qlist')) { const x = rs.querySelector('.badge') ? null : rs; if (x) x.textContent = (r.dataset.show ? t.artist + ' · ' : '') + podSub(t); }
+  });
+}
 function podSave(t, pos, dur, done) {
   if (!t || t.source !== 'podcast') return;
   S.pod.prog[t.id] = { pos: done ? (dur || pos) : pos, dur: dur || t.duration || 0, at: Date.now(), done: !!done, t: clean(t) };
@@ -1829,7 +1876,7 @@ const Player = {
         if (dt > 0 && dt < 2.5) { this.listened += dt; const c = !this.counted && this.listened >= 30; if (c) { this.counted = true; setTimeout(() => Offline.keep(t), 1500); if (IS_CAP && !S.askedNotif) setTimeout(() => Native.askNotif(), 5000); } Stats.add(t, dt, c); }
       }
       this.lastStatT = now;
-      if (t && t.source === 'podcast' && Date.now() - this.lastPodSave > 5000) { this.lastPodSave = Date.now(); const pp = podProg(t.id); if (!(pp && pp.done && pp.manual)) podSave(t, now, a.duration); }
+      if (t && t.source === 'podcast' && Date.now() - this.lastPodSave > 5000) { this.lastPodSave = Date.now(); const pp = podProg(t.id); if (!(pp && pp.done && pp.manual)) { podSave(t, now, a.duration); podRowLive(t); } }
       UI.time(); this.ahead();
     } else if (ev === 'durationchange') UI.time();
     else if (ev === 'play') UI.state();
@@ -2093,6 +2140,12 @@ const Player = {
     if (!yid) { try { const m = await YT.ytMatch(t); if (m) yid = t.ytId = m.sid; } catch (e) { } if (stale()) return null; }
     if ((r = await streams(yid))) return r; if (stale()) return null;
     if (t.source === 'yt' && (r = await match())) return r; if (stale()) return null;
+    // 1b — backup free sources (tunetune-sources.json), always on
+    await loadBackupSources().catch(() => { }); if (stale()) return null;
+    if (Src.has('backup')) {
+      if ((r = await own(['backup']))) return r; if (stale()) return null;
+      if ((r = await match(['backup']))) return r; if (stale()) return null;
+    }
     // 2 — your servers, only when switched on and every free source failed
     if (Src.on()) {
       if ((r = await own(Src.servers()))) return r; if (stale()) return null;
@@ -2514,11 +2567,11 @@ const UI = {
     if (NativeMS && Player.cur) { const st = playing || busy ? 'playing' : 'paused'; if (st !== this.lastNative) { this.lastNative = st; nms('setPlaybackState', { playbackState: st }); } }
     $('#np').classList.toggle('pod', !!(Player.cur && Player.cur.source === 'podcast'));
     const qb = $('#np-qb'); if (qb) { const h = Player.cur ? badgeHTML(Player.cur) : ''; if (qb.dataset.h !== h) { qb.dataset.h = h; qb.innerHTML = h; const x = qInfo(Player.cur); qb.className = 'qbadge t-' + x.tier; this.fitChips(); } }
-    const sp = $('#np-slp'); if (sp) { const on = !!(Player.sleepAt || Player.sleepEnd); sp.classList.toggle('on', on); if (on) { const left = Player.sleepEnd ? 'End of song' : fmt(Math.max(0, (Player.sleepAt - Date.now()) / 1000)); const lb = sp.querySelector('span'); if (lb.textContent !== left) lb.textContent = left; } }
+    const sp = $('#np-slp'); if (sp) { const on = !!(Player.sleepAt || Player.sleepEnd); if (sp.classList.contains('on') !== on) { sp.classList.toggle('on', on); UI.fitChips(); } if (on) { const left = Player.sleepEnd ? 'At end' : fmt(Math.max(0, (Player.sleepAt - Date.now()) / 1000)); const lb = sp.querySelector('span'); if (lb.textContent !== left) lb.textContent = left; } }
     const et = $('#np-eqt'); if (et) { const on = S.settings.eqOn && !IS_IOS && Player.cur && !Player.cur.live; const txt = on ? eqName() : ''; if (et.dataset.t !== txt + (Player.el === Player.fx)) { et.dataset.t = txt + (Player.el === Player.fx); et.innerHTML = on ? `${I.eq}<span>${esc(txt)}</span>` : ''; et.classList.toggle('na', on && Player.el !== Player.fx); et.title = on && Player.el !== Player.fx ? 'Equalizer isn’t available for this song' : 'Equalizer: ' + txt; this.fitChips(); } }
     const aq = $('#aqbox'); if (aq) { const k = (Player.cur && Player.cur.id) + '|' + Player.quality + '|' + Player.via + '|' + S.settings.eqOn + '|' + Src.on() + '|' + Src.describe(Player.srcPath); if (aq.dataset.k !== k) { aq.dataset.k = k; setHTML(aq, aqInner()); } }
   },
-  slp() { const sp = document.getElementById('np-slp'); if (!sp) return; const on = !!(Player.sleepAt || Player.sleepEnd); sp.classList.toggle('on', on); const b = document.getElementById('np-btimer'); if (b) b.classList.toggle('on', on); if (on) { const left = Player.sleepEnd ? 'End of song' : fmt(Math.max(0, (Player.sleepAt - Date.now()) / 1000)); const lb = sp.querySelector('span'); if (lb && lb.textContent !== left) lb.textContent = left; } },
+  slp() { const sp = document.getElementById('np-slp'); if (!sp) return; const on = !!(Player.sleepAt || Player.sleepEnd); if (sp.classList.contains('on') !== on) { sp.classList.toggle('on', on); UI.fitChips(); } const b = document.getElementById('np-btimer'); if (b) b.classList.toggle('on', on); if (on) { const left = Player.sleepEnd ? 'At end' : fmt(Math.max(0, (Player.sleepAt - Date.now()) / 1000)); const lb = sp.querySelector('span'); if (lb && lb.textContent !== left) lb.textContent = left; } },
   time() {
     this.slp();
     const a = Player.el, t = Player.cur; if (!t) return;
@@ -2772,7 +2825,7 @@ const CAN_AIRPLAY = !!window.WebKitPlaybackTargetAvailabilityEvent;
 const CAN_CAST = !CAN_AIRPLAY && typeof HTMLMediaElement !== 'undefined' && 'remote' in HTMLMediaElement.prototype && !IS_DESKTOP;
 const TABS = [['home', 'Home', 'home'], ['explore', 'Explore', 'explore'], ['search', 'Search', 'search'], ['podcasts', 'Podcasts', 'mic'], ['library', 'Library', 'library']];
 function splash() {
-  if (!S.settings.motion || document.getElementById('splash')) return;
+  if (!S.settings.motion || S.settings.splash === false || document.getElementById('splash')) return;
   const d = document.createElement('div'); d.id = 'splash';
   d.innerHTML = `<div class="sp-half top"></div><div class="sp-half bot"></div><div class="sp-in"><div class="sp-logo">${logoSvg('sp-mark')}</div><b class="sp-word">${esc(TITLE)}</b></div>`;
   document.body.appendChild(d);
@@ -2795,7 +2848,7 @@ function buildShell() {
       <div class="np-from"><span>Playing from</span><b id="np-from"></b></div>
       <button class="np-ib" data-a="npmore" aria-label="More options">${I.more}</button></div>
     <div class="np-stage">
-      <div class="np-art" id="np-deck"><img class="dk dk-prev" id="dk-prev" alt="Previous" data-a="deckprev"><img id="np-img" alt=""><img class="dk dk-next" id="dk-next" alt="Next" data-a="decknext"><div class="burst" aria-hidden="true">${I.heartFill}</div><div id="ytbox"><div id="ytp"></div></div><div class="yt-bar"><button class="own-pill" id="own-pill" data-a="ownsrc" aria-pressed="false" aria-label="My server"><span class="osw"><i></i></span><span class="own-l">My server</span></button><button class="yt-pill" id="yt-pill" data-a="ytfull">${I.expand}<span>Show video</span></button></div><p class="np-tap">Tap the video to start playing</p></div>
+      <div class="np-art" id="np-deck"><img class="dk dk-prev" id="dk-prev" alt="Previous" data-a="deckprev"><img id="np-img" alt=""><img class="dk dk-next" id="dk-next" alt="Next" data-a="decknext"><div class="burst" aria-hidden="true">${I.heartFill}</div><div id="ytbox"><div id="ytp"></div></div><button class="art-info" id="np-info" data-a="npinfo" aria-label="Song info">${I.info}</button><div class="yt-bar"><button class="own-pill" id="own-pill" data-a="ownsrc" aria-pressed="false" aria-label="My server"><span class="osw"><i></i></span><span class="own-l">My server</span></button><button class="yt-pill" id="yt-pill" data-a="ytfull">${I.expand}<span>Show video</span></button></div><p class="np-tap">Tap the video to start playing</p></div>
       <div class="ly-bar" id="ly-tools"></div><div class="np-panel" id="np-lyr"></div>
       <div class="np-panel" id="np-q"></div>
     </div>
@@ -2814,11 +2867,19 @@ function buildShell() {
     ${IS_IOS ? '' : `<div class="vol">${I.volLow}<input class="rng" id="np-vol" type="range" min="0" max="100" value="${v0}" style="--p:${v0}%" aria-label="Volume">${I.volHigh}</div>`}
     <div class="np-bot">
       <button class="np-ib" id="np-blyr" data-a="panel" data-p="lyr" aria-label="Lyrics">${I.lyrics}</button>
-      <button class="np-ib" data-a="eq" aria-label="Equalizer">${I.eq}</button>
+      <button class="np-ib" id="np-beq" data-a="eq" aria-label="Equalizer">${I.eq}</button>
       <button class="np-ib" id="np-btimer" data-a="sleep" aria-label="Sleep timer">${I.timer}</button>
-      ${CAN_AIRPLAY || CAN_CAST ? `<button class="np-ib" data-a="cast" aria-label="${CAN_AIRPLAY ? 'AirPlay' : 'Cast'}">${CAN_AIRPLAY ? I.airplay : I.cast}</button>` : ''}
+      ${CAN_AIRPLAY || CAN_CAST ? `<button class="np-ib" id="np-bcast" data-a="cast" aria-label="${CAN_AIRPLAY ? 'AirPlay' : 'Cast'}">${CAN_AIRPLAY ? I.airplay : I.cast}</button>` : ''}
       <button class="np-ib" id="np-bq" data-a="panel" data-p="q" aria-label="Queue">${I.queue}</button></div>
   </div>`;
+}
+const showEq = () => S.settings.btnEq !== undefined && S.settings.btnEq !== null ? !!S.settings.btnEq : !IS_IOS;   // hidden by default only where it can't work
+function npButtons() {
+  const np = $('#np'); if (!np) return; const s = S.settings;
+  np.classList.toggle('no-party', s.btnParty === false);
+  np.classList.toggle('no-eq', !showEq());
+  np.classList.toggle('no-cast', s.btnCast === false);
+  np.classList.toggle('no-info', s.btnInfo === false);
 }
 function openNP() {
   if (!Player.cur || npOpen) return;
@@ -3088,6 +3149,8 @@ function trackMenu(t, meta = {}) {
       meta.np && lyrState && lyrState.id === t.id && (lyrState.plain || (lyrState.synced && lyrState.synced.length)) && { label: 'Copy Lyrics', icon: 'lyrics', fn: copyLyrics },
       { label: 'Song Info', icon: 'info', fn: () => songInfo(t) },
       meta.np && { label: 'Audio Quality & Source', icon: 'wave', fn: openAQ },
+      meta.np && !showEq() && { label: 'Equalizer', icon: 'eq', fn: openEQ },
+      meta.np && S.settings.btnCast === false && (CAN_AIRPLAY || CAN_CAST) && { label: CAN_AIRPLAY ? 'AirPlay' : 'Cast', icon: CAN_AIRPLAY ? 'airplay' : 'cast', fn: () => Actions.cast() },
       meta.np && !t.live && !['local', 'podcast', 'audius'].includes(t.source) && { label: Src.on() ? 'My server: On — turn off' : 'My server: Off — use it before YouTube', icon: 'server', fn: () => Src.set(!Src.on()) },
       meta.np && { label: S.settings.badge ? 'Hide Quality Badge' : 'Show Quality Badge', icon: 'eye', fn: () => { S.settings.badge = !S.settings.badge; save(); applyTheme(); toast(S.settings.badge ? 'Quality badge shown' : 'Quality badge hidden'); } },
       { label: 'Copy Song & Artist', icon: 'copy', fn: () => copyText(`${t.title} — ${t.artist}`, 'Copied') },
@@ -3149,8 +3212,9 @@ function srcInfo() {
   if (v === 'saved') return { k: 'local', title: t.source === 'local' ? 'This device' : 'Downloaded', sub: 'Plays without internet', rows: [['Music from', t.source === 'local' ? 'Your file' : 'Saved on this device']] };
   if (v === 'preloaded') return { k: 'free', title: 'Preloaded', sub: 'Loaded in advance for a gap-free start', rows: [['Music from', { saavn: 'JioSaavn', yt: 'YouTube Music', deezer: 'JioSaavn / YouTube Music', audius: 'Audius' }[t.source] || 'Online']] };
   if (v === 'saavn') {
-    const r = Player.srcPath, srv = Src.kind(r) === 'server';
-    return { k: srv ? 'server' : 'free', title: srv ? 'JioSaavn · your server' : 'JioSaavn · free', sub: srv ? 'Free sources didn’t answer, so your server found it' : 'Clean, ad-free audio from a free source',
+    const r = Player.srcPath, srv = Src.kind(r) === 'server', bk = r && r.tier === 'backup';
+    return { k: srv ? 'server' : 'free', title: srv ? 'JioSaavn · your server' : bk ? 'JioSaavn · free (backup)' : 'JioSaavn · free',
+      sub: srv ? 'Free sources didn’t answer, so your server found it' : bk ? 'The usual free sources were busy — a backup free source from tunetune-sources.json answered' : 'Clean, ad-free audio from a free source',
       rows: [['Music from', 'JioSaavn'], ['Found through', Src.describe(r) || 'Link saved with the song'], ['Audio stream', Player.audioVia === 'own' ? 'Your own server (for the equalizer)' : Player.audioVia === 'config' ? 'Your tunetune-config server (for the equalizer)' : 'JioSaavn’s servers, direct']] };
   }
   if (/^piped:/.test(v)) return { k: 'free', title: 'YouTube Music audio · free', sub: 'Ad-free audio from a public mirror', rows: [['Music from', 'YouTube Music'], ['Through', 'Piped mirror · ' + hostOf(mirror)]] };
@@ -3209,7 +3273,7 @@ function songInfo(t) {
   const p = S.stats.plays[t.id]; const cur = Player.cur && Player.cur.id === t.id;
   const rows = [['Title', t.title], ['Artist', t.artist], t.album && ['Album', t.album], t.duration && !t.live && ['Length', fmt(t.duration)], t.date && ['Released', fmtDate(t.date)],
     t.year && ['Year', t.year], t.lang && ['Language', t.lang], t.label && ['Label', t.label], t.explicit && ['Explicit', 'Yes'], ['Audio', (() => { const x = qInfo(t); return [x.label, x.spec].filter(Boolean).join(' · ') || '—'; })()], ['Source', { saavn: 'JioSaavn', yt: 'YouTube Music', deezer: 'Chart (matched on YouTube Music)', audius: 'Audius', radio: 'Live radio', podcast: 'Podcast', local: 'This device' }[t.source] || t.source],
-    cur && Player.quality && ['Quality', Player.quality], cur && ['Playing via', viaLabel(Player.via)], p && ['Your plays', `${p.n} · ${Math.round(p.s / 60)} min`], p && p.last && ['Last played', fmtDate(p.last)], isDl(t.id) && ['Offline', 'Downloaded'], t.copy && ['Copyright', t.copy]].filter(Boolean);
+    cur && Player.quality && ['Quality', Player.quality], cur && ['Playing via', viaLabel(Player.via)], p && p.n > 0 && ['Your plays', `${p.n} · ${Math.max(1, Math.round((p.s || 0) / 60))} min`], p && p.n > 0 && p.last && fmtDate(p.last) && ['Last played', fmtDate(p.last)], isDl(t.id) && ['Offline', 'Downloaded'], t.copy && ['Copyright', t.copy]].filter(Boolean);
   openSheet(`<div class="sg"><div class="sh">${`<img src="${esc(artOf(t))}" alt="" class="${t.live ? 'logo' : ''}">`}<div class="sht"><div class="m-t">${esc(t.title)}</div><div class="m-s">${esc(t.artist)}</div></div></div>
     <div class="info">${rows.map(([k, v]) => `<div class="inf"><span>${esc(k)}</span><b class="selectable">${esc(v)}</b></div>`).join('')}</div></div><button class="scancel" data-a="sclose">Done</button>`);
 }
@@ -3448,7 +3512,8 @@ async function mediaSource(t) {
   let r = await svm(['free']); if (r) return r;
   let yid = ytIdOf(t);
   if (!yid && (t.source === 'deezer' || t.source === 'saavn')) { const m = await YT.ytMatch(t).catch(() => null); if (m) yid = t.ytId = m.sid; }
-  if (yid) { try { return await Streams.get(yid, new Set(), DIRECT() ? 30000 : 15000); } catch (e) { if (!Src.on()) throw e; } }
+  if (yid) { try { return await Streams.get(yid, new Set(), DIRECT() ? 30000 : 15000); } catch (e) { if (!Src.on() && !Src.has('backup')) throw e; } }
+  if (Src.has('backup') && (r = await svm(['backup']))) return r;
   if (Src.on() && (r = await svm(Src.servers()))) return r;
   throw new Error('no source');
 }
@@ -3878,7 +3943,8 @@ function offlineNudge() {
   toast(`You’re offline · ${plural(n, 'song')} ready`, { label: 'Play', ms: 6000, fn: () => offlineSheet() });
 }
 function offlineSheet() {
-  const all = offlineList(), dl = S.downloads.length, sv = (S.cached || []).length, lc = S.locals.length;
+  const np = x => S.settings.mixPods || x.source !== 'podcast';
+  const all = offlineList(), dl = S.downloads.filter(np).length, sv = (S.cached || []).filter(np).length, lc = S.locals.length;
   if (!all.length) return toast('You’re offline — download songs to listen without internet');
   actionSheet({ head: `<div class="sh col off-h"><div class="off-ic">${I.wifiOff}</div><b>You’re offline</b><div class="m-s">${plural(all.length, 'song')} on this device can still play</div></div>`,
     acts: [
@@ -4058,7 +4124,7 @@ const Marquee = {
     }
     const inner = el.querySelector('.mq-i'); this.reset(el);
     if (!el.clientWidth) { clearTimeout(this.later); this.later = setTimeout(() => this.all(), 400); return; }   // not laid out yet (screen still opening)
-    const active = el.id.startsWith('dv-') ? !!$('#drive') : npOpen;
+    const active = S.settings.roll !== false && (el.id.startsWith('dv-') ? !!$('#drive') : npOpen);
     const over = Math.max(el.scrollWidth, inner.getBoundingClientRect().width) - el.clientWidth;
     if (!active || over < 4) return;
     el.style.setProperty('--mq', -(over + 14) + 'px'); el.style.setProperty('--mqd', Math.max(7, (over + 14) / 28 + 4).toFixed(1) + 's');
@@ -4096,9 +4162,10 @@ function rowHTML(t, k, i, o = {}) {
   const sub = o.sub ? `${t.artist} · ${o.sub}` : t.live ? t.artist : t.source === 'podcast' ? (o.show ? t.artist + ' · ' : '') + podSub(t) : [t.artist, o.album && t.album].filter(Boolean).join(' · ');
   const pf = t.source === 'podcast' ? podFrac(t) : 0, played = pf >= 1;
   const thumb = `<img class="thumb ${t.live ? 'logo' : ''}" src="${esc(artOf(t))}" alt="" loading="lazy">`;
-  return `<div class="row ${cur ? 'is-cur' : ''}${played && !cur ? ' ep-done' : ''}" style="--i:${Math.min(i, 14)}" data-a="play" data-l="${k}" data-i="${i}" data-id="${esc(t.id)}">${o.num ? `<span class="num">${i + 1}</span>` : ''}
+  const prog = pf > 0 && !played ? ` ep-prog" style="--pf:${(pf * 100).toFixed(1)}%` : '';
+  return `<div class="row ${cur ? 'is-cur' : ''}${t.source === 'podcast' ? ' pod' : ''}${played && !cur ? ' ep-done' : ''}" style="--i:${Math.min(i, 14)}" data-a="play" data-l="${k}" data-i="${i}" data-id="${esc(t.id)}"${o.show ? ' data-show="1"' : ''}>${o.num ? `<span class="num">${i + 1}</span>` : ''}
     ${t.source === 'podcast' ? `<span class="tw">${thumb}${pf > 0 && !played ? `<span class="epbar" aria-hidden="true"><i style="width:${(pf * 100).toFixed(1)}%"></i></span>` : ''}${played ? `<span class="epchk" title="Played">${I.check}</span>` : ''}</span>` : thumb}
-    <div class="rb"><div class="rtx"><div class="rt">${cur ? BARS : ''}<span class="tx">${esc(t.title)}</span></div>
+    <div class="rb"><div class="rtx"><div class="rt">${cur ? BARS : ''}<span class="tx${prog}">${esc(t.title)}</span></div>
       <div class="rs">${t.live ? '<span class="badge live">LIVE</span>' : ''}${t.explicit ? '<span class="badge">E</span>' : ''}${esc(sub)}</div></div>
       ${dlMarkHTML(t)}${o.dur && t.duration && !t.live && t.source !== 'podcast' ? `<span class="dur">${fmt(t.duration)}</span>` : ''}
       <button class="more" data-a="more" data-l="${k}" data-i="${i}" aria-label="More options for ${esc(t.title)}">${I.more}</button></div></div>`;
@@ -4666,10 +4733,16 @@ function renderColl(e, tok) {
     (e.k === 'downloads' && S.downloads.length ? nbBtn('clearDl', 'trash', 'Remove all downloads') : '') + (e.k === 'history' && S.history.length ? nbBtn('clearHist', 'trash', 'Clear history') : '');
   let html = header(title, { noLarge: true, right });
   if (K.get) {
-    const tr = K.get(); const k = reg(tr, { from: title });
-    html += collHead(title, tr, k, { icon: K.icon });
+    const tr = K.get();
+    const split = !S.settings.mixPods && ['downloads', 'saved'].includes(e.k) && tr.some(x => x.source === 'podcast') && tr.some(x => x.source !== 'podcast');
+    const songs = split ? tr.filter(x => x.source !== 'podcast') : tr, k = reg(songs, { from: title });
+    html += collHead(title, songs, k, { icon: K.icon });
     if (e.k === 'locals' && tr.length) html += `<div class="note">${I.folder}<span>Files stay private on this device and play offline.${matchMedia('(hover:hover)').matches ? ' You can also drag and drop files anywhere.' : ''}</span><button class="btn sm" data-a="import">Add</button></div>`;
     if (e.k === 'downloads') { html += `<div class="note">${I.download}<span id="stor">Checking storage…</span></div>`; setTimeout(() => storageNote('#stor')); }
+    if (split) {   // songs and podcast episodes kept apart — each plays in its own queue
+      const eps = tr.filter(x => x.source === 'podcast');
+      return html + rowsHTML(songs, k, { dur: true }) + `<div class="sub-h">Podcast episodes</div>` + rowsHTML(eps, reg(eps, { from: title + ' · Podcasts' }), { dur: true, show: true });
+    }
     html += tr.length ? rowsHTML(tr, k, { dur: true }) : emptyState(K.empty);
     return html;
   }
@@ -4690,7 +4763,7 @@ const sRow = (label, inner, hint) => `<div class="li"><div class="lb"><span clas
 function renderSettings() {
   const s = S.settings; const hs = s.homeSections;
   const standalone = matchMedia('(display-mode: standalone)').matches || navigator.standalone === true || NATIVE;
-  const timerVal = Player.sleepEnd ? 'End of song' : Player.sleepAt ? `${Math.ceil((Player.sleepAt - Date.now()) / 60000)} min` : 'Off';
+  const timerVal = Player.sleepEnd ? 'At end' : Player.sleepAt ? `${Math.ceil((Player.sleepAt - Date.now()) / 60000)} min` : 'Off';
   setTimeout(() => { storageNote('#stor2'); if (IS_DESKTOP) serverPanel(); });
   return header('Settings') +
     sGrp('You', sLi({ icon: 'user', color: '#bf5af2', label: 'Your name', value: S.settings.name || 'Add your name', a: 'setname', chev: true })) +
@@ -4703,24 +4776,31 @@ function renderSettings() {
       (IS_IOS ? '' : `<div class="li"><div class="lb"><span class="lx">Crossfade<small class="lh">Blend the end of one song into the next</small></span><span class="lv" id="v-crossfade">${+s.crossfade ? s.crossfade + ' s' : 'Off'}</span></div></div><div class="pad"><input class="slider" type="range" min="0" max="12" step="1" value="${+s.crossfade || 0}" data-set="crossfade" style="--p:${((+s.crossfade || 0) / 12) * 100}%" aria-label="Crossfade seconds"></div>`)) +
     sGrp('Music sources',
       sLi({ icon: 'server', color: Src.on() ? '#30d158' : '#8e8e93', label: 'My server', hint: Src.on() ? 'On · free sources first, then your tunetune-config server, then your own server, then YouTube' : 'Off · free sources first, then YouTube. Turn on to try your servers before YouTube.', ctl: sSw('ownSrc', Src.on()) }) +
-      sLi({ label: 'Your own music server', value: s.proxy ? hostOf(s.proxy) : 'Set up', a: 'setproxy', chev: true }) +
+      sLi({ icon: 'link', color: '#0a84ff', label: 'Your own music server', value: s.proxy ? hostOf(s.proxy) : 'Set up', a: 'setproxy', chev: true }) +
       (Player.cur ? sLi({ label: 'Now playing from', value: (srcInfo() || {}).title || '—', a: 'srcinfo', chev: true }) : '') +
-      sLi({ label: 'Test music sources', a: 'testsrc', chev: true }),
+      sLi({ icon: 'pulse', color: '#30d158', label: 'Test music sources', a: 'testsrc', chev: true }),
       'Tune Tune always looks for a free, ad-free source first. Your servers are only a backup when they’re switched on.') +
     sGrp('Playback',
       sLi({ icon: 'eq', color: '#ff9f0a', label: 'Equalizer', value: IS_IOS ? 'Not on iPhone' : s.eqOn ? eqName() : 'Off', a: 'eq', chev: true }) +
       (!IS_IOS && eqPins().length ? `<div class="pad"><div class="chips eqpins">${eqPins().filter(n => eqFind(n)).map(n => `<button class="chip ${s.eqOn && eqName() === n ? 'on' : ''}" data-a="eqp" data-n="${esc(n)}">${I.pin}${esc(n)}</button>`).join('')}</div></div>` : '') +
       sLi({ icon: 'infinity', color: '#30d158', label: 'Autoplay similar songs', ctl: sSw('autoplay', s.autoplay) }) +
-      sLi({ label: 'Resume after calls', hint: 'Music continues by itself when a phone call or alarm ends', ctl: sSw('autoResume', S.settings.autoResume !== false) }) +
-      sLi({ label: 'Mix podcasts with songs', hint: 'Off keeps podcasts and songs in separate queues', ctl: sSw('mixPods', !!S.settings.mixPods) }) +
+      sLi({ icon: 'phone', color: '#30d158', label: 'Resume after calls', hint: 'Music continues by itself when a phone call or alarm ends', ctl: sSw('autoResume', S.settings.autoResume !== false) }) +
+      sLi({ icon: 'mic', color: '#bf5af2', label: 'Mix podcasts with songs', hint: 'Off keeps podcasts and songs in separate queues', ctl: sSw('mixPods', !!S.settings.mixPods) }) +
       (IS_CAP || window.ttDesktop ? sRow('Remind me when I’m away', sSeg('remindDays', [[0, 'Off'], [3, '3 days'], [7, '7 days'], [14, '14 days']], Native.remindDays()), 'At most two gentle notifications, then it stays quiet until you listen again') : '') +
       (NATIVE ? sLi({ icon: 'music', color: '#ff375f', label: 'Make Tune Tune your music player', hint: 'Songs you open from files play here', a: 'defaultapp', chev: true }) : '') +
-      sLi({ label: 'Tap sounds', hint: 'Soft musical sounds when you tap, like, add, delete, play or pause', ctl: sSw('tapSound', !!S.settings.tapSound) }) +
-      sLi({ label: 'Haptic scroll', hint: 'A soft tick as you scroll through lists', ctl: sSw('crown', !!S.settings.crown) }) +
-      sLi({ label: 'Car Mode in landscape', hint: 'Phones switch to big Car Mode controls when turned sideways', ctl: sSw('landCar', S.settings.landCar) }) +
+      sLi({ icon: 'volHigh', color: '#ff375f', label: 'Tap sounds', hint: 'Soft musical sounds when you tap, like, add, delete, play or pause', ctl: sSw('tapSound', !!S.settings.tapSound) }) +
+      sLi({ icon: 'pulse', color: '#5e5ce6', label: 'Haptic scroll', hint: 'A soft tick as you scroll through lists', ctl: sSw('crown', !!S.settings.crown) }) +
+      sLi({ icon: 'car', color: '#0a84ff', label: 'Car Mode in landscape', hint: 'Phones switch to big Car Mode controls when turned sideways', ctl: sSw('landCar', S.settings.landCar) }) +
       sLi({ icon: 'timer', color: '#5e5ce6', label: 'Sleep Timer', value: timerVal, a: 'sleep', chev: true }) +
       sLi({ icon: 'speed', color: '#0a84ff', label: 'Music speed', value: Player.rate + '×', a: 'speed', chev: true }) +
       sLi({ icon: 'radio', color: '#ff375f', label: 'Region', ctl: `<select class="sel" data-set="country" aria-label="Region">${COUNTRIES.map(([c, n]) => `<option value="${c}" ${s.country === c ? 'selected' : ''}>${n}</option>`).join('')}</select>` })) +
+    sGrp('Player',
+      sLi({ icon: 'disco', color: '#bf5af2', label: 'Party Mode button', hint: 'Shown for songs, next to Share', ctl: sSw('btnParty', S.settings.btnParty !== false) }) +
+      sLi({ icon: 'eq', color: '#ff9f0a', label: 'Equalizer button', hint: IS_IOS ? 'Hidden on iPhone and iPad: Apple doesn’t let web apps change the sound. You can still show it.' : 'In the bar under the player', ctl: sSw('btnEq', showEq()) }) +
+      (CAN_AIRPLAY || CAN_CAST ? sLi({ icon: CAN_AIRPLAY ? 'airplay' : 'cast', color: '#0a84ff', label: (CAN_AIRPLAY ? 'AirPlay' : 'Cast') + ' button', hint: 'Send music to speakers and TVs', ctl: sSw('btnCast', S.settings.btnCast !== false) }) : '') +
+      sLi({ icon: 'info', color: '#5e5ce6', label: 'Info button on artwork', hint: 'A small ⓘ for song or episode details', ctl: sSw('btnInfo', S.settings.btnInfo !== false) }) +
+      sLi({ icon: 'expand', color: '#30d158', label: 'Rolling titles', hint: 'Long titles and names scroll; tap to go back to the start', ctl: sSw('roll', S.settings.roll !== false) }),
+      'Hidden buttons stay in the ••• menu of the player.') +
     sGrp('Podcasts',
       sRow('Podcast speed', sSeg('podSpeed', [[1, '1×'], [1.25, '1.25×'], [1.5, '1.5×'], [1.75, '1.75×'], [2, '2×']], s.podSpeed)) +
       sRow('Skip back', sSeg('podBack', [[10, '10 s'], [15, '15 s'], [30, '30 s']], s.podBack)) +
@@ -4735,25 +4815,26 @@ function renderSettings() {
       `<div class="sws" role="group" aria-label="Accent color">${ACCENTS.map(c => `<button class="swc ${s.accent === c ? 'on' : ''}" style="--c:${c}" data-a="accent" data-c="${c}" aria-label="Accent color ${c}"></button>`).join('')}</div>` +
       sRow('Display size', sSeg('zoom', [[0.9, 'Small'], [1, 'Default'], [1.1, 'Large'], [1.2, 'Larger']], s.zoom)) +
       sRow('Lyrics size', sSeg('lyricsSize', [['s', 'Small'], ['m', 'Medium'], ['l', 'Large']], s.lyricsSize)) +
-      sLi({ label: 'Animations', ctl: sSw('motion', s.motion) }) +
-      sLi({ label: 'Moving Now Playing background', ctl: sSw('animBg', s.animBg) }) +
-      sLi({ label: 'Show audio quality badge', ctl: sSw('badge', s.badge) }) +
-      sLi({ label: 'Vibration feedback', ctl: sSw('haptics', s.haptics) })) +
+      sLi({ icon: 'sparkle', color: '#ff375f', label: 'Animations', ctl: sSw('motion', s.motion) }) +
+      sLi({ icon: 'music', color: '#bf5af2', label: 'Opening animation', hint: 'The Tune Tune logo when the app starts', ctl: sSw('splash', S.settings.splash !== false) }) +
+      sLi({ icon: 'wave', color: '#5e5ce6', label: 'Moving Now Playing background', ctl: sSw('animBg', s.animBg) }) +
+      sLi({ icon: 'eye', color: '#ff9f0a', label: 'Show audio quality badge', ctl: sSw('badge', s.badge) }) +
+      sLi({ icon: 'pulse', color: '#30d158', label: 'Vibration feedback', ctl: sSw('haptics', s.haptics) })) +
     sGrp('Library & privacy',
-      sLi({ label: 'Pause listening history', hint: 'New plays won’t be added to Recently Played', ctl: sSw('pauseHistory', s.pauseHistory) }) +
-      sLi({ label: 'Hide explicit songs', ctl: sSw('hideExplicit', s.hideExplicit) }) +
-      sLi({ label: 'Auto-download favorites', hint: 'Songs you favorite are saved for offline', ctl: sSw('smartDl', s.smartDl) }) +
+      sLi({ icon: 'clock', color: '#8e8e93', label: 'Pause listening history', hint: 'New plays won’t be added to Recently Played', ctl: sSw('pauseHistory', s.pauseHistory) }) +
+      sLi({ icon: 'ban', color: '#ff453a', label: 'Hide explicit songs', ctl: sSw('hideExplicit', s.hideExplicit) }) +
+      sLi({ icon: 'heart', color: '#ff375f', label: 'Auto-download favorites', hint: 'Songs you favorite are saved for offline', ctl: sSw('smartDl', s.smartDl) }) +
       (S.history.length ? sLi({ label: 'Clear Listening History', danger: true, a: 'clearHist' }) : '') +
       (S.searches.length ? sLi({ label: 'Clear Search History', danger: true, a: 'clearRecent' }) : '')) +
     sGrp('Storage',
       sLi({ icon: 'download', color: '#30d158', label: 'Downloaded', value: String(S.downloads.length), a: 'go', extra: 'data-v="coll" data-k="downloads"', chev: true }) +
       sLi({ icon: 'folder', color: '#8e8e93', label: 'On This Device', value: String(S.locals.length), a: 'go', extra: 'data-v="coll" data-k="locals"', chev: true }) +
-      sLi({ label: 'Show “Ready offline” on Home', ctl: sSw('savedCard', S.settings.savedCard !== false) }) +
-      sLi({ label: 'Offline suggestions', hint: 'A small note when you lose internet', ctl: sSw('offlineTips', S.settings.offlineTips !== false) }) +
-      sLi({ label: 'Save songs you play for offline', hint: `Keeps your last ${S.settings.autoSaveMax || 30} played songs on this device so they play without internet`, ctl: sSw('autoSave', S.settings.autoSave) }) +
+      sLi({ icon: 'home', color: '#0a84ff', label: 'Show “Ready offline” on Home', ctl: sSw('savedCard', S.settings.savedCard !== false) }) +
+      sLi({ icon: 'wifiOff', color: '#8e8e93', label: 'Offline suggestions', hint: 'A small note when you lose internet', ctl: sSw('offlineTips', S.settings.offlineTips !== false) }) +
+      sLi({ icon: 'save', color: '#30d158', label: 'Save songs you play for offline', hint: `Keeps your last ${S.settings.autoSaveMax || 30} played songs on this device so they play without internet`, ctl: sSw('autoSave', S.settings.autoSave) }) +
       ((S.cached || []).length ? sLi({ label: `Saved for offline: ${plural(S.cached.length, 'song')}`, value: fmtBytes((S.cached || []).reduce((a, x) => a + (x.size || 0), 0)), a: 'clearOffline' }) : '') +
       sLi({ label: 'Checking storage…', small: true, id: 'stor2' }) +
-      sLi({ label: 'Clear Cache', hint: 'Frees space; pages reload fresh', a: 'clearcache' }) +
+      sLi({ icon: 'trash', color: '#8e8e93', label: 'Clear Cache', hint: 'Frees space; pages reload fresh', a: 'clearcache' }) +
       (S.downloads.length ? sLi({ label: 'Remove All Downloads', danger: true, a: 'clearDl' }) : '')) +
     (IS_DESKTOP ? sGrp('Home Server', '<div id="srvp"><div class="spin"></div></div>', 'Your iPhone, iPad and other devices can use this computer to play clean, ad-free YouTube Music audio that keeps playing with the screen locked. Keep this app open (it can sit in the tray).')
       : '') +
@@ -4763,7 +4844,7 @@ function renderSettings() {
       sLi({ label: TITLE, hint: TAGLINE, small: false }) +
       sLi({ icon: 'globe', color: '#0a84ff', label: 'Explore our other apps', hint: 'Free apps & extensions by H24 Creationz', a: 'openurl', extra: `data-u="${PRODUCTS_URL}"`, chev: true }) +
       sLi({ label: 'Version', value: VER + (IS_DESKTOP ? ' · Desktop' : IS_CAP ? ' · Android' : Server.ok ? ' · Home Server' : ' · Web') }) +
-      sLi({ label: 'Shortcuts & gestures', a: 'keys', chev: true }),
+      sLi({ icon: 'grip', color: '#8e8e93', label: 'Shortcuts & gestures', a: 'keys', chev: true }),
       `${TITLE} is free, with no account and no ads of its own. Lyrics: LRCLIB · Radio: Radio Browser · Podcasts: Apple Podcasts directory · Independent music: Audius.`) +
     '<div style="height:24px"></div>';
 }
@@ -4774,10 +4855,12 @@ function renderAdvanced() {
   return header('Advanced') +
     sGrp('Music sources',
       sLi({ label: 'Use YouTube’s player as a last resort', hint: 'Only for songs no clean source has. Can show ads and pauses when locked.', ctl: sSw('ytPlayer', s.ytPlayer) }) +
-      sLi({ label: 'Free route in use', value: JSA.via && !JSA.down() ? Src.describe({ tier: 'free', relay: JSA.via }) : SvC.best ? Src.describe({ tier: 'free', relay: SvC.best }) : JSA.down() ? 'Busy — retrying soon' : 'Checking…' }) +
-      sLi({ label: 'Free sources', value: `${JSA.relays('free').length - 1} relays · ${SvC.list('free').length} servers` }) +
+      sLi({ icon: 'pulse', color: '#30d158', label: 'Free route in use', hint: JSA.via && !JSA.down() ? Src.describe({ tier: 'free', relay: JSA.via }) : SvC.best ? Src.describe({ tier: 'free', relay: SvC.best }) : JSA.down() ? 'Busy — retrying soon' : 'Checking…' }) +
+      sLi({ icon: 'globe', color: '#30d158', label: 'Free sources', hint: `${JSA.relays('free').length - 1} relays · ${SvC.list('free').length} JioSaavn servers · YouTube mirrors found automatically` }) +
+      sLi({ icon: 'globe', color: '#0a84ff', label: 'Backup free sources', hint: 'tunetune-sources.json · always on, tried after the free sources · ' + (!BK.p ? 'loading…' : BK.found ? `${BK.relays.length} relays · ${SvC.list('backup').length} JioSaavn servers · ${BK.piped.length + BK.inv.length} mirrors` : 'not on this site') + (JSA.viaB ? ' · last used: ' + Src.describe({ tier: 'backup', relay: JSA.viaB }) : '') }) +
       sLi({ icon: 'server', color: Src.on() ? '#30d158' : '#8e8e93', label: 'My server', hint: 'Only used after every free source failed, before YouTube', ctl: sSw('ownSrc', Src.on()) }) +
-      sLi({ label: 'tunetune-config.json', value: !CFG.p ? '—' : CFG.found ? (CFG.server ? (Src.on() ? srvState(Src.state.cfg) : 'Has a server · off') : 'Free sources only') : 'Not on this site' }) +
+      sLi({ label: 'tunetune-config.json', value: !CFG.p ? '—' : CFG.found ? (CFG.servers.length ? `${plural(CFG.servers.length, 'server')}${Src.on() ? ' · ' + srvState(Src.state.cfg) : ' · off'}` : 'Free sources only') : 'Not on this site' }) +
+      CFG.servers.map(s => sLi({ label: s.name, small: true, hint: s.host, value: !Src.on() ? 'Off' : JSA.bad({ id: s.id, srv: true }) ? 'Not answering' : (Src.last.tier === 'cfg' && Src.last.relay === s.id) ? 'In use' : 'Ready' })).join('') +
       sLi({ label: 'Your own music server', hint: 'Free Cloudflare Worker', value: s.proxy ? (Src.on() ? srvState(Src.state.own) : 'Saved · off') : 'Set up', a: 'setproxy', chev: true }) +
       sLi({ label: 'Your JioSaavn API', value: s.saavn ? hostOf(s.saavn) : 'None', a: 'setsaavn', chev: true }),
       'Songs play as clean audio from JioSaavn (up to 320 kbps). Lyrics: LRCLIB · Podcasts: Apple Podcasts directory · Radio: Radio Browser.') +
@@ -4868,7 +4951,11 @@ const Actions = {
   autoplay() { S.settings.autoplay = !S.settings.autoplay; save(); renderQueue(); toast(S.settings.autoplay ? 'Autoplay on' : 'Autoplay off'); },
   nplike() { if (Player.cur) toggleLike(Player.cur); },
   npmore() { if (Player.cur) trackMenu(Player.cur, { np: true }); },
-  npartist() { const t = Player.cur; if (t && t.uid) goArtist(t); },
+  npartist() {
+    const t = Player.cur; if (!t) return;
+    if (t.source === 'podcast' && t.podId) { closeNP(); setTimeout(() => go('coll', { k: 'pod', c: { kind: 'podcast', id: t.podId, title: t.artist, art: t.artLarge || t.art, source: 'pod' }, title: t.artist }), 380); return; }
+    if (t.uid) goArtist(t);
+  },
   panel(el, d) { togglePanel(d.p); },
   qjump(el, d) { Player.jump(+d.q); }, qrm(el, d) {
     const qi0 = +d.q, gone = Player.queue[qi0]; Player.removeAt(qi0);
@@ -5025,6 +5112,7 @@ const Actions = {
   toastact() { const f = toastFn; toastFn = null; $('#toast').classList.remove('on'); if (f) f(); },
   ownsrc() { if (Src.busy) return; Src.set(!Src.on()); },
   srcinfo() { openAQ(); },
+  npinfo() { if (Player.cur) songInfo(Player.cur); },
   async defaultapp() {
     const D = window.ttDesktop; let how = IS_CAP ? 'android' : 'mac';
     if (D && D.defaultApp) { try { how = await D.defaultApp(); } catch (e) { } }
@@ -5198,6 +5286,8 @@ document.addEventListener('change', e => {
     if (k === 'remind3') { if (window.ttDesktop && window.ttDesktop.setRemind) window.ttDesktop.setRemind(t.checked); const LN = Native.plug('LocalNotifications'); if (!t.checked && LN) LN.cancel({ notifications: [{ id: 7301 }] }).catch(() => { }); else Native.remind(); }
     if (k === 'autoplay') toast(t.checked ? 'Autoplay on' : 'Autoplay off');
     if (k === 'ownSrc') Src.set(t.checked);
+    if (/^btn/.test(k)) { npButtons(); if (k === 'btnEq' && t.checked && IS_IOS) toast('Shown — but the equalizer can’t change sound on iPhone and iPad'); }
+    if (k === 'roll') Marquee.all();
     if (k === 'country') { mem.clear(); toast(`Region: ${countryName(detectCC())}`); }
   } else if (t.id === 'f-audio') { importFiles(t.files); t.value = ''; }
   else if (t.id === 'f-backup') { importBackup(t.files[0]); t.value = ''; }
@@ -5415,7 +5505,7 @@ function init() {
   JSA.init();
   applyTheme();
   splash();
-  buildShell();
+  buildShell(); npButtons();
   Mirrors.init();
   Player.init();
   bindGestures();
@@ -5442,7 +5532,7 @@ function init() {
   let rzT; addEventListener('resize', () => { clearTimeout(rzT); rzT = setTimeout(() => { UI.fitChips(); Marquee.all(); }, 150); });
   // network warm-up waits until the app is on screen and idle, so the first paint stays instant
   const idle = window.requestIdleCallback ? f => requestIdleCallback(f, { timeout: 4000 }) : f => setTimeout(f, 300);
-  setTimeout(() => idle(() => { Audius.discover(); Mirrors.load(); IT.probe(); loadSiteConfig().then(() => Src.warm()).catch(() => { }); }), 1200);
+  setTimeout(() => idle(() => { Audius.discover(); Mirrors.load(); IT.probe(); Promise.all([loadSiteConfig(), loadBackupSources()]).then(() => Src.warm()).catch(() => { }); }), 1200);
   addEventListener('online', () => { JSA.reset(); setTimeout(() => Src.warm().catch(() => { }), 1500); });
   if (!S.settings.langs) setTimeout(() => { if (!S.settings.langs && !sheetOpen) langPicker(true); }, 600);
   else if (!String(S.settings.name || '').trim()) setTimeout(() => { if (!String(S.settings.name || '').trim()) { if (sheetOpen) needName = true; else nameSheet(true); } }, /[?&](play|pl|share|text|url)=/.test(location.search) ? 6000 : 1500);
@@ -5452,7 +5542,7 @@ function init() {
     navigator.serviceWorker.register('sw.js').catch(() => { });
   }
   window.TuneTune = { version: VER, engine: () => (IT.ok ? 'direct' : 'mirrors') };
-  if (window.__TT_TEST__) window.TuneTune._ = { rowDl, Pod, go, Marquee, UI, podSave, podProg, rowHTML, dlProgress, sleepMenu, Src, CFG, ytWebSearch, srcInfo, Native, JSA, DES, Saavn, Player, Streams, Mirrors, IT, YT, S, nav, cv, Actions, itShelves, mem, Embed, MirrorHealth, download, share, probeAudio, qInfo, sharePlaylist, SvC, translit, Deck, SITE, Offline, landCheck, Party, offlineList, playOffline, offlineSheet, JS_RELAYS, SAAVN_DEFAULT, PIPED_DEFAULT, INV_DEFAULT, loadSiteConfig, Pre, deviceLangs, langSuggest, eqName, eqPins, Haptic, rtags: () => rtags(), podCats: () => podCats(), lyrSet: r => { lyrState = { id: Player.cur && Player.cur.id, ...r }; renderLyrics(); } };
+  if (window.__TT_TEST__) window.TuneTune._ = { BK, loadBackupSources, rowDl, Pod, go, Marquee, UI, podSave, podProg, rowHTML, dlProgress, sleepMenu, Src, CFG, ytWebSearch, srcInfo, Native, JSA, DES, Saavn, Player, Streams, Mirrors, IT, YT, S, nav, cv, Actions, itShelves, mem, Embed, MirrorHealth, download, share, probeAudio, qInfo, sharePlaylist, SvC, translit, Deck, SITE, Offline, landCheck, Party, offlineList, playOffline, offlineSheet, JS_RELAYS, SAAVN_DEFAULT, PIPED_DEFAULT, INV_DEFAULT, loadSiteConfig, Pre, deviceLangs, langSuggest, eqName, eqPins, Haptic, rtags: () => rtags(), podCats: () => podCats(), lyrSet: r => { lyrState = { id: Player.cur && Player.cur.id, ...r }; renderLyrics(); } };
 }
 try { init(); }
 catch (err) {

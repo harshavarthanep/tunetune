@@ -1501,7 +1501,7 @@ body.partying .greet .streak{animation:heartPop .6s infinite}
 @keyframes lgDrop{to{transform:none}}
 /* timer: only the hand turns */
 .ic.tmr .tm-hand{transform-box:view-box;transform-origin:12px 13.5px}
-.on .ic.tmr .tm-hand,.slpill.on .ic.tmr .tm-hand{animation:tmHand 4s linear infinite}
+#np-btimer.on .ic.tmr .tm-hand,#dv-sleep.on .ic.tmr .tm-hand,.slpill.on .ic.tmr .tm-hand{animation:tmHand 4s linear infinite}
 #np-btimer.on .ic,.slpill.on .ic,#dv-sleep.on .ic{animation:none}
 @keyframes tmHand{to{transform:rotate(360deg)}}
 /* no shadow behind the album art */
@@ -1691,3 +1691,26 @@ html.still .roll .mq-i,html.still .roll{animation-duration:calc(var(--mqd,10s) *
 #np-chips.t2 > .qbadge .qk{display:none}
 #np-chips.t2 > .slpill .ic{display:inline-block}
 #np-chips.t2 > .qbadge{flex-shrink:1}
+
+/* ================= v1.1: podcast title doubles as a progress bar; the playing episode looks selected ================= */
+.row .tx.ep-prog{background:linear-gradient(90deg,var(--accent) 0 var(--pf,0%),var(--text) var(--pf,0%));-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent;transition:--pf .6s}
+.row.ep-done .tx.ep-prog{-webkit-text-fill-color:currentColor;background:none}
+.row.pod.is-cur{background:color-mix(in srgb,var(--accent) 7%,transparent);box-shadow:inset 3px 0 0 var(--accent)}
+.row.pod.is-cur .tw{box-shadow:0 7px 16px -8px rgba(0,0,0,.5);transform:translateY(-1px)}
+.row.pod.is-cur .rb{border-bottom-color:transparent}
+.row.pod.is-cur .tx.ep-prog{background-image:linear-gradient(90deg,var(--accent) 0 var(--pf,0%),color-mix(in srgb,var(--text) 88%,var(--accent)) var(--pf,0%))}
+.row.pod .tw{transition:transform .25s,box-shadow .25s}
+
+/* ================= v1.1: player buttons you can hide; ⓘ on the artwork ================= */
+#np.no-party #np-party,#np.no-eq #np-beq,#np.no-cast #np-bcast,#np.no-info #np-info{display:none}
+.art-info{position:absolute;z-index:6;width:28px;height:28px;border-radius:50%;display:grid;place-items:center;color:#fff;
+  left:calc(50% - var(--S) * var(--sc,1) / 2 + 8px);top:calc(50% - var(--S) * var(--sc,1) / 2 + 8px);
+  background:rgba(0,0,0,.38);-webkit-backdrop-filter:blur(10px);backdrop-filter:blur(10px);opacity:.82;
+  transition:opacity .2s,transform .15s,left .45s cubic-bezier(.22,.9,.28,1),top .45s cubic-bezier(.22,.9,.28,1)}
+.art-info .ic{width:16px;height:16px}
+.art-info:hover{opacity:1}
+.art-info:active{transform:scale(.9)}
+#np.ytfull .art-info{left:calc(50% - min(100cqw,calc(100cqh * 16 / 9)) / 2 + 8px);top:calc(50% - min(100cqw,calc(100cqh * 16 / 9)) * 9 / 32 + 8px)}
+#np.ytad .art-info{display:none}
+#np.p-lyr .art-info,#np.p-q .art-info{opacity:0;pointer-events:none}
+@media (min-width:900px) and (min-height:561px){#np.p-lyr .art-info,#np.p-q .art-info{opacity:.82;pointer-events:auto}}

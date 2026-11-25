@@ -13,7 +13,7 @@
     "start": "electron .",
     "dist": "electron-builder --publish never",
     "web": "npx serve .",
-    "android:prepare": "node -e \"const fs=require('fs');fs.rmSync('www',{recursive:true,force:true});fs.mkdirSync('www');for(const f of ['index.html','styles.css','app.js','manifest.webmanifest','sw.js','tunetune-config.json'])if(fs.existsSync(f))fs.copyFileSync(f,'www/'+f);fs.cpSync('icons','www/icons',{recursive:true})\"",
+    "android:prepare": "node -e \"const fs=require('fs');fs.rmSync('www',{recursive:true,force:true});fs.mkdirSync('www');for(const f of ['index.html','styles.css','app.js','manifest.webmanifest','sw.js','tunetune-config.json','tunetune-sources.json'])if(fs.existsSync(f))fs.copyFileSync(f,'www/'+f);fs.cpSync('icons','www/icons',{recursive:true})\"",
     "android:setup": "node scripts/android-setup.js"
   },
   "dependencies": {
@@ -38,6 +38,7 @@
       "manifest.webmanifest",
       "sw.js",
       "tunetune-config.json",
+      "tunetune-sources.json",
       "icons/**",
       "desktop/**"
     ],

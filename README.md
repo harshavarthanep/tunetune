@@ -28,8 +28,13 @@ Tap the quality badge in Now Playing to see where the current song is coming fro
    (or create one from `tunetune-config.example.json`). It's still only used when **My server** is on.
 
 ## More free sources
-`tunetune-config.example.json` lists extra free relays, JioSaavn servers and YouTube mirrors. Copy the lines you want
-into `tunetune-config.json` — free entries are always used and are tried before the built-in ones.
+`tunetune-sources.json` is a list of BACKUP FREE sources (relays, JioSaavn servers, YouTube mirrors). It is always
+used — no switch — but only after the built-in free sources fail, and before your own servers and the YouTube player.
+Add or remove lines any time; dead entries are skipped automatically. Each entry can be a link or `{"name": "…", "url": "…"}`.
+Relay links use `{url}` where the target goes: `…?url={url}` (link encoded) or `…/{url}` (link as is).
+
+The order every song follows: built-in free sources → tunetune-sources.json → (My server on) your tunetune-config
+servers, then your own server → YouTube player. Tap the quality badge to see which one answered.
 
 ## Other things you can edit
 At the top of `app.js`: `PRODUCTS_URL` and `GITHUB_URL` (shown in Settings → More from H24 Creationz).

@@ -1,19 +1,11 @@
 {
-  "_readme": "Rename to tunetune-config.json to use it. Every line is optional. relays, saavnServers, piped and invidious are FREE sources: always used, tried before the built-in ones. musicServer is YOUR server: used only when 'My server' is switched on in the app, and only after every free source failed (before YouTube).",
-  "musicServer": "https://tunetune.yourname.workers.dev",
-  "relays": [
-    "https://api.allorigins.win/raw?url={url}",
-    "https://api.codetabs.com/v1/proxy/?quest={url}",
-    "https://corsproxy.io/?url={url}",
-    "https://api.cors.lol/?url={url}",
-    "https://test.cors.workers.dev/?{url}",
-    "https://cors-get-proxy.sirjosh.workers.dev/?url={url}"
+  "_readme": "Rename to tunetune-config.json to use it. Every line is optional. relays, saavnServers, piped and invidious are FREE sources: always used, tried before the built-in ones. musicServers are YOUR servers: used only when 'My server' is switched on in the app, only after every free source (and tunetune-sources.json) failed, and before the YouTube player. Give each server a name so the app can show which one is playing.",
+  "musicServers": [
+    { "name": "Main worker", "url": "https://tunetune.yourname.workers.dev" },
+    { "name": "Spare worker", "url": "https://tunetune2.yourname.workers.dev" }
   ],
-  "saavnServers": [
-    "https://saavn.sumit.co/api",
-    "https://jiosaavn-api-privatecvc2.vercel.app",
-    "https://jiosaavn-api-codyandersan.vercel.app"
-  ],
-  "piped": ["https://pipedapi.kavin.rocks", "https://pipedapi.adminforge.de"],
-  "invidious": ["https://inv.nadeko.net", "https://invidious.nerdvpn.de"]
+  "relays": ["https://your-cors-relay.example/?url={url}"],
+  "saavnServers": ["https://your-jiosaavn-api.vercel.app/api"],
+  "piped": ["https://pipedapi.example.com"],
+  "invidious": ["https://invidious.example.com"]
 }
