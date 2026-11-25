@@ -4044,18 +4044,42 @@ function header(title, o = {}) {
 /* Long titles roll gently (landscape player and Car Mode) instead of squeezing the album art */
 const Marquee = {
   ids: ['np-t', 'np-a', 'dv-t', 'dv-a'],
-  land: () => matchMedia('(orientation:landscape) and (max-height:560px)').matches,
   all() { cancelAnimationFrame(this.r); this.r = requestAnimationFrame(() => this.ids.forEach(id => this.one($('#' + id)))); },
   one(el) {
     if (!el) return;
     const txt = el.textContent;
     if (el.dataset.mqt !== txt || !el.querySelector('.mq-i')) { el.dataset.mqt = txt; el.innerHTML = `<span class="mq-i">${esc(txt)}</span>`; }
-    const inner = el.querySelector('.mq-i'); el.classList.remove('roll');
-    const active = el.id.startsWith('dv-') ? !!$('#drive') : npOpen && this.land();
+    if (!el.dataset.mqb) { // tap or hover: glide back to the start of the text, then carry on rolling
+      el.dataset.mqb = 1;
+      el.addEventListener('pointerdown', () => this.rewind(el));
+      el.addEventListener('pointerenter', e => { if (e.pointerType === 'mouse') this.rewind(el); });
+      el.addEventListener('pointerleave', e => { if (e.pointerType === 'mouse' && el.classList.contains('mq-hold')) { clearTimeout(el._mqT); el._mqT = setTimeout(() => this.resume(el), 1200); } });
+    }
+    const inner = el.querySelector('.mq-i'); this.reset(el);
+    const active = el.id.startsWith('dv-') ? !!$('#drive') : npOpen;
     const over = Math.max(el.scrollWidth, inner.getBoundingClientRect().width) - el.clientWidth;
     if (!active || over < 4) return;
     el.style.setProperty('--mq', -(over + 14) + 'px'); el.style.setProperty('--mqd', Math.max(7, (over + 14) / 28 + 4).toFixed(1) + 's');
     el.classList.add('roll');
+  },
+  reset(el) { clearTimeout(el._mqT); el.classList.remove('roll', 'mq-hold'); const i = el.querySelector('.mq-i'); if (i) { i.style.transition = ''; i.style.transform = ''; } },
+  // from wherever the text is right now, slide smoothly back to its first letter and rest there
+  rewind(el) {
+    const inner = el.querySelector('.mq-i'); if (!inner || !el.classList.contains('roll')) return;
+    clearTimeout(el._mqT);
+    const x = new DOMMatrixReadOnly(getComputedStyle(inner).transform).m41 || 0;
+    el.classList.add('mq-hold');
+    inner.style.transition = 'none'; inner.style.transform = `translateX(${x}px)`;
+    inner.getBoundingClientRect();
+    inner.style.transition = `transform ${Math.min(0.9, 0.35 + Math.abs(x) / 700).toFixed(2)}s cubic-bezier(.22,.9,.28,1)`;
+    inner.style.transform = 'translateX(0)';
+    el._mqT = setTimeout(() => this.resume(el), 3500);
+  },
+  resume(el) {
+    if (el.matches(':hover') && matchMedia('(hover:hover)').matches) { el._mqT = setTimeout(() => this.resume(el), 1500); return; }
+    const inner = el.querySelector('.mq-i'); if (!inner) return;
+    inner.style.transition = ''; inner.style.transform = ''; el.classList.remove('mq-hold');
+    inner.style.animation = el.style.animation = 'none'; inner.getBoundingClientRect(); inner.style.animation = el.style.animation = '';   // restart from the beginning
   },
 };
 const nbBtn = (a, ic, label, extra = '') => `<button class="nb-btn" data-a="${a}" aria-label="${esc(label)}" ${extra}>${I[ic]}</button>`;

@@ -1633,11 +1633,19 @@ html.bg-hidden *,html.bg-hidden *::before,html.bg-hidden *::after{animation-play
 /* Party Mode doesn't fit podcasts */
 #np.pod #np-party{display:none}
 
-/* long titles roll instead of being cut off or squeezing the art (landscape player & Car Mode) */
-.roll{text-overflow:clip!important;-webkit-mask-image:linear-gradient(90deg,#000 calc(100% - 22px),transparent);mask-image:linear-gradient(90deg,#000 calc(100% - 22px),transparent)}
+/* long titles and artist names roll (player in every orientation & Car Mode); tap or hover glides back to the start */
+@property --mqf{syntax:'<length>';inherits:false;initial-value:0px}
+.roll{text-overflow:clip!important;-webkit-mask-image:linear-gradient(90deg,transparent 0,#000 var(--mqf),#000 calc(100% - 22px),transparent);mask-image:linear-gradient(90deg,transparent 0,#000 var(--mqf),#000 calc(100% - 22px),transparent);
+  animation:mqFade var(--mqd,10s) ease-in-out infinite alternate}
+@keyframes mqFade{0%,14%{--mqf:0px}22%,100%{--mqf:18px}}
+.roll.mq-hold{animation:none}
 .roll .mq-i{display:inline-block;padding-right:8px;animation:mqRoll var(--mqd,10s) ease-in-out infinite alternate}
 @keyframes mqRoll{0%,14%{transform:translateX(0)}86%,100%{transform:translateX(var(--mq,0))}}
-html.still .roll .mq-i{animation-duration:calc(var(--mqd,10s) * 1.6)}
+html.still .roll .mq-i,html.still .roll{animation-duration:calc(var(--mqd,10s) * 1.6)}
+.roll.mq-hold .mq-i{animation:none}
+.roll{cursor:default}
+#np-a.roll{cursor:pointer}
+@media (prefers-reduced-motion:reduce){.roll .mq-i,.roll{animation-duration:calc(var(--mqd,10s) * 2)}}
 
 /* landscape phones: the text column can never push the album art off-screen */
 @media (orientation:landscape) and (max-height:560px){
