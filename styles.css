@@ -1780,3 +1780,10 @@ html.still .roll .mq-i,html.still .roll{animation-duration:calc(var(--mqd,10s) *
   .ctrl .c-s .ic,.ctrl .c-k .ic{width:22px;height:22px}
   .np-bot .np-ib{width:40px;height:40px}
 }
+
+/* ================= Songs tab & Resume ================= */
+.see.cont-go{display:inline-flex;align-items:center;gap:6px;padding:6px 14px;border-radius:16px;background:color-mix(in srgb,var(--accent) 14%,transparent);font-weight:600;white-space:nowrap;flex:none}
+.see.cont-go .ic{width:15px;height:15px}
+#sgpred{margin:2px 0 4px}
+#sgpred .chip{display:inline-flex;align-items:center;gap:6px}
+#sgpred .chip .ic{width:14px;height:14px;opacity:.7}
