@@ -1,6 +1,6 @@
 {
   "_readme": "Renamed to tunetune-config.json to use it. Every line is optional. relays, saavnServers, piped and invidious are FREE sources: always used, tried before the built-in ones. musicServer is YOUR server: used only when 'My server' is switched on in the app, and only after every free source failed (before YouTube).",
-  "musicServer": "https://tunetune.harshavarthan-e.workers.dev/",
+  "musicServer": "https://tunetune.monisha-s-665.workers.dev/",
   "relays": [
     "https://api.allorigins.win/raw?url={url}",
     "https://api.codetabs.com/v1/proxy/?quest={url}",
