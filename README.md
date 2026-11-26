@@ -48,6 +48,22 @@ and it doesn't use your Cloudflare musicServer's daily limit.
 You can also deploy your own copy of the open-source JioSaavn API on Vercel (sumitkolhe/jiosaavn-api, set the region to
 Mumbai bom1) and add `https://your-copy.vercel.app/api` under `"saavnServers"`. Each one is free and has its own limits.
 
+## Free sources and backup servers
+`tunetune-sources.json` adds more FREE sources (relays, JioSaavn servers, YouTube mirrors) and your own BACKUP SERVERS
+(Cloudflare Workers on other accounts, Google Apps Script). Order every song follows: built-in free sources → the free
+lists in tunetune-sources.json → the free lists in tunetune-config.json → backup servers (one by one) → with My server on:
+your own server, then the tunetune-config musicServer → YouTube player. A route is only marked down after two failures
+in a row, and down routes are re-checked when the app starts and (at most every 3 minutes) while you use it — no
+background timers. Set-up steps for backup servers: `relays/README.md`.
+
+## Mixes, karaoke and customising
+* **Artist & show mixes** — on any artist or podcast show page tap the mix button. Mixes update themselves, can be
+  filtered, sorted (shows: continue where you left by default), pinned to Home, downloaded and shared as a link.
+  Artists and shows are never mixed, and mixes stay apart from normal playlists.
+* **Karaoke** — ⋯ menu, the lyrics bar or Car Mode. Turns the lead vocals down for songs (never podcasts or radio).
+* **Settings → Home & tabs / Offline** — choose what Home, Podcasts and Explore show, and keep songs and podcasts apart.
+* **Backup** — Settings → Export Backup saves everything except your name; Import restores it on any device.
+
 ## Other things you can edit
 At the top of `app.js`: `PRODUCTS_URL` and `GITHUB_URL` (shown in Settings → More from H24 Creationz).
 

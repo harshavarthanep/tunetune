@@ -1,5 +1,5 @@
 {
-  "_readme": "BACKUP FREE SOURCES. Always used — no switch needed. Tried only after the built-in free sources fail, and before your own servers and the YouTube player. Add or remove lines any time; routes that fail are skipped automatically and re-checked later. Each entry can be a plain link or {\"name\": \"…\", \"url\": \"…\"}. Relays use {url} where the target link goes: …?url={url} (link encoded) or …/{url} (link as is). Tip: Settings → Test music sources shows which ones work on your device.",
+  "_readme": "Order every song follows: built-in free sources → the free lists in this file → the free lists in tunetune-config.json → your backupServers (one by one) → with My server on: your own server, then the tunetune-config musicServer → YouTube player. relays / saavnServers / piped / invidious = FREE public sources (dead ones are skipped automatically and re-checked later; a route is only called down after two failures in a row). backupServers = YOUR own free servers (Cloudflare Workers on other accounts, Google Apps Script) — used only when every free source has failed. Replace XXXX with your real link; entries still containing XXXX are ignored. dailyCap = how many times one device may use it per day. Set-up: relays/README.md. Relays use {url} where the link goes: …?url={url} (encoded) or …/{url} (as is). Settings → Test music sources shows ✓/✗ for every route.",
   "relays": [
     {
       "name": "corsproxy.io",
@@ -24,26 +24,107 @@
     {
       "name": "hyoo",
       "url": "https://cors.hyoo.ru/{url}"
+    },
+    {
+      "name": "corsproxy.io (plain)",
+      "url": "https://corsproxy.io/?{url}"
+    },
+    {
+      "name": "allorigins (get)",
+      "url": "https://api.allorigins.win/get?url={url}"
+    },
+    {
+      "name": "allorigins (raw)",
+      "url": "https://api.allorigins.win/raw?url={url}"
+    },
+    {
+      "name": "CORS.lol (api)",
+      "url": "https://api.cors.lol/?url={url}"
+    },
+    {
+      "name": "EveryOrigin",
+      "url": "https://everyorigin.jwvbremen.nl/get?url={url}"
+    },
+    {
+      "name": "x2u",
+      "url": "https://cors.x2u.in/{url}"
+    },
+    {
+      "name": "corsproxy.org",
+      "url": "https://corsproxy.org/?{url}"
+    },
+    {
+      "name": "sirjosh worker",
+      "url": "https://cors-get-proxy.sirjosh.workers.dev/?url={url}"
+    },
+    {
+      "name": "zimjs",
+      "url": "https://cors.zimjs.com/{url}"
+    },
+    {
+      "name": "afeld",
+      "url": "https://jsonp.afeld.me/?url={url}"
+    },
+    {
+      "name": "thingproxy",
+      "url": "https://thingproxy.freeboard.io/fetch/{url}"
+    },
+    {
+      "name": "go-between",
+      "url": "https://gobetween.oklabs.org/pipe/{url}"
     }
   ],
   "saavnServers": [
     "https://jiosaavn-api-ts.vercel.app/api",
     "https://jiosaavn-api-2-harsh-patel.vercel.app/api",
     "https://saavn-api-sigma.vercel.app/api",
-    "https://jiosaavnapi.vercel.app"
+    "https://jiosaavnapi.vercel.app",
+    "https://saavn.sumit.co/api",
+    "https://jio.shnwaz.dev/api",
+    "https://saavn.me",
+    "https://jiosaavn-api-privatecvc2.vercel.app",
+    "https://jiosaavn-api-codyandersan.vercel.app",
+    "https://jiosaavn-api.vercel.app"
   ],
   "piped": [
     "https://pipedapi.kavin.rocks",
     "https://pipedapi.adminforge.de",
     "https://api.piped.private.coffee",
     "https://pipedapi.leptons.xyz",
-    "https://pipedapi.r4fo.com"
+    "https://pipedapi.r4fo.com",
+    "https://pipedapi.ducks.party",
+    "https://pipedapi.reallyaweso.me",
+    "https://piped-api.privacy.com.de",
+    "https://pipedapi.nosebs.ru",
+    "https://api.piped.yt"
   ],
   "invidious": [
     "https://inv.nadeko.net",
     "https://invidious.nerdvpn.de",
     "https://yewtu.be",
     "https://invidious.f5.si",
-    "https://iv.melmac.space"
+    "https://iv.melmac.space",
+    "https://invidious.privacyredirect.com",
+    "https://inv.tux.pizza",
+    "https://invidious.protokolla.fi",
+    "https://yt.artemislena.eu",
+    "https://invidious.lunar.icu"
+  ],
+  "backupServers": [
+    {
+      "name": "Cloudflare 2",
+      "url": "https://tunetune.XXXX.workers.dev",
+      "dailyCap": 3000
+    },
+    {
+      "name": "Cloudflare 3",
+      "url": "https://tunetune.XXXX.workers.dev",
+      "dailyCap": 3000
+    },
+    {
+      "name": "Google relay",
+      "url": "https://script.google.com/macros/s/XXXX/exec?url={url}",
+      "dailyCap": 1500
+    }
   ]
 }

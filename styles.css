@@ -1714,3 +1714,15 @@ html.still .roll .mq-i,html.still .roll{animation-duration:calc(var(--mqd,10s) *
 #np.ytad .art-info{display:none}
 #np.p-lyr .art-info,#np.p-q .art-info{opacity:0;pointer-events:none}
 @media (min-width:900px) and (min-height:561px){#np.p-lyr .art-info,#np.p-q .art-info{opacity:.82;pointer-events:auto}}
+
+/* ================= karaoke & mixes ================= */
+.tchips > .karpill{display:none}
+.tchips > .karpill.on{display:inline-flex;margin:0;flex:0 0 auto;min-width:0;height:20px;box-sizing:border-box;font:700 10.5px/1 var(--font);letter-spacing:.4px;text-transform:uppercase;white-space:nowrap;border-radius:6px;padding:0 7px;gap:4px;align-items:center;color:#fff;background:color-mix(in srgb,var(--accent) 70%,transparent)}
+.tchips.t1 > .karpill span{display:none}
+.tchips.t1 > .karpill{padding:0 5px}
+#dv-kar[hidden]{display:none}
+.lyb.kar.on{background:var(--accent);color:#fff}
+.mx-f,.mx-s{margin-top:6px}
+.mx-s .chip,.mx-f .chip{height:30px;font-size:13.5px}
+.mx-play{display:flex;align-items:center;gap:8px;margin:12px var(--pad) 4px}
+.mx-play .mx-n{margin-left:auto;color:var(--text2);font-size:13.5px}

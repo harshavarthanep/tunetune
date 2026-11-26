@@ -267,10 +267,12 @@ document.addEventListener('error', e => {
 /* ================= state ================= */
 const DEFAULTS = {
   liked: [], playlists: [], history: [], searches: [], downloads: [], locals: [], blocked: [], artists: [],
-  pod: { follows: [], prog: {} }, stats: { plays: {}, days: {} },
+  pod: { follows: [], prog: {} }, stats: { plays: {}, days: {} }, colls: [],
   settings: { theme: 'auto', accent: '#ff375f', eqOn: false, eq: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0], eqPreset: 'Flat', eqCustom: [], eqPins: [], eqBoost: 0, eqPre: 0, eqBass: 0, eqTreble: 0, eqLoud: false, eqWidth: 1, autoplay: true, country: '', volume: 1, langs: null, quality: 'auto', mirror: '', server: '', saavn: '', proxy: '', ytPlayer: true, engine: 'auto', normalize: true, hideAppCard: false, apkUrl: '',
     crossfade: 0, preload: true, podSpeed: 1, podBack: 15, podFwd: 30, startTab: 'home', zoom: 1, motion: true, animBg: true, badge: true, haptics: true,
     pauseHistory: false, hideExplicit: false, smartDl: false, lyricsSize: 'm', tapSound: false, crown: false, partyStyle: 'disco', partyBuzz: false, autoSave: true, autoSaveMax: 30, landCar: true, ownSrc: false, remindDays: 3,
+    homeSongs: true, homePods: true, homePins: true, podMine: true, exploreSongs: true, explorePods: true, exploreRadio: true, offSongs: true, offPods: true,
+    karaoke: false, karaokeLyr: true, cleanFirst: true,
     homeSections: { mixes: true, langs: true, chart: true, following: true, radio: true, podcasts: true, free: true, moods: true } },
 };
 const S = (() => {
@@ -278,7 +280,8 @@ const S = (() => {
   try {
     const raw = JSON.parse(localStorage.getItem(KEY) || '{}');
     const out = { ...base, ...raw, settings: { ...base.settings, ...(raw.settings || {}) } };
-    for (const k of ['liked', 'playlists', 'history', 'searches', 'downloads', 'locals', 'blocked', 'artists', 'cached']) if (!Array.isArray(out[k])) out[k] = [];
+    for (const k of ['liked', 'playlists', 'history', 'searches', 'downloads', 'locals', 'blocked', 'artists', 'cached', 'colls']) if (!Array.isArray(out[k])) out[k] = [];
+    out.colls = out.colls.filter(m => m && m.id && Array.isArray(m.items) && (m.kind === 'artists' || m.kind === 'shows'));
     if (!out.pod || typeof out.pod !== 'object') out.pod = { follows: [], prog: {} };
     if (!Array.isArray(out.pod.follows)) out.pod.follows = []; if (!out.pod.prog || typeof out.pod.prog !== 'object') out.pod.prog = {};
     if (!out.stats || typeof out.stats !== 'object') out.stats = { plays: {}, days: {} };
@@ -796,7 +799,7 @@ const Mirrors = {
   order(kind) {
     const now = Date.now();
     const custom = S.settings.mirror ? [S.settings.mirror.replace(/\/+$/, '')] : [];
-    const L = uniq([...custom, this.best[kind], ...this[kind], ...(BK[kind] || [])]);
+    const L = uniq([...custom, this.best[kind], ...this[kind], ...(BK[kind] || []), ...(CFG[kind] || [])]);
     const recent = b => now - (this.fails.get(b) || 0) < 6e5;
     return L.filter(b => !recent(b)).concat(L.filter(recent));
   },
@@ -873,9 +876,9 @@ const SvC = {
   fails: new Map(), best: null,
   list(tier = 'free') {
     if (tier === 'own') return S.settings.saavn && Src.on() ? [{ base: S.settings.saavn.replace(/\/+$/, ''), shape: '?' }] : [];
-    if (tier === 'backup') return BK.saavn.filter(x => !SAAVN_DEFAULT.some(y => y.base === x.base) && !CFG.saavn.some(y => y.base === x.base));
+    if (tier === 'backup') return [...BK.saavn, ...CFG.saavn].filter((x, i, a) => a.findIndex(y => y.base === x.base) === i && !SAAVN_DEFAULT.some(y => y.base === x.base));
     if (tier !== 'free') return [];
-    return [...CFG.saavn, ...SAAVN_DEFAULT.filter(x => !CFG.saavn.some(y => y.base === x.base))];
+    return SAAVN_DEFAULT;
   },
   isBad(b) { return Health.bad('s:' + b.base); },
   down(tier = 'free') { const L = this.list(tier); return !L.length || L.every(b => this.isBad(b)); },
@@ -1052,18 +1055,32 @@ function normServer(v) { v = String(v || '').trim(); if (!v) return ''; if (!/^h
 const CFG = { p: null, found: false, server: '', servers: [], relays: [], saavn: [] };
 /* tunetune-sources.json — BACKUP FREE SOURCES, always used (no switch): tried after the built-in free sources
    and before your own servers and the YouTube player. Add or remove entries any time; dead ones are skipped. */
-const BK = { p: null, found: false, relays: [], saavn: [], piped: [], inv: [] };
-const srcEntries = x => (Array.isArray(x) ? x : x ? [x] : []).map(v => typeof v === 'object' && v ? { name: String(v.name || '').trim(), url: String(v.url || v.link || '').trim() } : { name: '', url: String(v || '').trim() }).filter(v => /^https?:\/\//.test(v.url));
+const BK = { p: null, found: false, relays: [], saavn: [], piped: [], inv: [], servers: [] };
+const TEST_URL = 'https://www.jiosaavn.com/api.php?x=1';   // used to spot list entries that repeat a built-in relay
+// entries: a link or { "name": "…", "url": "…", "dailyCap": 3000 } — examples still containing XXXX are ignored
+const srcEntries = x => (Array.isArray(x) ? x : x ? [x] : []).map(v => typeof v === 'object' && v ? { name: String(v.name || '').trim(), url: String(v.url || v.link || '').trim(), cap: Math.max(0, +v.dailyCap || 0) } : { name: '', url: String(v || '').trim(), cap: 0 }).filter(v => /^https?:\/\//.test(v.url) && !/XXXX|REPLACE/i.test(v.url));
+/* uses per route per day on this device — a route with a dailyCap is skipped once it reaches it, until tomorrow */
+const Use = {
+  m: null,
+  day() { return new Date().toISOString().slice(0, 10); },
+  load() { if (!this.m) { try { this.m = JSON.parse(localStorage.getItem('tunetune.use') || 'null'); } catch (e) { } } if (!this.m || this.m.d !== this.day()) this.m = { d: this.day(), n: {} }; return this.m; },
+  n(id) { return this.load().n[id] || 0; },
+  add(id) { const m = this.load(); m.n[id] = (m.n[id] || 0) + 1; clearTimeout(this.t); this.t = setTimeout(() => { try { localStorage.setItem('tunetune.use', JSON.stringify(this.m)); } catch (e) { } }, 1500); },
+  full(id, cap) { return cap > 0 && this.n(id) >= cap; },
+};
 function loadBackupSources(force) {
   if (BK.p && !force) return BK.p;
   BK.p = (async () => {
     try {
       const r = await fetchT('tunetune-sources.json?v=' + Math.floor(Date.now() / 3600e3), { cache: 'no-store' }, 4000); if (!r.ok) return;
       const j = await r.json(); if (!j || typeof j !== 'object') return; BK.found = true;
-      BK.relays = srcEntries(j.relays).map(e => ({ id: 'backup ' + (e.name || hostOf(e.url)), name: e.name, host: hostOf(e.url), wrap: tplWrap(e.url) })).filter((x, i, a) => a.findIndex(y => y.id === x.id) === i);
+      BK.relays = srcEntries(j.relays).map(e => ({ id: 'backup ' + (e.name || hostOf(e.url)), name: e.name, host: hostOf(e.url), wrap: tplWrap(e.url) })).filter(x => !JS_RELAYS.some(b => b.wrap(TEST_URL) === x.wrap(TEST_URL))).filter((x, i, a) => a.findIndex(y => y.id === x.id) === i);
       BK.saavn = srcEntries(j.saavnServers).map(e => { const b = e.url.replace(/\/+$/, ''); return { base: b, name: e.name, shape: /\/api$/.test(b) ? 'A' : '?' }; });
       BK.piped = srcEntries(j.piped).map(e => e.url.replace(/\/+$/, ''));
       BK.inv = srcEntries(j.invidious).map(e => e.url.replace(/\/+$/, ''));
+      // your own backup servers: used one by one, only after every free source failed
+      BK.servers = srcEntries(j.backupServers).map((e, i) => ({ id: 'mine:' + i, name: e.name || ('Backup ' + (i + 1)), host: hostOf(e.url), cap: e.cap, url: normServer(e.url) }))
+        .filter((x, i, a) => x.url && a.findIndex(y => y.url === x.url) === i);
     } catch (e) { }
   })();
   return BK.p;
@@ -1079,8 +1096,7 @@ function loadSiteConfig(force) {
       CFG.relays = arr(j.relays).map((tpl, i) => ({ id: 'free relay ' + hostOf(tpl), cfg: true, wrap: tplWrap(tpl) })).filter((x, i, a) => a.findIndex(y => y.id === x.id) === i);
       CFG.saavn = arr(j.saavnServers).map(b => { b = b.replace(/\/+$/, ''); return { base: b, shape: /\/api$/.test(b) ? 'A' : '?' }; });
       const p = arr(j.piped).map(b => b.replace(/\/+$/, '')), v = arr(j.invidious).map(b => b.replace(/\/+$/, ''));
-      if (p.length) Mirrors.piped = uniq([...p, ...Mirrors.piped]);
-      if (v.length) Mirrors.inv = uniq([...v, ...Mirrors.inv]);
+      CFG.piped = p; CFG.inv = v;   // used after the built-in mirrors and the sources file
       CFG.servers = srcEntries([].concat(j.musicServer || j.server || [], j.musicServers || [])).map((e, i) => ({ id: 'config:' + i, name: e.name || (i ? 'musicServer ' + (i + 1) : 'musicServer'), host: hostOf(e.url), url: normServer(e.url) }))
         .filter((x, i, a) => x.url && a.findIndex(y => y.url === x.url) === i);
       CFG.server = CFG.servers[0] ? CFG.servers[0].url : '';
@@ -1101,19 +1117,23 @@ const Health = {
   fail(id, busy) {
     const m = this.load(), h = m[id] || { n: 0 };
     if (busy) { h.cool = Date.now() + 90e3; m[id] = h; this.save(); return; }
+    h.strike = (h.strike || 0) + 1;
+    if (h.strike < 2 && !h.n) { h.cool = Date.now() + 30e3; m[id] = h; this.save(); return; }   // first failure: try again in 30 s
     h.n = Math.min((h.n || 0) + 1, 12); h.at = Date.now(); delete h.cool; m[id] = h; this.save();
   },
+  // while the app is in use and free routes are down, re-test them at most every 3 minutes (no background timers)
+  nudge() { if (Date.now() - (this.lastNudge || 0) < 3 * 60e3) return; this.lastNudge = Date.now(); this.recheck(true).catch(() => { }); },
   isBusy(e) { const s = e && e.status; return s === 429 || s >= 500 || (e && (e.name === 'AbortError' || /abort|timeout|timed out/i.test(String(e.message || '')))); },
   ok(id) { const m = this.load(); if (m[id] && !m[id].n && Date.now() - (m[id].ok || 0) < 60e3) return; m[id] = { n: 0, at: Date.now(), ok: Date.now() }; this.save(); },
   state(id) { const h = this.load()[id]; return !h ? '' : (h.n || h.cool) ? (this.bad(id) ? 'down' : 'retry') : 'ok'; },
   clear() { this.m = {}; try { localStorage.removeItem('tunetune.health'); } catch (e) { } },
-  // background: re-test routes whose wait has run out (a few at a time), so a route that comes back is used again
+  // re-test routes that are down (a few at a time) — only while the app is open and in use
   async recheck(all) {
     if (this.busy || !navigator.onLine || document.hidden) return; this.busy = true;
     const want = id => { const s = this.state(id); return all ? s === 'down' || s === 'retry' : s === 'retry'; };
     try {
       const url = 'https://www.jiosaavn.com/api.php?' + new URLSearchParams({ __call: 'autocomplete.get', query: 'hits', _format: 'json', _marker: '0', api_version: '4', ctx: 'web6dot0' });
-      const rel = [...JSA.relays('free'), ...JSA.relays('backup')].filter(p => (p.id !== 'direct' || NATIVE) && want('r:' + p.id)).slice(0, all ? 40 : 4);
+      const rel = [...JSA.relays('free'), ...JSA.relays('backup')].filter(p => (p.id !== 'direct' || NATIVE) && want('r:' + p.id)).slice(0, all ? 60 : 4);
       for (let i = 0; i < rel.length; i += 6) await Promise.all(rel.slice(i, i + 6).map(p => JSA.attempt(p, url).then(() => JSA.markOk(p), e => JSA.markBad(p, e))));
       const sv = [...SvC.list('free'), ...SvC.list('backup')].filter(b => want('s:' + b.base)).slice(0, all ? 20 : 3);
       await Promise.all(sv.map(b => getJSON(b.base + (b.shape === 'B' ? '/search/songs?query=hits&page=1&limit=1' : '/search/songs?query=hits&limit=1'), 6000).then(j => { if (j && j.data != null) this.ok('s:' + b.base); else this.fail('s:' + b.base); }, e => this.fail('s:' + b.base, this.isBusy(e)))));
@@ -1129,8 +1149,15 @@ const JSA = {
       localStorage.removeItem('tunetune.jsdead'); // every start re-checks the free relays
     } catch (e) { }
   },
-  bad(p) { return p.srv ? Date.now() - (this.fails.get(p.id) || 0) < 60e3 : Health.bad('r:' + p.id); },
-  markBad(p, e) { if (p.srv) this.fails.set(p.id, Date.now()); else Health.fail('r:' + p.id, Health.isBusy(e)); },
+  bad(p) {
+    if (Use.full('r:' + p.id, p.cap) || Date.now() < (this.limitUntil[p.id] || 0)) return true;   // reached its cap or its own daily limit
+    return p.srv ? Date.now() - (this.fails.get(p.id) || 0) < 60e3 : Health.bad('r:' + p.id);
+  },
+  limitUntil: {},
+  markBad(p, e) {
+    if (e && e.limit) { this.limitUntil[p.id] = Date.now() + 6 * 3600e3; return; }   // the relay said it reached its daily limit
+    if (p.srv) this.fails.set(p.id, Date.now()); else Health.fail('r:' + p.id, Health.isBusy(e));
+  },
   markOk(p) { if (p.srv) this.fails.delete(p.id); else Health.ok('r:' + p.id); },
   dead() { },   // each route's own health decides — no blanket pause (a relay back from a rate limit is used at once)
   async attempt(p, url, signal) {
@@ -1139,17 +1166,22 @@ const JSA = {
   },
   gates: {},
   async attempt1(p, url, signal) {
-    const r = await fetchT(p.wrap(url), { signal }, p.id === 'direct' ? 4500 : p.srv ? 9000 : 5000);
-    if (!r.ok) throw Object.assign(new Error('HTTP ' + r.status), { status: r.status });
+    const r = await fetchT(p.wrap(url), { signal }, p.id === 'direct' ? 5000 : p.srv ? 12000 : 8000);
+    if (!r.ok) {
+      let limit = false; if (r.status === 429) { try { limit = /"ttRelayError"\s*:\s*"limit"/.test(await r.text()); } catch (e) { } }
+      throw Object.assign(new Error('HTTP ' + r.status), { status: r.status, limit });
+    }
     let j = p.unwrap ? p.unwrap(await r.json()) : parseLoose(await r.text());
+    if (j && j.ttRelayError) throw Object.assign(new Error('relay ' + j.ttRelayError), { status: 429, limit: j.ttRelayError === 'limit' });
     // relays that wrap the answer (“{contents: …}” or “{body: …}”) are unwrapped automatically
     if (j && !p.unwrap && typeof j === 'object' && !Array.isArray(j)) { const w = typeof j.contents === 'string' ? j.contents : typeof j.body === 'string' ? j.body : null; if (w != null) j = parseLoose(w); }
     if (!j || typeof j !== 'object') throw new Error('not JSON');
     return j;
   },
   relays(tier = 'free') {
-    if (tier === 'free') return [JS_RELAYS[0], ...CFG.relays, ...JS_RELAYS.slice(1)];
-    if (tier === 'backup') return BK.relays;
+    if (tier === 'free') return JS_RELAYS;
+    if (tier === 'backup') return [...BK.relays, ...CFG.relays.filter(c => !BK.relays.some(b => b.host === hostOf(c.wrap('https://x.y/'))))];
+    if (tier === 'mine') return BK.servers.map(s => ({ id: s.id, name: s.name, host: s.host, cap: s.cap, srv: true, wrap: tplWrap(s.url) }));
     if (tier === 'cfg') return Src.cfgServers().map(s => ({ id: s.id, name: s.name, host: s.host, srv: true, wrap: tplWrap(s.url) }));
     const s = tier === 'own' ? Src.ownServer() : '';
     return s ? [{ id: 'own', srv: true, wrap: tplWrap(s) }] : [];
@@ -1169,15 +1201,15 @@ const JSA = {
     if (!all.length) throw Object.assign(new Error('not set up'), { skip: true });
     const url = 'https://www.jiosaavn.com/api.php?' + new URLSearchParams({ ...params, _format: 'json', _marker: '0', api_version: '4', ctx: 'web6dot0' });
     const done = (p, j) => {
-      this.markOk(p); Src.count(tier); if (tier === 'free') { this.setVia(p.id); this.okAt[p.id] = Date.now(); this.keepOk(); } else if (tier === 'backup') this.viaB = p.id;
+      this.markOk(p); Src.count(tier); Use.add('r:' + p.id); if (tier === 'free') { this.setVia(p.id); this.okAt[p.id] = Date.now(); this.keepOk(); } else if (tier === 'backup') this.viaB = p.id;
       Src.note(tier, p.id); try { Object.defineProperty(j, '__r', { value: { tier, relay: p.id }, enumerable: false }); } catch (e) { } return j;
     };
-    if (tier === 'cfg' || tier === 'own') {
+    if (tier === 'cfg' || tier === 'own' || tier === 'mine') {   // your servers: one after another, in the order listed
       let err = new Error('server not answering');
       for (const p of all) {
         if (this.bad(p)) continue;
         try { return done(p, await lim(() => this.attempt(p, url))); }
-        catch (e) { err = e; this.fails.set(p.id, Date.now()); }
+        catch (e) { err = e; this.markBad(p, e); }
       }
       Src.fail(tier); throw err;
     }
@@ -1193,21 +1225,17 @@ const JSA = {
     let endRace; this.racing = new Promise(r => { endRace = r; }); this.racing.catch(() => { });
     try { return await this.raceRelays(fresh, url, done, all); } finally { this.racing = null; endRace(); }
   },
-  async raceRelays(fresh, url, done, all, isB) {
-    // a cold start races the 6 most reliable relays first, then the rest — never every relay at once
-    for (const wave of [fresh.slice(0, 6), fresh.slice(6)]) {
-      if (!wave.length) continue;
-      try {
-        const { j, p } = await race(wave, (p, signal) => this.attempt(p, url, signal).then(j => ({ j, p }), e => { if (!signal.aborted) this.markBad(p, e); throw e; }));
-        return done(p, j);
-      } catch (e) { }
-    }
-    throw new Error('JioSaavn relays are busy');
+  async raceRelays(fresh, url, done) {
+    // every relay that isn't known to be down is asked at once; the first good answer wins and the rest are cancelled
+    try {
+      const { j, p } = await race(fresh, (p, signal) => this.attempt(p, url, signal).then(j => ({ j, p }), e => { if (!signal.aborted) this.markBad(p, e); throw e; }));
+      return done(p, j);
+    } catch (e) { throw new Error('JioSaavn relays are busy'); }
   },
   async text(url, test) {
     const L = [...this.order('free'), ...this.order('backup')].filter(p => p.id !== 'direct' && !this.bad(p)).slice(0, 10);
     const get = async (p, signal) => {
-      const r = await fetchT(p.wrap(url), { signal }, 9000); if (!r.ok) throw new Error('HTTP ' + r.status);
+      const r = await fetchT(p.wrap(url), { signal }, 10000); if (!r.ok) throw new Error('HTTP ' + r.status);
       const txt = p.unwrap ? String(((await r.json()) || {}).contents || '') : await r.text();
       if (!test(txt)) throw new Error('unexpected reply'); return txt;
     };
@@ -1216,8 +1244,9 @@ const JSA = {
   },
   async diagnose() {
     const url = 'https://www.jiosaavn.com/api.php?' + new URLSearchParams({ __call: 'autocomplete.get', query: 'ilaiyaraaja', _format: 'json', _marker: '0', api_version: '4', ctx: 'web6dot0' });
-    const list = [...this.relays('free').map(p => [p, '']), ...this.relays('backup').map(p => [p, ' (backup)'])];
-    return Promise.all(list.map(([p, tag]) => this.attempt(p, url).then(() => { this.markOk(p); return `✓ ${p.name || p.id}${tag}`; }, e => { this.markBad(p, e); return `✗ ${p.name || p.id}${tag} — ${String(e.message || e).slice(0, 22)}`; })));
+    const list = [...this.relays('free').filter(p => p.id !== 'direct' || NATIVE).map(p => [p, '']), ...this.relays('backup').map(p => [p, ' (list)'])];
+    const twice = p => this.attempt(p, url).catch(() => new Promise(r => setTimeout(r, 2000)).then(() => this.attempt(p, url)));   // one retry: a busy relay gets a second chance
+    return Promise.all(list.map(([p, tag]) => twice(p).then(() => { this.markOk(p); return `✓ ${p.name || p.id}${tag}`; }, e => { this.markBad(p, e); return `✗ ${p.name || p.id}${tag} — ${String(e.message || e).slice(0, 22)}`; })));
   },
   img(u, size) { return https(String(u || '').replace(/\d{2,3}x\d{2,3}/, size)); },
   track(x) {
@@ -1271,8 +1300,8 @@ const Src = {
   cfgServers() { return !this.on() ? [] : CFG.servers.length ? CFG.servers : BUILT_IN_SERVER ? [{ id: 'config:0', name: 'musicServer', host: hostOf(BUILT_IN_SERVER), url: normServer(BUILT_IN_SERVER) }] : []; },
   backup() { return this.has('backup') ? ['backup'] : []; },
   ownServer() { return this.on() ? (S.settings.proxy || '') : ''; },
-  has(tier) { return tier === 'free' || (tier === 'backup' ? !!(BK.relays.length || SvC.list('backup').length) : tier === 'cfg' ? !!this.cfgServer() : tier === 'own' ? !!(this.ownServer() || (this.on() && S.settings.saavn)) : false); },
-  tiers() { return ['free', 'backup', ...this.servers()]; },
+  has(tier) { return tier === 'free' || (tier === 'mine' ? BK.servers.length > 0 : tier === 'backup' ? !!(JSA.relays('backup').length || SvC.list('backup').length) : tier === 'cfg' ? !!this.cfgServer() : tier === 'own' ? !!(this.ownServer() || (this.on() && S.settings.saavn)) : false); },
+  tiers() { return ['free', 'backup', 'mine', ...this.servers()]; },
   servers() { return this.on() ? ['own', 'cfg'] : []; },
   // true when every free and backup route is known to be down right now (so your servers are asked at once)
   freeDown() {
@@ -1298,8 +1327,9 @@ const Src = {
   describe(r) {
     if (!r || !r.tier) return '';
     if (r.tier === 'yt') return 'YouTube player';
+    if (r.tier === 'mine') { const s = BK.servers.find(x => x.id === r.relay); return s ? `Backup server · ${s.name} (${s.host})` : 'Backup server'; }
     if (r.tier === 'cfg') { const s = CFG.servers.find(x => x.id === r.relay) || CFG.servers[0]; return s ? `Your server · ${s.name} (${s.host})` : 'Your tunetune-config server'; }
-    if (r.tier === 'backup') { if (/^https?:/.test(r.relay)) return `Backup JioSaavn server · ${hostOf(r.relay)}`; const b = BK.relays.find(x => x.id === r.relay); return `Backup free relay · ${b ? (b.name ? b.name + ' (' + b.host + ')' : b.host) : String(r.relay).replace(/^backup /, '')}`; }
+    if (r.tier === 'backup') { if (/^https?:/.test(r.relay)) return `Free JioSaavn server (list) · ${hostOf(r.relay)}`; const b = BK.relays.find(x => x.id === r.relay); return `Free relay (list) · ${b ? (b.name ? b.name + ' (' + b.host + ')' : b.host) : String(r.relay).replace(/^backup |^free relay /, '')}`; }
     if (r.tier === 'own') return r.relay === 'own' ? 'Your own music server' : `Your JioSaavn server · ${hostOf(r.relay)}`;
     if (r.relay === 'direct') return 'JioSaavn direct';
     if (r.relay === 'cdn') return 'Link saved with the song';
@@ -1356,7 +1386,7 @@ function bestMatch(t, list) {
   }
   return best;
 }
-const HEDGE_MS = 2500;   // head start the free routes get before your servers are asked too
+const HEDGE_MS = 4500;   // head start the free routes get before your servers are asked too
 const Saavn = {
   get best() { return Src.describe(Src.last); },
   set best(v) { },
@@ -1366,7 +1396,7 @@ const Saavn = {
   async seq(fn, list) {
     let err = null;
     for (const tier of list) {
-      if (tier === 'backup') await loadBackupSources().catch(() => { });   // the backup list may still be loading right after start
+      if (tier === 'backup' || tier === 'mine') await loadBackupSources().catch(() => { });   // the list may still be loading right after start
       if (tier === 'cfg') await loadSiteConfig().catch(() => { });
       if (!Src.has(tier)) continue;
       try { const r = await fn(tier); if (r && (!Array.isArray(r) || r.length)) return r; }
@@ -1375,8 +1405,9 @@ const Saavn = {
     throw err || Object.assign(new Error('JioSaavn unavailable'), { skip: true });
   },
   async run(fn, tiers) {
-    const list = tiers || ['free', 'backup', ...Src.servers()];
-    const freeT = list.filter(t => t === 'free' || t === 'backup'), srvT = list.filter(t => t === 'own' || t === 'cfg');
+    const list = tiers || ['free', 'backup', 'mine', ...Src.servers()];
+    const freeT = list.filter(t => t === 'free' || t === 'backup'), srvT = list.filter(t => t === 'mine' || t === 'own' || t === 'cfg');
+    if (Src.freeDown()) Health.nudge();   // free routes are down: quietly re-test them (at most every 3 min, only while in use)
     if (!freeT.length || !srvT.length) return this.seq(fn, list);
     // free routes always go first; your servers are asked only if free ones are known to be down, fail, or are slow
     const freeP = this.seq(fn, freeT); freeP.catch(() => { });
@@ -2132,6 +2163,7 @@ const Player = {
     if (embedId) {
       this.isBlob = false; this.embedId = embedId; this.via = 'embed'; this.quality = 'YouTube player'; this.srcPath = { tier: 'yt', relay: 'youtube' };
       if (this.cleanTry) { this.cleanTry = false; if (!document.hidden) toast('No clean copy of this song — staying on YouTube'); }
+      else if (karaokeOn(t) && !document.hidden && t.id !== this.karSaid) { this.karSaid = t.id; toast('Karaoke isn’t available for this song — it plays through YouTube'); }
       if (!DIRECT() && /Android|iPhone|iPad/i.test(navigator.userAgent)) { try { if (!sessionStorage.getItem('tt.embedHint')) { sessionStorage.setItem('tt.embedHint', '1'); setTimeout(() => toast(releasesBase() ? 'This song uses YouTube’s player in the browser. For ad-free audio with the screen off, get the Android app in Settings.' : 'This song uses YouTube’s player in the browser, so ads can appear.'), 1500); } } catch (e) { } }
       this.route('embed');
       this.srcAt = Date.now(); this.lastProgress = Date.now(); this.lastT = -1; this.pendingSeek = 0;
@@ -2149,7 +2181,7 @@ const Player = {
     }
     if (!src) return this.skipAfterFail(t);
     this.isBlob = blob;
-    const wantFx = (!!S.settings.eqOn && !IS_IOS) || Party.react();
+    const wantFx = (!!S.settings.eqOn && !IS_IOS) || Party.react() || karaokeOn(t);
     if (!blob && wantFx && /saavncdn\.com/.test(src)) {
       let h0 = ''; try { h0 = new URL(src).host; } catch (e) { }
       const srv = this.badCors.has(h0) && (JSA.relays('own')[0] || JSA.relays('cfg')[0]);
@@ -2161,6 +2193,8 @@ const Player = {
     let fadeFrom = null;
     if (xfade && !fx && this.el === this.plain && !this.el.paused) { fadeFrom = this.plain; this.plain = fadeFrom === this.plainA ? this.plainB : this.plainA; this.el = this.plain; }
     this.route(fx ? 'fx' : 'plain');
+    if (this.fx && this.filters.length) this.applyEq();   // karaoke and EQ follow the song that's loading
+    if (karaokeOn(t) && !document.hidden && t.id !== this.karSaid) { this.karSaid = t.id; toast(fx ? '🎤 Playing in karaoke' : 'Karaoke isn’t available for this song — playing normally'); }
     const a = this.el;
     this.pendingSeek = startAt > 0 ? startAt : 0; this.srcAt = Date.now(); this.lastProgress = Date.now(); this.lastT = -1;
     a.src = src; this.applyVol();
@@ -2210,7 +2244,11 @@ const Player = {
     if ((r = await own())) return r; if (stale()) return null;
     if (t.source === 'deezer' && (r = await match())) return r; if (stale()) return null;
     // every free route is known to be down and YouTube's free audio isn't working either: ask your servers now, not after slow timeouts
-    if (Src.on() && Src.freeDown() && !(DIRECT() || MirrorHealth.ok())) { if ((r = await servers())) return r; if (stale()) return null; }
+    if (Src.freeDown() && !(DIRECT() || MirrorHealth.ok())) {
+      await loadBackupSources().catch(() => { }); if (stale()) return null;
+      if (Src.has('mine') && ((r = await own(['mine'])) || (r = await match(['mine'])))) return r; if (stale()) return null;
+      if (Src.on()) { if ((r = await servers())) return r; if (stale()) return null; }
+    }
     yid = ytIdOf(t);
     if (!yid) { try { const m = await YT.ytMatch(t); if (m) yid = t.ytId = m.sid; } catch (e) { } if (stale()) return null; }
     if ((r = await streams(yid))) return r; if (stale()) return null;
@@ -2220,6 +2258,11 @@ const Player = {
     if (Src.has('backup')) {
       if ((r = await own(['backup']))) return r; if (stale()) return null;
       if ((r = await match(['backup']))) return r; if (stale()) return null;
+    }
+    // 1c — your backup servers (tunetune-sources.json → backupServers), always on, only now that every free source failed
+    if (Src.has('mine')) {
+      if ((r = await own(['mine']))) return r; if (stale()) return null;
+      if ((r = await match(['mine']))) return r; if (stale()) return null;
     }
     // 2 — your servers, only when switched on and every free source failed
     if ((r = await servers())) return r; if (stale()) return null;
@@ -2302,6 +2345,9 @@ const Player = {
       const sp = ctx.createChannelSplitter(2), mg = ctx.createChannelMerger(2);
       this.wid = ['LL', 'LR', 'RL', 'RR'].map(() => ctx.createGain());
       this.comp.connect(sp);
+      this.kLow = ctx.createBiquadFilter(); this.kLow.type = 'lowpass'; this.kLow.frequency.value = 160; this.kLow.Q.value = 0.7;
+      this.kGain = ctx.createGain(); this.kGain.gain.value = 0; this.comp.connect(this.kLow); this.kLow.connect(this.kGain);
+      this.kGain.connect(mg, 0, 0); this.kGain.connect(mg, 0, 1);
       sp.connect(this.wid[0], 0); sp.connect(this.wid[1], 1); sp.connect(this.wid[2], 0); sp.connect(this.wid[3], 1);
       this.wid[0].connect(mg, 0, 0); this.wid[1].connect(mg, 0, 0); this.wid[2].connect(mg, 0, 1); this.wid[3].connect(mg, 0, 1);
       this.master = ctx.createGain(); mg.connect(this.master);
@@ -2324,6 +2370,9 @@ const Player = {
     this.master.gain.value = Math.pow(10, ((loud ? 5 : 0) + (on ? clamp(+st.eqBoost || 0, 0, 12) : 0)) / 20);
     const k = on ? clamp(+st.eqWidth || 1, 0, 2.2) : 1;
     this.wid[0].gain.value = (1 + k) / 2; this.wid[1].gain.value = (1 - k) / 2; this.wid[2].gain.value = (1 - k) / 2; this.wid[3].gain.value = (1 + k) / 2;
+    const kar = karaokeOn(this.cur) && this.el === this.fx;
+    if (kar) { this.wid[0].gain.value = 1; this.wid[1].gain.value = -1; this.wid[2].gain.value = -1; this.wid[3].gain.value = 1; this.master.gain.value *= 1.25; }
+    if (this.kGain) this.kGain.gain.value = kar ? 0.9 : 0;
   },
   reroute() {
     const t = this.cur; if (!t || !this.loaded || this.el === Embed || this.via === 'embed') return;
@@ -2609,6 +2658,7 @@ const UI = {
     $('#np-t').textContent = t.title;
     $('#np-a').textContent = t.artist + (Player.previewMode ? ' · Preview' : '');
     Marquee.all();
+    this.karaoke && this.karaoke();
     $('#np-from').textContent = Player.from || TITLE;
     $('#np').classList.toggle('live', !!t.live);
     document.title = `${t.title} · ${t.artist}`;
@@ -2711,6 +2761,13 @@ const UI = {
   },
   timerBtn() { $('#np-btimer').classList.toggle('on', !!(Player.sleepAt || Player.sleepEnd)); this.drive(); this.fitChips(); },
   // the chip row under the progress bar: when it runs out of room, labels give way to icons (times never get pushed out)
+  karaoke() {
+    const t = Player.cur, ok = !!t && !t.live && !['podcast', 'radio'].includes(t.source), on = ok && !!S.settings.karaoke;
+    const c = $('#np-kar'); if (c) c.classList.toggle('on', on && Player.el === Player.fx);
+    const d = $('#dv-kar'); if (d) { d.classList.toggle('on', on); d.hidden = !ok; }
+    $$('.lyb.kar').forEach(b => b.classList.toggle('on', on));
+    this.fitChips();
+  },
   fitChips() {
     const c = $('#np-chips'); if (!c || !npOpen) return;
     cancelAnimationFrame(this.fitR); this.fitR = requestAnimationFrame(() => {
@@ -2734,6 +2791,7 @@ const UI = {
     $('#dv-sleep').classList.toggle('on', !!(Player.sleepAt || Player.sleepEnd));
     const n = Player.queue[Player.i + 1]; $('#dv-up').textContent = n ? `Up next · ${n.title} — ${n.artist}` : S.settings.autoplay && !t.live ? 'Up next · Autoplay will pick similar songs' : '';
     $('#drive').classList.toggle('live', !!t.live);
+    this.karaoke();
   },
   tapHint(on) {
     $('#np').classList.toggle('needtap', !!on);
@@ -2927,7 +2985,7 @@ function buildShell() {
     <div class="np-meta"><div class="np-tt"><div class="np-t" id="np-t"></div><span class="dlbadge" id="np-dl">${I.dlok}</span><div class="np-a" id="np-a" data-a="npartist"></div></div>
       <button class="np-ib" id="np-party" data-a="party" aria-label="Party Mode">${I.disco}</button><button class="np-ib" id="np-share" data-a="npshare" aria-label="Share">${I.share}</button><button class="np-ib" id="np-like" data-a="nplike" aria-label="Favorite">${I.heart}</button></div>
     <div class="scrub"><input class="rng" id="np-seek" type="range" min="0" max="1000" step="1" value="0" aria-label="Seek">
-      <div class="times"><span id="np-cur">0:00</span><div class="tchips" id="np-chips"><span class="livepill">● LIVE</span><span class="qbadge" id="np-qb" data-a="aq" role="button" tabindex="0" aria-label="Audio quality"></span><button class="slpill" id="np-slp" data-a="sleep" aria-label="Sleep timer">${I.timer}<span></span></button><button class="eqtag" id="np-eqt" data-a="eq" aria-label="Equalizer"></button><button class="dlpill" id="np-dlq" data-a="dlinfo" aria-label="Offline status">${I.offline}<span></span></button></div><span id="np-rem">-0:00</span></div></div>
+      <div class="times"><span id="np-cur">0:00</span><div class="tchips" id="np-chips"><span class="livepill">● LIVE</span><span class="qbadge" id="np-qb" data-a="aq" role="button" tabindex="0" aria-label="Audio quality"></span><button class="slpill" id="np-slp" data-a="sleep" aria-label="Sleep timer">${I.timer}<span></span></button><button class="eqtag" id="np-eqt" data-a="eq" aria-label="Equalizer"></button><button class="karpill" id="np-kar" data-a="karaoke" aria-label="Karaoke is on">${I.mic}<span>Karaoke</span></button><button class="dlpill" id="np-dlq" data-a="dlinfo" aria-label="Offline status">${I.offline}<span></span></button></div><span id="np-rem">-0:00</span></div></div>
     <div class="ctrl">
       <button class="np-ib c-s" id="np-shuf" data-a="shuffle" aria-label="Shuffle">${I.shuffle}</button>
       <button class="np-ib c-k" data-a="skipb" aria-label="Skip back">${skipIcon(S.settings.podBack || 15, true)}</button>
@@ -3026,7 +3084,8 @@ async function translateLines(lines, from) {
 function lyrBar(r) {
   const sc = lyrScript((r.synced || []).map(x => x.text).join(' ') || r.plain || ''); const m = S.settings.lyrMode || 'orig';
   const b = (k, label, ic) => `<button class="lyb ${m === k ? 'on' : ''}" data-a="lyrmode" data-m="${k}">${ic ? I[ic] : ''}${label}</button>`;
-  return `<div class="ly-bar"><button class="lyb lyc" data-a="copylyr" aria-label="Copy lyrics">${I.copy}<span>Copy</span></button>${sc ? `<div class="lyseg" role="tablist">${b('orig', sc[2]) + b('latin', 'Aa English') + b('en', 'Translate', 'translate')}</div>` : ''}</div>`;
+  const kt = Player.cur, kOk = S.settings.karaokeLyr !== false && kt && !kt.live && !['podcast', 'radio'].includes(kt.source);
+  return `<div class="ly-bar"><button class="lyb lyc" data-a="copylyr" aria-label="Copy lyrics">${I.copy}<span>Copy</span></button>${kOk ? `<button class="lyb kar ${S.settings.karaoke ? 'on' : ''}" data-a="karaoke" aria-label="Karaoke">${I.mic}<span>Karaoke</span></button>` : ''}${sc ? `<div class="lyseg" role="tablist">${b('orig', sc[2]) + b('latin', 'Aa English') + b('en', 'Translate', 'translate')}</div>` : ''}</div>`;
 }
 function lyrLine(r, k, text) {
   const m = S.settings.lyrMode || 'orig'; if (!text) return '♪';
@@ -3221,6 +3280,7 @@ function trackMenu(t, meta = {}) {
       meta.np && lyrState && lyrState.id === t.id && (lyrState.plain || (lyrState.synced && lyrState.synced.length)) && { label: 'Copy Lyrics', icon: 'lyrics', fn: copyLyrics },
       { label: 'Song Info', icon: 'info', fn: () => songInfo(t) },
       meta.np && { label: 'Audio Quality & Source', icon: 'wave', fn: openAQ },
+      meta.np && !t.live && !['podcast', 'radio'].includes(t.source) && { label: S.settings.karaoke ? 'Karaoke: On — turn off' : 'Karaoke (sing along)', icon: 'mic', fn: karaokeToggle },
       meta.np && !showEq() && { label: 'Equalizer', icon: 'eq', fn: openEQ },
       meta.np && S.settings.btnCast === false && (CAN_AIRPLAY || CAN_CAST) && { label: CAN_AIRPLAY ? 'AirPlay' : 'Cast', icon: CAN_AIRPLAY ? 'airplay' : 'cast', fn: () => Actions.cast() },
       meta.np && !t.live && !['local', 'podcast', 'audius'].includes(t.source) && { label: Src.on() ? 'My server: On — turn off' : 'My server: Off — use it before YouTube', icon: 'server', fn: () => Src.set(!Src.on()) },
@@ -3330,7 +3390,7 @@ function aqInner() {
   const big = x.tier === 'hires' || x.tier === 'lossless' || x.tier === 'hq'
     ? `<div class="aq-hero ${x.tier}"><span class="aq-medal">${x.tier === 'hq' ? 'HQ' : I.wave}</span><div><b>${esc(x.label)}</b><small>${esc(x.spec || '')}</small></div></div>`
     : `<div class="aq-hero"><div><b>${esc(x.label || 'Standard')}</b><small>${yt ? 'Quality is chosen by YouTube' : 'Standard quality'}</small></div></div>`;
-  const order = Src.on() ? 'Free sources → backup free sources → your own server → your tunetune-config servers → YouTube player' : 'Free sources → backup free sources → YouTube player';
+  const order = Src.on() ? 'Free sources → backup servers → your own server → your tunetune-config servers → YouTube player' : 'Free sources → backup free sources → YouTube player';
   return `<div class="aq-h"><b>Audio Quality</b><small>${esc(t.title)} · ${esc(t.artist)}</small></div>${big}
     <div class="sub-h">Playing from</div>${srcCard}
     <div class="li"><div class="lb"><span class="lx">My server<small class="lh">${esc(order)}</small></span>${sSw('ownSrc', Src.on())}</div></div>
@@ -3383,7 +3443,7 @@ function openDrive() {
     <div class="dv-t" id="dv-t"></div><div class="dv-a" id="dv-a"></div>
     <div class="dv-prog"><input class="rng" id="dv-seek" type="range" min="0" max="1000" value="0" aria-label="Seek"><div class="dv-times"><span id="dv-cur">0:00</span><span id="dv-rem">-0:00</span></div></div>
     <div class="dv-c"><button data-a="skipb2" id="dv-back" aria-label="Skip back"></button><button data-a="prev" aria-label="Previous">${I.prev}</button><button data-a="toggle" id="dv-pp" class="big" aria-label="Play or pause">${I.pause}</button><button data-a="next" aria-label="Next">${I.next}</button><button data-a="skipf2" id="dv-fwd" aria-label="Skip forward"></button></div>
-    <div class="dv-c2"><button data-a="nplike" id="dv-like" aria-label="Favorite">${I.heart}</button><button data-a="shuffle" id="dv-shuf" aria-label="Shuffle">${I.shuffle}</button><button data-a="repeat" id="dv-rep" aria-label="Repeat">${I.repeat}</button><button data-a="sleep" id="dv-sleep" aria-label="Sleep timer">${I.timer}</button></div>
+    <div class="dv-c2"><button data-a="nplike" id="dv-like" aria-label="Favorite">${I.heart}</button><button data-a="shuffle" id="dv-shuf" aria-label="Shuffle">${I.shuffle}</button><button data-a="repeat" id="dv-rep" aria-label="Repeat">${I.repeat}</button><button data-a="sleep" id="dv-sleep" aria-label="Sleep timer">${I.timer}</button><button data-a="karaoke" id="dv-kar" aria-label="Karaoke">${I.mic}</button></div>
     <div class="dv-up" id="dv-up"></div></div>`;
   document.body.appendChild(d); requestAnimationFrame(() => d.classList.add('on')); UI.drive(); UI.time();
   const clock = () => { const c = $('#dv-clock'); if (c) c.textContent = new Date().toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }); };
@@ -3584,8 +3644,9 @@ async function mediaSource(t) {
   let r = await svm(['free']); if (r) return r;
   let yid = ytIdOf(t);
   if (!yid && (t.source === 'deezer' || t.source === 'saavn')) { const m = await YT.ytMatch(t).catch(() => null); if (m) yid = t.ytId = m.sid; }
-  if (yid) { try { return await Streams.get(yid, new Set(), DIRECT() ? 30000 : 15000); } catch (e) { if (!Src.on() && !Src.has('backup')) throw e; } }
+  if (yid) { try { return await Streams.get(yid, new Set(), DIRECT() ? 30000 : 15000); } catch (e) { if (!Src.on() && !Src.has('backup') && !Src.has('mine')) throw e; } }
   if (Src.has('backup') && (r = await svm(['backup']))) return r;
+  if (Src.has('mine') && (r = await svm(['mine']))) return r;
   if (Src.on() && (r = await svm(Src.servers()))) return r;
   throw new Error('no source');
 }
@@ -3677,7 +3738,7 @@ async function download(t, quiet) {
     if (artUrl && !artUrl.startsWith('data:')) {
       try { const ar = await fetchT(artUrl, {}, 15000); if (ar.ok) { const ab = await ar.blob(); await DB.put('art:' + t.id, ab); artCache.set(t.id, URL.createObjectURL(ab)); meta.hasArt = true; } } catch (e) { }
     }
-    S.downloads = S.downloads.filter(x => x.id !== t.id); S.downloads.unshift(meta); save();
+    S.downloads = S.downloads.filter(x => x.id !== t.id); S.downloads.unshift(meta); save(); keepSafe();
     dlProgress(t, -1);
     if (!quiet) toast(`Downloaded “${t.title}” — plays offline`, { label: 'View', fn: () => { if (npOpen) closeNP(); setTimeout(() => go('coll', { k: 'downloads', title: 'Downloaded' }), npOpen ? 400 : 0); } });
     Offline.forget(t.id); UI.dlMark();
@@ -3701,6 +3762,7 @@ function offerSave(t, url) {
     ],
   });
 }
+function keepSafe() { try { if (!keepSafe.done && navigator.storage && navigator.storage.persist) { keepSafe.done = true; navigator.storage.persisted().then(p => p || navigator.storage.persist()).catch(() => { }); } } catch (e) { } }
 async function downloadMany(tracks) {
   const todo = (tracks || []).filter(t => canDownload(t) && !isDl(t.id));
   if (!todo.length) return toast((tracks || []).some(canDownload) ? 'Already downloaded' : 'Nothing here can be downloaded');
@@ -3827,24 +3889,36 @@ async function importFiles(files) {
   save(); toast(`Added ${plural(ok, 'song')} to On This Device`); refreshIfLib();
 }
 function exportData() {
-  const data = { app: TITLE, version: VER, exported: new Date().toISOString(), liked: S.liked, playlists: S.playlists, history: S.history, searches: S.searches, settings: S.settings };
+  const st = { ...S.settings }; delete st.name;
+  const data = { app: TITLE, version: VER, exported: new Date().toISOString(), liked: S.liked, playlists: S.playlists, history: S.history, searches: S.searches,
+    artists: S.artists, blocked: S.blocked, colls: S.colls || [], pod: S.pod, stats: S.stats, downloads: S.downloads.map(clean), settings: st };
   const a = document.createElement('a');
-  a.href = URL.createObjectURL(new Blob([JSON.stringify(data, null, 1)], { type: 'application/json' }));
+  a.href = URL.createObjectURL(new Blob([JSON.stringify(data)], { type: 'application/json' }));
   a.download = `tunetune-backup-${new Date().toISOString().slice(0, 10)}.json`;
   document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 5000);
-  toast('Backup exported');
+  toast('Backup exported — everything except your name');
 }
 async function importBackup(file) {
   if (!file) return;
   try {
     const d = JSON.parse(await file.text());
     if (!d || !Array.isArray(d.liked)) throw new Error('bad');
-    const merge = (a, b) => { const m = new Map(); [...a, ...b].forEach(x => { if (x && x.id && !m.has(x.id)) m.set(x.id, x); }); return [...m.values()]; };
-    S.liked = merge(d.liked, S.liked); S.history = merge(d.history || [], S.history).slice(0, 150);
-    S.playlists = merge(d.playlists || [], S.playlists);
+    const merge = (a, b) => { const m = new Map(); [...(a || []), ...(b || [])].forEach(x => { if (x && x.id && !m.has(x.id)) m.set(x.id, x); }); return [...m.values()]; };
+    S.liked = merge(d.liked, S.liked); S.history = merge(d.history, S.history).slice(0, 150);
+    S.playlists = merge(d.playlists, S.playlists); S.artists = merge(d.artists, S.artists); S.blocked = merge(d.blocked, S.blocked);
+    S.colls = merge((d.colls || []).filter(m => m && Array.isArray(m.items) && (m.kind === 'artists' || m.kind === 'shows')), S.colls);
     S.searches = [...new Set([...(d.searches || []), ...S.searches])].slice(0, 12);
-    if (d.settings) Object.assign(S.settings, d.settings, { eqOn: S.settings.eqOn });
-    save(); applyTheme(); render(); toast('Library restored');
+    if (d.pod && typeof d.pod === 'object') {
+      S.pod.follows = merge(d.pod.follows, S.pod.follows);
+      for (const [k, v] of Object.entries(d.pod.prog || {})) { const mine = S.pod.prog[k]; if (v && (!mine || (v.at || 0) > (mine.at || 0))) S.pod.prog[k] = v; }
+    }
+    if (d.stats && d.stats.plays) for (const [k, v] of Object.entries(d.stats.plays)) { const mine = S.stats.plays[k]; if (v && (!mine || (v.n || 0) > (mine.n || 0))) S.stats.plays[k] = v; }
+    if (d.stats && d.stats.days) for (const [k, v] of Object.entries(d.stats.days)) S.stats.days[k] = Math.max(S.stats.days[k] || 0, +v || 0);
+    if (d.settings) { const keep = { name: S.settings.name, eqOn: S.settings.eqOn }; Object.assign(S.settings, d.settings, keep); S.settings.homeSections = { ...DEFAULTS.settings.homeSections, ...(S.settings.homeSections || {}) }; }
+    save(); applyTheme(); npButtons && npButtons(); render();
+    const want = (d.downloads || []).filter(t => t && t.id && !isDl(t.id) && canDownload(t));
+    if (want.length) toast(`Library restored · ${plural(want.length, 'download')} in this backup`, { label: 'Download', ms: 9000, fn: () => downloadMany(want) });
+    else toast('Library restored');
   } catch (e) { toast('That file isn’t a Tune Tune backup'); }
 }
 async function share(t) {
@@ -3895,6 +3969,8 @@ async function openSharedPlaylist(code) {
 }
 async function openShared() {
   try {
+    const u0 = new URL(location.href), mx = u0.searchParams.get('mix');
+    if (mx) { u0.searchParams.delete('mix'); history.replaceState(history.state, '', u0.pathname + u0.search + u0.hash); return Mixes.openShared(mx); }
     const u = new URL(location.href); const pl = u.searchParams.get('pl'); const sh = u.searchParams.get('share') || u.searchParams.get('text') || u.searchParams.get('url'); const op = u.searchParams.get('open');
     if (pl || sh || op) { ['pl', 'share', 'text', 'url', 'title', 'open'].forEach(k => u.searchParams.delete(k)); history.replaceState(history.state, '', u.pathname + u.search + u.hash); }
     if (pl) return openSharedPlaylist(pl);
@@ -3998,9 +4074,16 @@ function offlineList(withPods) {
   [...S.downloads, ...(S.cached || []), ...S.locals].forEach(t => { if (t && t.id && !seen.has(t.id) && (withPods || S.settings.mixPods || t.source !== 'podcast')) { seen.add(t.id); out.push(t); } });
   return out;
 }
+// downloaded or auto-saved episodes, ones you're in the middle of first
+function offlinePods() {
+  const seen = new Set(), out = [];
+  [...S.downloads, ...(S.cached || [])].forEach(t => { if (t && t.source === 'podcast' && !seen.has(t.id)) { seen.add(t.id); out.push(t); } });
+  return Mixes.sort('shows', out, 'continue');
+}
 const shuffled = a => { const b = a.slice(); for (let i = b.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [b[i], b[j]] = [b[j], b[i]]; } return b; };
 const canPlayOffline = t => t && (t.source === 'local' || isDl(t.id) || Offline.has(t.id));
 function playOffline(kind) {
+  if (kind === 'pods') { const P = offlinePods(); if (!P.length) return toast('No episodes saved on this device yet'); Player.playList(P, 0, 'Offline podcasts', false); setTimeout(openNP, 250); return; }
   const noPod = x => S.settings.mixPods || x.source !== 'podcast';
   const L = (kind === 'dl' ? S.downloads : kind === 'saved' || kind === 'saved-order' ? (S.cached || []) : kind === 'local' ? S.locals : offlineList()).filter(noPod);
   if (!L.length) return toast('Nothing saved on this device yet');
@@ -4010,20 +4093,22 @@ function playOffline(kind) {
 }
 let offShown = false;
 function offlineNudge() {
-  const n = offlineList().length;
-  if (!n) return toast('You’re offline — download songs to listen without internet');
-  toast(`You’re offline · ${plural(n, 'song')} ready`, { label: 'Play', ms: 6000, fn: () => offlineSheet() });
+  const mix = !!S.settings.mixPods, n = mix || S.settings.offSongs !== false ? offlineList().length : 0, p = !mix && S.settings.offPods !== false ? offlinePods().length : 0;
+  if (!n && !p) return toast('You’re offline — download songs to listen without internet');
+  toast(`You’re offline · ${[n ? plural(n, mix ? 'item' : 'song') : '', p ? plural(p, 'episode') : ''].filter(Boolean).join(' and ')} ready`, { label: 'Play', ms: 6000, fn: () => offlineSheet() });
 }
 function offlineSheet() {
   const np = x => S.settings.mixPods || x.source !== 'podcast';
   const all = offlineList(), dl = S.downloads.filter(np).length, sv = (S.cached || []).filter(np).length, lc = S.locals.length;
-  if (!all.length) return toast('You’re offline — download songs to listen without internet');
-  actionSheet({ head: `<div class="sh col off-h"><div class="off-ic">${I.wifiOff}</div><b>You’re offline</b><div class="m-s">${plural(all.length, 'song')} on this device can still play</div></div>`,
+  const mix = !!S.settings.mixPods, sOn = mix || S.settings.offSongs !== false, pods = !mix && S.settings.offPods !== false ? offlinePods() : [];
+  if (!(sOn && all.length) && !pods.length) return toast('You’re offline — download songs to listen without internet');
+  actionSheet({ head: `<div class="sh col off-h"><div class="off-ic">${I.wifiOff}</div><b>You’re offline</b><div class="m-s">${[sOn && all.length ? plural(all.length, mix ? 'item' : 'song') : '', pods.length ? plural(pods.length, 'episode') : ''].filter(Boolean).join(' and ')} on this device can still play</div></div>`,
     acts: [
-      { label: `Offline Mix · ${plural(all.length, 'song')}`, icon: 'shuffle', fn: () => playOffline('mix') },
-      dl && { label: `Downloads · ${dl}`, icon: 'download', fn: () => playOffline('dl') },
-      sv && { label: `Recently saved · ${sv}`, icon: 'clock', fn: () => playOffline('saved') },
-      lc && { label: `On This Device · ${lc}`, icon: 'folder', fn: () => playOffline('local') },
+      sOn && all.length && { label: `${mix ? 'Offline Mix' : 'Offline songs'} · ${plural(all.length, mix ? 'item' : 'song')}`, icon: 'shuffle', fn: () => playOffline('mix') },
+      pods.length && { label: `Offline podcasts · ${plural(pods.length, 'episode')}`, icon: 'mic', fn: () => playOffline('pods') },
+      sOn && dl && { label: `Downloads · ${dl}`, icon: 'download', fn: () => playOffline('dl') },
+      sOn && sv && { label: `Recently saved · ${sv}`, icon: 'clock', fn: () => playOffline('saved') },
+      sOn && lc && { label: `On This Device · ${lc}`, icon: 'folder', fn: () => playOffline('local') },
     ], cancel: 'Not now' });
 }
 addEventListener('offline', () => {
@@ -4059,7 +4144,7 @@ async function testSources() {
   toast('Testing music sources…'); BYPASS = true; setTimeout(() => { BYPASS = false; }, 25000);
   const lines = [], step = (ok, label, d) => lines.push(`${ok ? '✓' : '✗'} ${label}${d ? ' — ' + d : ''}`);
   lines.push('FREE SOURCES (always tried first)');
-  JSA.reset(); SvC.fails.clear(); Health.clear();   // a full test re-checks every route from scratch
+  JSA.reset(); SvC.fails.clear(); Health.clear(); JSA.limitUntil = {};   // a full test re-checks every route from scratch
   await loadBackupSources().catch(() => { });
   // every single route, so you can see which ones work from your device and network
   const each = await JSA.diagnose().catch(() => []);
@@ -4077,7 +4162,14 @@ async function testSources() {
   }
   try { mem.delete('au:tr:week'); const a = await Audius.trending(); step(!!a.length, 'Audius', a.length ? 'working' : 'empty'); } catch (e) { step(false, 'Audius', 'not answering'); }
   try { const r = await Radio.top(); step(!!r.length, 'Live radio', r.length ? 'working' : 'empty'); } catch (e) { step(false, 'Live radio', 'not answering'); }
-  lines.push('', `YOUR SERVERS (${Src.on() ? 'on — used after free sources' : 'off'})`);
+  lines.push('', 'BACKUP SERVERS (tunetune-sources.json — only after every free source failed)');
+  if (!BK.servers.length) lines.push('– none listed yet');
+  { const u = 'https://www.jiosaavn.com/api.php?' + new URLSearchParams({ __call: 'autocomplete.get', query: 'hits', _format: 'json', _marker: '0', api_version: '4', ctx: 'web6dot0' });
+    for (const p of JSA.relays('mine')) {
+      try { await JSA.attempt(p, u); step(true, `${p.name} (${p.host})`, `working · ${Use.n('r:' + p.id)}${p.cap ? ' of ' + p.cap : ''} used today`); }
+      catch (e) { JSA.markBad(p, e); step(false, `${p.name} (${p.host})`, e.limit ? 'reached its daily limit' : 'not answering'); }
+    } }
+  lines.push('', `YOUR SERVERS (${Src.on() ? 'on — used after free sources and backup servers' : 'off'})`);
   if (Src.on()) {
     await loadSiteConfig();
     for (const [tier, label] of [['own', 'Your own server'], ['cfg', 'tunetune-config servers']]) {
@@ -4390,10 +4482,166 @@ const PODCATS = [['Comedy', 20], ['News', 210], ['True Crime', 0], ['Business', 
   ['Sports', 30], ['History', 40], ['Science', 170], ['Spirituality', 270], ['Kids & Family', 330], ['Arts', 280], ['Music', 350]];
 const podCats = () => [...PODCATS, ...myLangs().slice(0, 6).map((L, i) => [L, (i * 47 + 10) % 360])];
 function rtags() { return [...myLangs().slice(0, 4).map(L => [L.toLowerCase(), L]), ...RTAGS_BASE]; }
+/* ================= Artist & show mixes =================
+   Self-updating lists of one or more ARTISTS (songs) or one or more SHOWS (podcast episodes).
+   Artists and shows never mix, and mixes are kept apart from normal playlists. */
+const uniqId = a => { const s = new Set(); return a.filter(x => x && x.id && !s.has(x.id) && s.add(x.id)); };
+const normName = s => String(s || '').toLowerCase().normalize('NFKD').replace(/[^\p{L}\p{N}]+/gu, '');
+const MIX_SORTS = {
+  artists: [['popular', 'Popular'], ['latest', 'Latest'], ['oldest', 'Oldest'], ['yours', 'Most played'], ['recent', 'Recently played'], ['az', 'A–Z']],
+  shows: [['continue', 'Continue where you left'], ['latest', 'Latest'], ['oldest', 'Oldest'], ['unplayed', 'Unplayed'], ['most', 'Most listened']],
+};
+const MIX_MOODS = ['Melody', 'Romantic', 'Party', 'Sad', 'Rap', 'Devotional'];
+const Mixes = {
+  all(kind) { return (S.colls || []).filter(m => !kind || m.kind === kind); },
+  get(id) { return (S.colls || []).find(m => m.id === id); },
+  kindOf(c) { return c && (c.kind === 'podcast' || c.source === 'pod') ? 'shows' : 'artists'; },
+  item(c) { return { id: String(c.id), title: c.title || '', art: c.artLarge || c.art || '', source: c.source || '', kind: c.kind || '' }; },
+  addSheet(c) {
+    if (!c || !c.id) return toast('Open an artist or a show first');
+    const kind = this.kindOf(c), word = kind === 'shows' ? 'show' : 'artist', list = this.all(kind);
+    actionSheet({ head: textHead(`Add ${c.title} to a mix`, kind === 'shows' ? 'Show mixes hold podcast shows only' : 'Artist mixes hold artists only'),
+      acts: [...list.map(m => { const has = m.items.some(x => x.id === String(c.id)); return { label: has ? `${m.title} — already added` : m.title, icon: has ? 'check' : 'playlist', fn: () => (has ? toast(`${c.title} is already in ${m.title}`) : this.add(m, c)) }; }),
+        { label: `New ${word} mix…`, icon: 'plus', fn: () => this.create(kind, c) }] });
+  },
+  add(m, c) {
+    if (this.kindOf(c) !== m.kind) return toast(m.kind === 'shows' ? 'Only podcast shows can go in a show mix' : 'Only artists can go in an artist mix');
+    if (m.items.some(x => x.id === String(c.id))) return toast(`${c.title} is already in ${m.title}`);
+    m.items.push(this.item(c)); m.at = Date.now(); save(); buzz();
+    toast(`Added to ${m.title}`, { label: 'Open', fn: () => go('coll', { k: 'mix', id: m.id }) });
+    const e = cv(); if (e && e.k === 'mix' && e.id === m.id) softRender();
+  },
+  async create(kind, c, name, items) {
+    const def = c ? `${c.title} ${kind === 'shows' ? 'shows' : 'mix'}` : (kind === 'shows' ? 'My shows' : 'My artists');
+    const n = name || await ask(kind === 'shows' ? 'New show mix' : 'New artist mix', 'Name', def, 'Create'); if (!n) return null;
+    const m = { id: 'mx' + Date.now().toString(36) + Math.random().toString(36).slice(2, 5), kind, title: String(n).trim().slice(0, 60) || def, items: items || (c ? [this.item(c)] : []), pinned: false, at: Date.now() };
+    (S.colls = S.colls || []).unshift(m); save(); buzz();
+    if (!items) toast(`Created ${m.title}`, { label: 'Open', fn: () => go('coll', { k: 'mix', id: m.id }) });
+    return m;
+  },
+  remove(m) { S.colls = (S.colls || []).filter(x => x.id !== m.id); save(); },
+  artistMatch(t, name) {
+    const n = normName(name); if (n.length < 3) return true;
+    return String(t.artist || '').split(/,|&|\bfeat\.?\b|\bft\.?\b|\bx\b/i).some(a => { const b = normName(a); return b.length >= 3 && (b.includes(n) || n.includes(b)); });
+  },
+  // everything below refreshes itself (cached for 30 minutes), so a mix always has the latest songs and episodes
+  artistSongs(a) {
+    return cached('mx:a:' + a.id, 30 * 60e3, async () => {
+      let t = [];
+      try { const r = await YT.collection({ kind: 'artist', id: a.id, title: a.title, art: a.art, source: a.source }); t = r.tracks || []; } catch (e) { }
+      try { const more = await YT.songs(`${a.title} songs`); t = t.concat(more.filter(x => this.artistMatch(x, a.title))); } catch (e) { }
+      return uniqId(t);
+    });
+  },
+  artistMood(a, mood) { return cached(`mx:m:${a.id}:${mood}`, 30 * 60e3, async () => (await YT.songs(`${a.title} ${mood.toLowerCase()} songs`)).filter(x => this.artistMatch(x, a.title))); },
+  async showEps(s) { const r = await Pod.episodes(s.id); return (r.eps || []).map(x => (x.podId ? x : { ...x, podId: s.id })); },
+  interleave(lists) { const out = []; const n = Math.max(0, ...lists.map(l => l.length)); for (let i = 0; i < n; i++) lists.forEach(l => { if (l[i]) out.push(l[i]); }); return out; },
+  async tracks(m, f, mood) {
+    const items = m.items.filter(x => !f || f === 'all' || x.id === f);
+    const lists = await Promise.all(items.map(x => (m.kind === 'shows' ? this.showEps(x) : mood ? this.artistMood(x, mood) : this.artistSongs(x)).catch(() => [])));
+    return uniqId(this.interleave(lists)).filter(t => m.kind === 'shows' ? t.source === 'podcast' : t.source !== 'podcast');
+  },
+  sort(kind, list, how) {
+    const L = list.slice();
+    if (kind === 'artists') {
+      const yr = t => (+t.year || 0), plays = t => (S.stats.plays[t.id] || {}).n || 0, last = t => (S.stats.plays[t.id] || {}).last || 0;
+      if (how === 'latest') L.sort((a, b) => yr(b) - yr(a)); else if (how === 'oldest') L.sort((a, b) => (yr(a) || 9999) - (yr(b) || 9999));
+      else if (how === 'yours') L.sort((a, b) => plays(b) - plays(a)); else if (how === 'recent') L.sort((a, b) => last(b) - last(a));
+      else if (how === 'az') L.sort((a, b) => String(a.title).localeCompare(String(b.title)));
+      return L;
+    }
+    const pp = t => podProg(t.id) || {}, d = t => Date.parse(t.date || '') || 0;
+    if (how === 'latest') return L.sort((a, b) => d(b) - d(a));
+    if (how === 'oldest') return L.sort((a, b) => d(a) - d(b));
+    if (how === 'unplayed') return L.filter(t => !pp(t).done && !(pp(t).pos > 15)).sort((a, b) => d(b) - d(a));
+    if (how === 'most') return L.sort((a, b) => (pp(b).pos || 0) - (pp(a).pos || 0));
+    // continue where you left: episodes you're in the middle of (latest listened first), then unplayed (newest first), then played
+    const g = t => { const p = pp(t); return p.done ? 2 : p.pos > 15 ? 0 : 1; };
+    return L.sort((a, b) => g(a) - g(b) || (g(a) === 0 ? (pp(b).at || 0) - (pp(a).at || 0) : d(b) - d(a)));
+  },
+  async share(m) {
+    const code = await packStr(JSON.stringify({ k: m.kind, n: m.title, i: m.items.map(x => ({ id: x.id, title: x.title, art: x.art, source: x.source, kind: x.kind })) }));
+    const app = /^https?:/.test(location.origin) ? location.origin + location.pathname : location.href.split('?')[0];
+    const url = `${app}?mix=${code}`, text = `🎶 “${m.title}” — ${m.kind === 'shows' ? plural(m.items.length, 'show') : plural(m.items.length, 'artist')}\nListen free on Tune Tune`;
+    try { if (navigator.share) { await navigator.share({ title: m.title, text, url }); return; } } catch (e) { if (e.name === 'AbortError') return; }
+    copyText(`${text}\n${url}`, 'Mix link copied');
+  },
+  async openShared(code) {
+    try {
+      const d = JSON.parse(await unpackStr(code));
+      const kind = d.k === 'shows' ? 'shows' : 'artists', items = (d.i || []).filter(x => x && x.id && x.title).slice(0, 50).map(x => this.item(x));
+      if (!items.length) throw new Error('empty');
+      actionSheet({ head: textHead(d.n || 'Shared mix', items.map(x => x.title).slice(0, 6).join(', ')), acts: [
+        { label: 'Add to my mixes', icon: 'plus', fn: async () => { const m = await this.create(kind, null, d.n || 'Shared mix', items); if (m) go('coll', { k: 'mix', id: m.id }); } }] });
+    } catch (e) { toast('That mix link is broken'); }
+  },
+  // add more artists / shows from inside a mix
+  async addMore(m) {
+    const q = await ask(m.kind === 'shows' ? 'Add a show' : 'Add an artist', m.kind === 'shows' ? 'Show name' : 'Artist name', '', 'Search'); if (!q) return;
+    let res = [];
+    try { res = m.kind === 'shows' ? await Pod.search(q) : await YT.artists(q); } catch (e) { }
+    res = (res || []).filter(x => x && x.id && (m.kind === 'shows' ? this.kindOf(x) === 'shows' : x.kind === 'artist')).slice(0, 8);
+    if (!res.length) return toast('Nothing found — try another name');
+    actionSheet({ head: textHead(`Add to ${m.title}`), acts: res.map(x => ({ label: x.title, icon: m.kind === 'shows' ? 'mic' : 'user', fn: () => this.add(m, x) })) });
+  },
+};
+const mixCard = m => `<div class="card" data-a="go" data-v="coll" data-k="mix" data-id="${esc(m.id)}"><div class="cw">${collage(m.items.length ? m.items : [{}], 'art')}</div><div class="ct">${esc(m.title)}</div><div class="cs">${m.kind === 'shows' ? plural(m.items.length, 'show') : plural(m.items.length, 'artist')}${m.pinned ? ' · Pinned' : ''}</div></div>`;
+function renderMixPage(e, tok) {
+  const m = Mixes.get(e.id);
+  if (!m) return header('Mix', { noLarge: true }) + emptyState({ icon: 'playlist', t: 'This mix was removed', d: 'Make a new one from any artist or show page.' });
+  const shows = m.kind === 'shows';
+  if (e.f !== 'all' && !m.items.some(x => x.id === e.f)) e.f = 'all';
+  e.s = e.s || (shows ? 'continue' : 'popular'); e.mood = shows ? '' : (e.mood || '');
+  const chip = (a, v, label, on) => `<button class="chip ${on ? 'on' : ''}" data-a="${a}" data-x="${esc(v)}">${esc(label)}</button>`;
+  let html = header(m.title, { noLarge: true, right: nbBtn('mixmenu', 'more', 'Mix options') });
+  html += `<div class="ch">${collage(m.items.length ? m.items : [{}], 'ch-art')}<div class="ch-i"><h1>${esc(m.title)}</h1><p class="ch-sub">${esc((shows ? plural(m.items.length, 'show') : plural(m.items.length, 'artist')) + ' · updates by itself')}</p>
+    <div class="ch-btns"><button class="pill" data-a="mxpin" aria-label="${m.pinned ? 'Unpin from Home' : 'Pin to Home'}">${m.pinned ? I.check + 'Pinned' : I.pin + 'Pin'}</button><button class="pill icon" data-a="mxadd" aria-label="${shows ? 'Add a show' : 'Add an artist'}">${I.plus}</button><button class="pill icon" data-a="dlall" aria-label="Download all">${I.download}</button><button class="pill icon" data-a="mxshare" aria-label="Share">${I.share}</button></div></div></div>`;
+  if (!m.items.length) return html + emptyState({ icon: shows ? 'mic' : 'user', t: shows ? 'No shows yet' : 'No artists yet', d: 'Tap + to add one.' });
+  if (m.items.length > 1) html += `<div class="chips pg mx-f">${chip('mxf', 'all', shows ? 'All shows' : 'All artists', e.f === 'all')}${m.items.map(x => chip('mxf', x.id, x.title, e.f === x.id)).join('')}</div>`;
+  html += `<div class="chips pg mx-s">${MIX_SORTS[m.kind].map(([v, l]) => chip('mxs', v, l, e.s === v && !e.mood)).join('')}${shows ? '' : MIX_MOODS.map(md => chip('mxm', md, md, e.mood === md)).join('')}</div>`;
+  html += `<div id="mxb"><div class="spin"></div></div>`;
+  setTimeout(() => fill('#mxb', tok, Mixes.tracks(m, e.f, e.mood), list => {
+    const L = e.mood ? list : Mixes.sort(m.kind, list, e.s); e.tracks = L;
+    if (!L.length) return emptyState({ icon: shows ? 'mic' : 'music', t: shows ? (e.s === 'unplayed' ? 'You’ve heard every episode' : 'No episodes right now') : 'No songs found', d: shows ? 'Try another sort.' : 'Try another filter or mood.' });
+    const k = reg(L, { from: m.title });
+    return `<div class="ch-btns mx-play"><button class="pill" data-a="playAll" data-l="${k}">${I.play}${shows && e.s === 'continue' ? 'Continue' : 'Play'}</button>${shows ? '' : `<button class="pill" data-a="shufAll" data-l="${k}">${I.shuffle}Shuffle</button>`}</div>` +
+      rowsHTML(L, k, { dur: true, show: shows && m.items.length > 1 });
+  }));
+  return html;
+}
+function renderMixList() {
+  const a = Mixes.all('artists'), s = Mixes.all('shows');
+  let html = header('Artist & show mixes', { right: nbBtn('newmix', 'plus', 'New mix') });
+  if (!a.length && !s.length) return html + emptyState({ icon: 'playlist', t: 'No mixes yet', d: 'Open any artist or podcast show and tap the mix button to start one. Mixes update themselves with new songs and episodes.' });
+  if (a.length) html += sec('Artist mixes', `<div class="hs">${a.map(mixCard).join('')}</div>`);
+  if (s.length) html += sec('Show mixes', `<div class="hs">${s.map(mixCard).join('')}</div>`);
+  return html;
+}
+
+/* ================= Karaoke — reduces the lead vocals of songs (never podcasts or radio) ================= */
+const karaokeOn = t => !!S.settings.karaoke && !!t && !t.live && !['podcast', 'radio'].includes(t.source);
+function karaokeToggle() {
+  const t = Player.cur;
+  if (t && ['podcast', 'radio'].includes(t.source) && !S.settings.karaoke) return toast('Karaoke is for songs only');
+  S.settings.karaoke = !S.settings.karaoke; save(); buzz();
+  if (S.settings.karaoke && IS_IOS && !S.karaIosTip) { S.karaIosTip = 1; save(); toast('Karaoke on — on iPhone and iPad keep the screen on while singing'); }
+  else toast(S.settings.karaoke ? '🎤 Karaoke on — vocals turned down' : 'Karaoke off');
+  if (t && t.source !== 'podcast' && t.source !== 'radio' && !t.live) Player.reroute();
+  Player.applyEq && Player.fx && Player.applyEq();
+  UI.state(); UI.karaoke();
+}
 function renderPodcasts(e, tok) {
   let html = header('Podcasts', { right: nbBtn('go', 'gear', 'Settings', 'data-v="settings"') }) + '<p class="greet">Shows and episodes from around the world, free.</p>';
   const cont = contList();
   if (cont.length) html += sec('Continue listening', rowsHTML(cont, reg(cont, { from: 'Continue listening' }), { show: true }));
+  if (S.settings.podMine !== false) {   // your podcasts first: what you listened to, what's downloaded, your show mixes
+    const recent = uniqId(S.history.filter(t => t.source === 'podcast').concat(Object.values(S.pod.prog || {}).sort((a, b) => (b.at || 0) - (a.at || 0)).map(p => p.t).filter(Boolean))).slice(0, 12);
+    if (recent.length) html += sec('Recently listened', cardsHTML(recent, reg(recent, { from: 'Recently listened' })));
+    const dl = offlinePods();
+    if (dl.length) html += sec('Downloaded & offline', rowsHTML(dl.slice(0, 5), reg(dl, { from: 'Downloaded episodes' }), { show: true }), dl.length > 5 ? { moreHTML: '<button class="see" data-a="offpods">Play all</button>' } : {});
+    const mx = Mixes.all('shows');
+    html += sec('Your show mixes', `<div class="hs">${mx.map(mixCard).join('')}<div class="card" data-a="newshowmix"><div class="cw"><div class="art ptile">${I.plus}</div></div><div class="ct">New show mix</div><div class="cs">Shows that update themselves</div></div></div>`);
+  }
   if (S.pod.follows.length) {
     html += sec('Your shows', `<div class="hs">${S.pod.follows.map(collCard).join('')}</div>`, { moreHTML: '<button class="see" data-a="go" data-v="coll" data-k="podshows">See All</button>' });
     html += slot('p-new', 'New episodes', 'rows', 'From shows you follow');
@@ -4418,7 +4666,7 @@ function renderPod(e, tok) {
       <div class="ch-btns">${r.eps.length ? `<button class="pill" data-a="playAll" data-l="${k}">${I.play}Latest episode</button>` : ''}<button class="pill" data-a="podfollow" id="podfol">${fol ? I.check + 'Following' : I.plus + 'Follow'}</button></div></div></div>` +
       (r.eps.length ? `<div class="sub-h">${plural(r.eps.length, 'episode')}</div>` + rowsHTML(r.eps, k) : emptyState({ icon: 'mic', t: 'No episodes available', d: 'This show has no playable episodes right now.' }));
   }));
-  return header(c.title || 'Podcast', { noLarge: true }) + `<div id="cb">${collHead(c.title || '', [], '', { art: c.art, icon: c.art ? null : 'mic', sub: 'Loading…' })}<div class="spin"></div></div>`;
+  return header(c.title || 'Podcast', { noLarge: true, right: nbBtn('addmix', 'playlist', 'Add to a show mix') }) + `<div id="cb">${collHead(c.title || '', [], '', { art: c.art, icon: c.art ? null : 'mic', sub: 'Loading…' })}<div class="spin"></div></div>`;
 }
 function renderReplay() {
   const top = Stats.top(30), arts = Stats.artists(10);
@@ -4495,51 +4743,67 @@ function renderHome(e, tok) {
   if (!standalone && !S.noInstall && Object.keys(S.stats.plays || {}).length >= 3 && (deferredInstall || IS_IOS)) html += `<div class="nudge"><div class="nudge-ic">${I.music}</div><div class="nudge-t"><b>Get the Tune Tune app</b><span>${IS_IOS ? 'Tap Share, then “Add to Home Screen”' : 'Opens instantly and plays from your lock screen'}</span></div>${IS_IOS ? '' : '<button class="fb pri" data-a="install">Install</button>'}<button class="nudge-x" data-a="noinstall" aria-label="Dismiss">${I.x}</button></div>`;
   if (!navigator.onLine) {
     html += `<div class="note">${I.wifiOff}<span>You’re offline. Downloads and music on this device still play.</span></div>`;
-    const off = offlineList();
-    if (off.length) html += `<div class="off-card"><div><b>Offline Mix</b><span>${plural(off.length, 'song')} — downloads, recently played and your own files</span></div><button class="fb pri" data-a="offmix">${I.shuffle}Play</button></div>`;
-    return html + (off.length ? sec('Available offline', rowsHTML(off, reg(off, { from: 'Offline' }), { dur: true })) : emptyState({ icon: 'download', t: 'Nothing saved offline', d: 'Next time you’re online, download songs to keep them here.' }));
+    const sOn = S.settings.offSongs !== false, pOn = S.settings.offPods !== false, mix = !!S.settings.mixPods;
+    const off = mix ? offlineList() : (sOn ? offlineList() : []), offP = mix || !pOn ? [] : offlinePods();
+    if (off.length) html += `<div class="off-card"><div><b>${mix ? 'Offline Mix' : 'Offline songs'}</b><span>${plural(off.length, mix ? 'item' : 'song')} — downloads, recently played and your own files</span></div><button class="fb pri" data-a="offmix">${I.shuffle}Play</button></div>`;
+    if (offP.length) html += `<div class="off-card"><div><b>Offline podcasts</b><span>${plural(offP.length, 'episode')} ready — continues where you left off</span></div><button class="fb pri" data-a="offpods">${I.play}Play</button></div>`;
+    if (!off.length && !offP.length) return html + emptyState({ icon: 'download', t: 'Nothing saved offline', d: 'Next time you’re online, download songs or episodes to keep them here.' });
+    return html + (off.length ? sec(mix ? 'Available offline' : 'Songs ready offline', rowsHTML(off, reg(off, { from: 'Offline' }), { dur: true })) : '') + (offP.length ? sec('Podcasts ready offline', rowsHTML(offP, reg(offP, { from: 'Offline podcasts' }), { show: true })) : '');
   }
-  setTimeout(warmLangs, 2500);
+  const songsOn = S.settings.homeSongs !== false, podsOn = S.settings.homePods !== false, mix = !!S.settings.mixPods;
+  if (songsOn) setTimeout(warmLangs, 2500);
   const sv = (S.cached || []).filter(t => S.settings.mixPods || t.source !== 'podcast');
-  if (S.settings.savedCard !== false && sv.length >= 3) html += `<div class="saved-card"><div class="sc-arts">${sv.slice(0, 3).map(t => `<img src="${esc(artOf(t))}" alt="">`).join('')}</div><div class="sc-t" data-a="go" data-v="coll" data-k="saved" role="button" tabindex="0"><b>Ready offline ›</b><span>Your last ${plural(sv.length, 'song')} — plays without internet</span></div><button class="np-ib" data-a="savedplay" aria-label="Play in order">${I.play}</button><button class="np-ib" data-a="savedshuf" aria-label="Shuffle">${I.shuffle}</button></div>`;
-  const sug = langSuggest(); if (sug) html += `<div class="lang-sug"><span>You’ve been listening to a lot of <b>${esc(sug)}</b> music</span><button class="fb pri" data-a="addlang" data-l="${esc(sug)}">Add ${esc(sug)}</button><button class="nudge-x" data-a="nolang" data-l="${esc(sug)}" aria-label="Dismiss">${I.x}</button></div>`;
+  // pinned artist & show mixes come first
+  const pins = S.settings.homePins !== false ? Mixes.all().filter(m => m.pinned && (m.kind === 'shows' ? podsOn : songsOn)) : [];
+  if (pins.length) html += sec('Pinned', `<div class="hs">${pins.map(mixCard).join('')}</div>`, { moreHTML: '<button class="see" data-a="go" data-v="coll" data-k="mixes">See All</button>' });
+  if (songsOn && S.settings.savedCard !== false && sv.length >= 3) html += `<div class="saved-card"><div class="sc-arts">${sv.slice(0, 3).map(t => `<img src="${esc(artOf(t))}" alt="">`).join('')}</div><div class="sc-t" data-a="go" data-v="coll" data-k="saved" role="button" tabindex="0"><b>Ready offline ›</b><span>Your last ${plural(sv.length, 'song')} — plays without internet</span></div><button class="np-ib" data-a="savedplay" aria-label="Play in order">${I.play}</button><button class="np-ib" data-a="savedshuf" aria-label="Shuffle">${I.shuffle}</button></div>`;
+  const sug = songsOn && langSuggest(); if (sug) html += `<div class="lang-sug"><span>You’ve been listening to a lot of <b>${esc(sug)}</b> music</span><button class="fb pri" data-a="addlang" data-l="${esc(sug)}">Add ${esc(sug)}</button><button class="nudge-x" data-a="nolang" data-l="${esc(sug)}" aria-label="Dismiss">${I.x}</button></div>`;
   const langs = myLangs();
-  html += `<div class="chips pg">${langs.map(L => `<button class="chip" data-a="lang" data-l="${esc(L)}">${esc(L)}</button>`).join('')}<button class="chip ghost" data-a="langs">${I.plus}Languages</button></div>`;
+  if (songsOn) html += `<div class="chips pg">${langs.map(L => `<button class="chip" data-a="lang" data-l="${esc(L)}">${esc(L)}</button>`).join('')}<button class="chip ghost" data-a="langs">${I.plus}Languages</button></div>`;
   if (false) html += `<div class="appcard"><img src="icons/icon-192.png" alt=""><div class="ac-tx"><b>Get Tune Tune for Android</b><span>Ad-free audio that keeps playing with the screen off.</span></div><button class="btn sm" data-a="getapp">Get</button><button class="ac-x" data-a="hideapp" aria-label="Dismiss">${I.x}</button></div>`;
-  if (S.history.length) { const r = dedupeSongs(S.history).slice(0, 16); html += sec('Recently played', cardsHTML(r, reg(r, { from: 'Recently played', hist: true })), { moreK: 'history' }); }
+  // recently played: songs and podcasts stay apart unless “Mix podcasts with songs” is on
+  const histS = mix ? S.history.filter(t => (t.source === 'podcast' ? podsOn : songsOn)) : (songsOn ? S.history.filter(t => t.source !== 'podcast') : []);
+  const histP = mix ? [] : uniqId(S.history.filter(t => t.source === 'podcast'));
+  if (histS.length) { const r = dedupeSongs(histS).slice(0, 16); html += sec('Recently played', cardsHTML(r, reg(r, { from: 'Recently played', hist: true })), { moreK: 'history' }); }
   const hs = S.settings.homeSections;
-  if (hs.mixes) html += madeForYou();
-  const cont = contList().slice(0, 4); if (cont.length) html += sec('Continue listening', rowsHTML(cont, reg(cont, { from: 'Continue listening' }), { show: true }), { moreTab: 'podcasts' });
-  html += slot('h-qp', 'Quick picks', 'rows', 'Songs picked for you');
-  html += '<div id="h-ytm"></div>';
-  if (hs.following && S.artists.length) html += slot('h-fa', 'From artists you follow', 'rows', S.artists.slice(0, 3).map(a => a.title).join(', '), { moreHTML: '<button class="see" data-a="go" data-v="coll" data-k="artists">See All</button>' });
-  if (hs.langs) langs.slice(0, 3).forEach((L, i) => {
+  if (songsOn && hs.mixes) html += madeForYou();
+  if (podsOn) {
+    const cont = contList().slice(0, 4); if (cont.length) html += sec('Continue listening', rowsHTML(cont, reg(cont, { from: 'Continue listening' }), { show: true }), { moreTab: 'podcasts' });
+    if (histP.length) { const r = histP.slice(0, 12); html += sec('Recently played podcasts', cardsHTML(r, reg(r, { from: 'Recently played podcasts' })), { moreTab: 'podcasts' }); }
+    const dlP = mix ? [] : S.downloads.filter(t => t.source === 'podcast');
+    if (dlP.length) html += sec('Downloaded episodes', rowsHTML(dlP.slice(0, 4), reg(dlP, { from: 'Downloaded episodes' }), { show: true }), { moreTab: 'podcasts' });
+  }
+  if (songsOn) html += slot('h-qp', 'Quick picks', 'rows', 'Songs picked for you');
+  if (songsOn && S.settings.cleanFirst === false) html += '<div id="h-ytm"></div>';   // YouTube-only shelves: off by default (they can show ads and stop when locked)
+  if (songsOn && hs.following && S.artists.length) html += slot('h-fa', 'From artists you follow', 'rows', S.artists.slice(0, 3).map(a => a.title).join(', '), { moreHTML: '<button class="see" data-a="go" data-v="coll" data-k="artists">See All</button>' });
+  if (songsOn && hs.langs) langs.slice(0, 3).forEach((L, i) => {
     html += slot(`h-l${i}s`, `Top ${L} songs`, 'rows', '', { moreHTML: `<button class="see" data-a="lang" data-l="${esc(L)}">See All</button>` });
     html += slot(`h-l${i}p`, `${L} playlists`, 'cards');
   });
-  if (hs.chart) html += slot('h-ch', 'Top hits worldwide', 'rows', 'The global chart, updated daily', { moreHTML: '<button class="see" data-a="chart" data-r="global" data-title="Global top songs">See All</button>' });
+  if (songsOn && hs.chart) html += slot('h-ch', 'Top hits worldwide', 'rows', 'The global chart, updated daily', { moreHTML: '<button class="see" data-a="chart" data-r="global" data-title="Global top songs">See All</button>' });
   if (hs.radio) html += slot('h-rd', 'Live radio', 'round', `Popular in ${countryName(detectCC())}`, { moreHTML: '<button class="see" data-a="go" data-v="radio">See All</button>' });
-  if (hs.podcasts) html += slot('h-pd', 'Popular podcasts', 'cards', '', { moreTab: 'podcasts' });
-  if (hs.free) html += slot('h-au', 'Free & independent', 'cards', 'Fresh music from Audius artists', { moreK: 'trending' });
-  if (hs.moods) html += sec('Moods & moments', moodTiles(8));
+  if (podsOn && hs.podcasts) html += slot('h-pd', 'Popular podcasts', 'cards', '', { moreTab: 'podcasts' });
+  if (songsOn && hs.free) html += slot('h-au', 'Free & independent', 'cards', 'Fresh music from Audius artists', { moreK: 'trending' });
+  if (songsOn && hs.moods) html += sec('Moods & moments', moodTiles(8));
   html += `<div id="h-n"></div><p class="foot">${TITLE} is free. No account, no ads.</p>`;
   setTimeout(() => {
-    const ps = [fillShelf('h-qp', tok, quickPicks, items => shelfBody(notBlocked(items), 'Quick picks'))];
-    if (S.artists.length) ps.push(fillShelf('h-fa', tok, async () => {
+    const ps = [];
+    if (songsOn) ps.push(fillShelf('h-qp', tok, quickPicks, items => shelfBody(notBlocked(items), 'Quick picks')));
+    if (songsOn && hs.following && S.artists.length) ps.push(fillShelf('h-fa', tok, async () => {
       const lists = await Promise.allSettled(S.artists.slice(0, 5).map(a => YT.songs(`${a.title} new song ${YEAR}`)));
       const out = []; lists.forEach(r => { if (r.status === 'fulfilled') out.push(...r.value.slice(0, 4)); });
       const seen = new Set(); return notBlocked(out).filter(t => !seen.has(t.id) && seen.add(t.id));
     }, items => shelfBody(items, 'From artists you follow')));
-    langs.slice(0, 3).forEach((L, i) => {
+    if (songsOn && hs.langs) langs.slice(0, 3).forEach((L, i) => {
       ps.push(fillShelf(`h-l${i}s`, tok, () => YT.langTop(L), items => shelfBody(items, `Top ${L} songs`)));
       ps.push(fillShelf(`h-l${i}p`, tok, () => YT.playlists(`${L} hits ${YEAR}`), items => shelfBody(items, `${L} playlists`)));
     });
-    ps.push(fillShelf('h-ch', tok, () => Deezer.chart(), l => { const k = reg(l, { from: 'Top hits worldwide' }); return `<div class="cg">${l.slice(0, 24).map((t, i) => rowHTML(t, k, i, { num: true })).join('')}</div>`; }));
-    ps.push(fillShelf('h-rd', tok, () => Radio.country(detectCC()).then(l => (l.length ? l : Radio.top())), l => { const s = l.slice(0, 16); return cardsHTML(s, reg(s, { from: 'Live radio' })); }));
-    ps.push(fillShelf('h-pd', tok, () => Pod.top(), l => `<div class="hs">${l.slice(0, 16).map(collCard).join('')}</div>`));
-    ps.push(fillShelf('h-au', tok, () => Audius.trending(), l => cardsHTML(l.slice(0, 20), reg(l, { from: 'Free & independent' }))));
+    if (songsOn && hs.chart) ps.push(fillShelf('h-ch', tok, () => Deezer.chart(), l => { const k = reg(l, { from: 'Top hits worldwide' }); return `<div class="cg">${l.slice(0, 24).map((t, i) => rowHTML(t, k, i, { num: true })).join('')}</div>`; }));
+    if (hs.radio) ps.push(fillShelf('h-rd', tok, () => Radio.country(detectCC()).then(l => (l.length ? l : Radio.top())), l => { const s = l.slice(0, 16); return cardsHTML(s, reg(s, { from: 'Live radio' })); }));
+    if (podsOn && hs.podcasts) ps.push(fillShelf('h-pd', tok, () => Pod.top(), l => `<div class="hs">${l.slice(0, 16).map(collCard).join('')}</div>`));
+    if (songsOn && hs.free) ps.push(fillShelf('h-au', tok, () => Audius.trending(), l => cardsHTML(l.slice(0, 20), reg(l, { from: 'Free & independent' }))));
     settle(ps, tok, '#h-n');
-    IT.probe().then(ok => (ok ? IT.home() : null)).then(sh => {
+    if ($('#h-ytm')) IT.probe().then(ok => (ok ? IT.home() : null)).then(sh => {
       if (!sh || tok !== renderTok) return; const box = $('#h-ytm');
       if (box) box.innerHTML = sh.filter(x => x.items.length).slice(0, 8).map(s => sec(s.title || 'For you', shelfBody(s.items, s.title || 'For you'))).join('');
     }).catch(() => { });
@@ -4549,15 +4813,23 @@ function renderHome(e, tok) {
 function renderExplore(e, tok) {
   const cc = detectCC();
   let html = header('Explore');
-  html += sec('Charts', `<div class="tiles">${[[`Top songs in ${countryName(cc)}`, cc, 350], ['Global top songs', 'global', 210], ['Viral right now', 'viral', 30]]
+  const exS = S.settings.exploreSongs !== false, exP = S.settings.explorePods !== false, exR = S.settings.exploreRadio !== false;
+  if (exS) html += sec('Charts', `<div class="tiles">${[[`Top songs in ${countryName(cc)}`, cc, 350], ['Global top songs', 'global', 210], ['Viral right now', 'viral', 30]]
     .map(([t, r, h]) => tile(t, `data-a="chart" data-r="${r}" data-title="${esc(t)}"`, h)).join('')}</div>`);
-  html += sec('Languages', langTiles(), { sub: `Music in ${LANGS.length} languages` });
-  html += sec('Moods & moments', moodTiles());
-  html += sec('Genres', ytGenreTiles());
-  html += '<div id="ex-ytm"></div>';
-  html += sec('Live radio', `<div class="tiles">${rtags().slice(0, 7).map(([g, l], i) => tile(l, `data-a="rtag" data-g="${g}" data-title="${esc(l)}"`, (i * 37 + 200) % 360)).join('')}${tile('All stations', 'data-a="go" data-v="radio"', 0)}</div>`, { sub: 'Thousands of stations, live' });
-  html += sec('Free & independent', genreTiles(), { sub: 'Full songs shared by Audius artists' });
-  setTimeout(() => IT.probe().then(ok => (ok ? IT.moods() : null)).then(groups => {
+  if (exS) {
+    html += sec('Languages', langTiles(), { sub: `Music in ${LANGS.length} languages` });
+    html += sec('Moods & moments', moodTiles());
+    html += sec('Genres', ytGenreTiles());
+    if (S.settings.cleanFirst === false) html += '<div id="ex-ytm"></div>';
+  }
+  if (exP) {
+    html += slot('ex-pd', 'Popular podcasts', 'cards', '', { moreTab: 'podcasts' });
+    html += sec('Podcast categories', `<div class="tiles">${podCats().slice(0, 8).map(([c, h]) => tile(c, `data-a="podcat" data-q="${esc(c)}"`, h)).join('')}</div>`);
+  }
+  if (exR) html += sec('Live radio', `<div class="tiles">${rtags().slice(0, 7).map(([g, l], i) => tile(l, `data-a="rtag" data-g="${g}" data-title="${esc(l)}"`, (i * 37 + 200) % 360)).join('')}${tile('All stations', 'data-a="go" data-v="radio"', 0)}</div>`, { sub: 'Thousands of stations, live' });
+  if (exS) html += sec('Free & independent', genreTiles(), { sub: 'Full songs shared by Audius artists' });
+  if (exP) setTimeout(() => fillShelf('ex-pd', tok, () => Pod.top(), l => `<div class="hs">${l.slice(0, 16).map(collCard).join('')}</div>`));
+  if ($('#ex-ytm') || html.includes('id="ex-ytm"')) setTimeout(() => IT.probe().then(ok => (ok ? IT.moods() : null)).then(groups => {
     if (!groups || tok !== renderTok) return; const box = $('#ex-ytm'); if (!box) return;
     box.innerHTML = groups.slice(0, 4).map(g => sec(g.title, `<div class="tiles">${g.items.map(b => `<div class="tile" style="${b.color ? `background:${argb(b.color)}` : `--h:${hue(b.title)}`}" data-a="ytcat" data-p="${esc(b.params)}" data-title="${esc(b.title)}" role="button" tabindex="0"><span>${esc(b.title)}</span></div>`).join('')}</div>`, { sub: 'From YouTube Music' })).join('');
   }).catch(() => { }));
@@ -4754,12 +5026,13 @@ function loadRadio(e, tok) {
 function renderLibrary() {
   const items = [['liked', 'Favorite Songs', 'heart', KINDS.liked.get().length], ['playlists', 'Playlists', 'playlist', S.playlists.length],
     ['downloads', 'Downloaded', 'download', S.downloads.length], ['offline', 'Offline Mix', 'shuffle', offlineList().length], ['locals', 'On This Device', 'folder', S.locals.length],
-    ['podshows', 'Podcasts', 'mic', S.pod.follows.length], ['artists', 'Artists', 'user', S.artists.length],
+    ['podshows', 'Podcasts', 'mic', S.pod.follows.length], ['artists', 'Artists', 'user', S.artists.length], ['mixes', 'Artist & show mixes', 'playlist', (S.colls || []).length],
     ['stations', 'Saved Stations', 'radio', KINDS.stations.get().length], ['history', 'Recently Played', 'clock', S.history.length], ['replay', 'Your Replay', 'bars', 0]];
   let html = header('Library', { right: nbBtn('newpl', 'plus', 'New playlist') + nbBtn('go', 'gear', 'Settings', 'data-v="settings"') });
   html += `<div class="nl">${items.map(([k, l, ic, n]) => `<div class="nli" data-a="go" data-v="coll" data-k="${k}" role="button" tabindex="0">${I[ic]}<div class="nb2"><span>${l}</span><span class="cnt">${n || ''}</span><span class="chev">${I.chevR}</span></div></div>`).join('')}</div>`;
   html += `<div class="nl"><div class="nli" data-a="importpl" role="button" tabindex="0">${I.link}<div class="nb2"><span>Import a YouTube playlist</span><span class="chev">${I.chevR}</span></div></div></div>`;
   if (S.playlists.length) html += sec('Your playlists', `<div class="hs">${S.playlists.map(myPlCard).join('')}</div>`);
+  if ((S.colls || []).length) html += sec('Your mixes', `<div class="hs">${S.colls.map(mixCard).join('')}</div>`, { moreHTML: '<button class="see" data-a="go" data-v="coll" data-k="mixes">See All</button>' });
   if (S.history.length) { const r = dedupeSongs(S.history).slice(0, 12); html += sec('Recently played', cardsHTML(r, reg(r, { from: 'Recently played', hist: true })), { moreK: 'history' }); }
   if (!S.playlists.length && !S.liked.length && !S.history.length) html += emptyState({ icon: 'music', t: 'Your library starts here', d: 'Favorite songs, make playlists, download for offline, or add music files from this device.', btn: ['gosearch', 'Find Music'] });
   return html;
@@ -4780,7 +5053,7 @@ function renderMyPl(e) {
 function renderYtColl(e, tok) {
   const c = e.c || {}; const ar = c.kind === 'artist';
   const followed = ar && S.artists.some(x => x.id === c.id);
-  const right = ar ? nbBtn('followart', followed ? 'check' : 'plus', followed ? 'Unfollow artist' : 'Follow artist') : nbBtn('savecoll', 'plus', 'Save to Library') + nbBtn('dlall', 'download', 'Download all');
+  const right = ar ? nbBtn('addmix', 'playlist', 'Add to an artist mix') + nbBtn('followart', followed ? 'check' : 'plus', followed ? 'Unfollow artist' : 'Follow artist') : nbBtn('savecoll', 'plus', 'Save to Library') + nbBtn('dlall', 'download', 'Download all');
   setTimeout(() => fill('#cb', tok, YT.collection(c), r => {
     e.tracks = r.tracks || []; e.title = r.title || c.title;
     const k = reg(e.tracks, { from: e.title });
@@ -4796,6 +5069,8 @@ function renderYtColl(e, tok) {
 }
 function renderColl(e, tok) {
   if (e.k === 'playlist') return renderMyPl(e);
+  if (e.k === 'mix') return renderMixPage(e, tok);
+  if (e.k === 'mixes') return renderMixList();
   if (e.k === 'playlists') return renderPlaylists();
   if (e.k === 'yt') return renderYtColl(e, tok);
   if (e.k === 'pod') return renderPod(e, tok);
@@ -4880,11 +5155,26 @@ function renderSettings() {
       sLi({ icon: 'timer', color: '#5e5ce6', label: 'Sleep Timer', value: timerVal, a: 'sleep', chev: true }) +
       sLi({ icon: 'speed', color: '#0a84ff', label: 'Music speed', value: Player.rate + '×', a: 'speed', chev: true }) +
       sLi({ icon: 'radio', color: '#ff375f', label: 'Region', ctl: `<select class="sel" data-set="country" aria-label="Region">${COUNTRIES.map(([c, n]) => `<option value="${c}" ${s.country === c ? 'selected' : ''}>${n}</option>`).join('')}</select>` })) +
+    sGrp('Home & tabs',
+      sLi({ icon: 'music', color: '#ff375f', label: 'Songs on Home', hint: 'Recently played, quick picks, charts, languages and moods', ctl: sSw('homeSongs', s.homeSongs !== false) }) +
+      sLi({ icon: 'mic', color: '#bf5af2', label: 'Podcasts on Home', hint: 'Continue listening, recently played and downloaded episodes', ctl: sSw('homePods', s.homePods !== false) }) +
+      sLi({ icon: 'pin', color: '#ff9f0a', label: 'Pinned mixes on Home', hint: 'Artist and show mixes you pin', ctl: sSw('homePins', s.homePins !== false) }) +
+      sLi({ icon: 'mic', color: '#5e5ce6', label: 'Your podcasts first', hint: 'Recently listened, downloaded and your show mixes at the top of Podcasts', ctl: sSw('podMine', s.podMine !== false) }) +
+      sLi({ icon: 'explore', color: '#ff375f', label: 'Songs in Explore', ctl: sSw('exploreSongs', s.exploreSongs !== false) }) +
+      sLi({ icon: 'mic', color: '#bf5af2', label: 'Podcasts in Explore', ctl: sSw('explorePods', s.explorePods !== false) }) +
+      sLi({ icon: 'radio', color: '#30d158', label: 'Radio in Explore', ctl: sSw('exploreRadio', s.exploreRadio !== false) }) +
+      sLi({ icon: 'ban', color: '#ff453a', label: 'Ad-free sources first', hint: 'Hides YouTube-only shelves; songs play from clean, ad-free sources that keep playing when the screen locks — YouTube only as a last resort', ctl: sSw('cleanFirst', s.cleanFirst !== false) }),
+      'Songs and podcasts stay apart unless “Mix podcasts with songs” is on. At least one of each pair stays on.') +
+    sGrp('Offline',
+      sLi({ icon: 'music', color: '#30d158', label: 'Offline songs', hint: 'Show songs ready offline', ctl: sSw('offSongs', s.offSongs !== false) }) +
+      sLi({ icon: 'mic', color: '#bf5af2', label: 'Offline podcasts', hint: 'Show episodes ready offline (when podcasts aren’t mixed with songs)', ctl: sSw('offPods', s.offPods !== false) }),
+      'Downloads are kept safely on this device and survive app updates.') +
     sGrp('Player',
       sLi({ icon: 'disco', color: '#bf5af2', label: 'Party Mode button', hint: 'Shown for songs, next to Share', ctl: sSw('btnParty', S.settings.btnParty !== false) }) +
       sLi({ icon: 'eq', color: '#ff9f0a', label: 'Equalizer button', hint: IS_IOS ? 'Hidden on iPhone and iPad: Apple doesn’t let web apps change the sound. You can still show it.' : 'In the bar under the player', ctl: sSw('btnEq', showEq()) }) +
       (CAN_AIRPLAY || CAN_CAST ? sLi({ icon: CAN_AIRPLAY ? 'airplay' : 'cast', color: '#0a84ff', label: (CAN_AIRPLAY ? 'AirPlay' : 'Cast') + ' button', hint: 'Send music to speakers and TVs', ctl: sSw('btnCast', S.settings.btnCast !== false) }) : '') +
       sLi({ icon: 'info', color: '#5e5ce6', label: 'Info button on artwork', hint: 'A small ⓘ for song or episode details', ctl: sSw('btnInfo', S.settings.btnInfo !== false) }) +
+      sLi({ icon: 'mic', color: '#ff375f', label: 'Karaoke button in lyrics', hint: 'Turn the vocals down and sing along (songs only)', ctl: sSw('karaokeLyr', S.settings.karaokeLyr !== false) }) +
       sLi({ icon: 'expand', color: '#30d158', label: 'Rolling titles', hint: 'Long titles and names scroll; tap to go back to the start', ctl: sSw('roll', S.settings.roll !== false) }),
       'Hidden buttons stay in the ••• menu of the player.') +
     sGrp('Podcasts',
@@ -4944,6 +5234,8 @@ function renderAdvanced() {
       sLi({ icon: 'pulse', color: '#30d158', label: 'Free route in use', hint: JSA.via && !JSA.down() ? Src.describe({ tier: 'free', relay: JSA.via }) : SvC.best ? Src.describe({ tier: 'free', relay: SvC.best }) : JSA.down() ? 'Busy — retrying soon' : 'Checking…' }) +
       sLi({ icon: 'globe', color: '#30d158', label: 'Free sources', hint: `${JSA.relays('free').length - 1} relays · ${SvC.list('free').length} JioSaavn servers · YouTube mirrors found automatically · ${routeSummary()}` }) +
       sLi({ icon: 'globe', color: '#0a84ff', label: 'Backup free sources', hint: 'tunetune-sources.json · always on, tried after the free sources · ' + (!BK.p ? 'loading…' : BK.found ? `${BK.relays.length} relays · ${SvC.list('backup').length} JioSaavn servers · ${BK.piped.length + BK.inv.length} mirrors` : 'not on this site') + (JSA.viaB ? ' · last used: ' + Src.describe({ tier: 'backup', relay: JSA.viaB }) : '') }) +
+      sLi({ icon: 'server', color: '#5e5ce6', label: 'Backup servers', hint: 'tunetune-sources.json → backupServers · used only after every free source failed', value: !BK.p ? '—' : BK.servers.length ? plural(BK.servers.length, 'server') : 'None' }) +
+      JSA.relays('mine').map(p => sLi({ label: p.name, small: true, hint: `${p.host} · ${Use.n('r:' + p.id)}${p.cap ? ' of ' + p.cap : ''} used today on this device`, value: Use.full('r:' + p.id, p.cap) ? 'Paused till tomorrow' : Date.now() < (JSA.limitUntil[p.id] || 0) ? 'Reached its limit' : JSA.bad(p) ? 'Not answering' : (Src.last.tier === 'mine' && Src.last.relay === p.id) ? 'In use' : 'Ready' })).join('') +
       sLi({ icon: 'server', color: Src.on() ? '#30d158' : '#8e8e93', label: 'My server', hint: 'Only used after every free source failed, before YouTube', ctl: sSw('ownSrc', Src.on()) }) +
       sLi({ label: 'tunetune-config.json', value: !CFG.p ? '—' : CFG.found ? (CFG.servers.length ? `${plural(CFG.servers.length, 'server')}${Src.on() ? ' · ' + srvState(Src.state.cfg) : ' · off'}` : 'Free sources only') : 'Not on this site' }) +
       CFG.servers.map(s => sLi({ label: s.name, small: true, hint: `${s.host} · tried last · used ${Src.usedToday('cfg')}× today`, value: !Src.on() ? 'Off' : JSA.bad({ id: s.id, srv: true }) ? 'Not answering' : (Src.last.tier === 'cfg' && Src.last.relay === s.id) ? 'In use' : 'Ready' })).join('') +
@@ -5004,6 +5296,30 @@ const Actions = {
   openc(el, d) { const c = REGC.get(d.c); if (!c) return; if (c.kind === 'podcast') go('coll', { k: 'pod', c, title: c.title }); else go('coll', { k: 'yt', c, title: c.title }); },
   podcat(el, d) { go('coll', { k: 'podcat', q: d.q, title: d.q }); },
   gopod() { switchTab('podcasts'); },
+  karaoke() { karaokeToggle(); },
+  addmix() { const e = cv(); const c = e && e.c; if (!c) return; Mixes.addSheet(e.k === 'pod' ? { ...c, kind: 'podcast' } : { ...c, kind: c.kind || 'artist' }); },
+  newmix() {
+    actionSheet({ head: textHead('New mix', 'A mix keeps itself up to date with new songs or episodes'), acts: [
+      { label: 'Artist mix (songs)', icon: 'user', fn: async () => { const m = await Mixes.create('artists', null); if (m) { go('coll', { k: 'mix', id: m.id }); setTimeout(() => Mixes.addMore(m), 400); } } },
+      { label: 'Show mix (podcasts)', icon: 'mic', fn: async () => { const m = await Mixes.create('shows', null); if (m) { go('coll', { k: 'mix', id: m.id }); setTimeout(() => Mixes.addMore(m), 400); } } }] });
+  },
+  async newshowmix() { const m = await Mixes.create('shows', null); if (m) { go('coll', { k: 'mix', id: m.id }); setTimeout(() => Mixes.addMore(m), 400); } },
+  mxf(el, d) { const e = cv(); e.f = d.x; softRender(); },
+  mxs(el, d) { const e = cv(); e.s = d.x; e.mood = ''; softRender(); },
+  mxm(el, d) { const e = cv(); e.mood = e.mood === d.x ? '' : d.x; softRender(); },
+  mxpin() { const m = Mixes.get(cv().id); if (!m) return; m.pinned = !m.pinned; save(); buzz(); toast(m.pinned ? 'Pinned to Home' : 'Removed from Home'); softRender(); },
+  mxshare() { const m = Mixes.get(cv().id); if (m) Mixes.share(m); },
+  mxadd() { const m = Mixes.get(cv().id); if (m) Mixes.addMore(m); },
+  mixmenu() {
+    const m = Mixes.get(cv().id); if (!m) return;
+    actionSheet({ head: textHead(m.title, m.kind === 'shows' ? 'Show mix' : 'Artist mix'), acts: [
+      { label: m.kind === 'shows' ? 'Add a show' : 'Add an artist', icon: 'plus', fn: () => Mixes.addMore(m) },
+      m.items.length && { label: m.kind === 'shows' ? 'Remove a show' : 'Remove an artist', icon: 'minus', fn: () => actionSheet({ head: textHead('Remove from ' + m.title), acts: m.items.map(x => ({ label: x.title, icon: 'minus', fn: () => { m.items = m.items.filter(y => y.id !== x.id); save(); softRender(); toast('Removed ' + x.title); } })) }) },
+      { label: 'Rename', icon: 'edit', fn: async () => { const n = await ask('Rename mix', 'Name', m.title, 'Save'); if (n) { m.title = String(n).trim().slice(0, 60) || m.title; save(); softRender(); } } },
+      { label: m.pinned ? 'Unpin from Home' : 'Pin to Home', icon: 'pin', fn: () => Actions.mxpin() },
+      { label: 'Share', icon: 'share', fn: () => Mixes.share(m) },
+      { label: 'Delete mix', icon: 'trash', danger: true, fn: () => confirmSheet(`Delete “${m.title}”?`, 'Downloaded songs and episodes stay on this device.', 'Delete', () => { Mixes.remove(m); toast('Mix deleted'); history.back(); }) }] });
+  },
   podfollow(el) {
     const c = cv().c; if (!c) return; const i = S.pod.follows.findIndex(x => x.id === c.id);
     if (i >= 0) { S.pod.follows.splice(i, 1); toast('Unfollowed'); } else { S.pod.follows.unshift({ kind: 'podcast', id: c.id, title: c.title, sub: c.sub || '', art: c.art || '', source: 'pod' }); toast(`Following ${c.title}`); }
@@ -5193,6 +5509,7 @@ const Actions = {
   eqdelask() { const cur = eqName(); confirmSheet(`Delete “${cur}”?`, 'Your own sound will be removed. You can always make it again.', 'Delete', () => { Actions.eqdel(); setTimeout(openEQ, 450); }); },
   eqdel() { const cur = eqName(); S.settings.eqCustom = eqCustom().filter(c => c.n !== cur); S.settings.eqPins = eqPins().filter(x => x !== cur); Actions.eqp(null, { n: 'Flat' }); toast('Deleted'); },
   offmix() { playOffline('mix'); },
+  offpods() { playOffline('pods'); },
   party() { Party.fromNP = npOpen; if (npOpen) closeNP(); setTimeout(() => Party.open(), npOpen ? 380 : 0); },
   partyx() { Party.close(); if (Player.cur) setTimeout(openNP, 120); },
   partymin() { Party.close(); if (npOpen) closeNP(); },
@@ -5380,6 +5697,10 @@ document.addEventListener('change', e => {
     if (k === 'ownSrc') Src.set(t.checked);
     if (/^btn/.test(k)) { npButtons(); if (k === 'btnEq' && t.checked && IS_IOS) toast('Shown — but the equalizer can’t change sound on iPhone and iPad'); }
     if (k === 'roll') Marquee.all();
+    const pairs = { homeSongs: 'homePods', homePods: 'homeSongs', offSongs: 'offPods', offPods: 'offSongs' };
+    if (pairs[k] && !t.checked && S.settings[pairs[k]] === false) { t.checked = true; S.settings[k] = true; save(); return toast('Keep at least one of these on'); }
+    if (['exploreSongs', 'explorePods', 'exploreRadio'].includes(k) && !t.checked && ['exploreSongs', 'explorePods', 'exploreRadio'].every(x => x === k || S.settings[x] === false)) { t.checked = true; S.settings[k] = true; save(); return toast('Keep at least one section in Explore'); }
+    if (k === 'karaokeLyr' && npPanel === 'lyr') renderLyrics();
     if (k === 'country') { mem.clear(); toast(`Region: ${countryName(detectCC())}`); }
   } else if (t.id === 'f-audio') { importFiles(t.files); t.value = ''; }
   else if (t.id === 'f-backup') { importBackup(t.files[0]); t.value = ''; }
@@ -5619,14 +5940,14 @@ function init() {
   document.addEventListener('visibilitychange', () => { if (document.hidden) keepPlace(); });
   addEventListener('pagehide', keepPlace);
   loadArtCache();
-  UI.ownPill();
+  UI.ownPill(); if (S.downloads.length) keepSafe();
   document.addEventListener('visibilitychange', () => document.documentElement.classList.toggle('bg-hidden', document.hidden));
   let rzT; addEventListener('resize', () => { clearTimeout(rzT); rzT = setTimeout(() => { UI.fitChips(); Marquee.all(); }, 150); });
   // network warm-up waits until the app is on screen and idle, so the first paint stays instant
   const idle = window.requestIdleCallback ? f => requestIdleCallback(f, { timeout: 4000 }) : f => setTimeout(f, 300);
   setTimeout(() => idle(() => { Audius.discover(); Mirrors.load(); IT.probe(); Promise.all([loadSiteConfig(), loadBackupSources()]).then(() => Src.warm()).catch(() => { }); }), 1200);
   addEventListener('online', () => { JSA.reset(); setTimeout(() => Src.warm().catch(() => { }), 1500); });
-  setTimeout(() => Health.recheck(true).catch(() => { }), 12000);   // every start: re-test every route that was down setInterval(() => Health.recheck().catch(() => { }), 15 * 60e3);
+  setTimeout(() => Health.recheck(true).catch(() => { }), 12000);   // once per start: re-test every route that was down
   if (!S.settings.langs) setTimeout(() => { if (!S.settings.langs && !sheetOpen) langPicker(true); }, 600);
   else if (!String(S.settings.name || '').trim()) setTimeout(() => { if (!String(S.settings.name || '').trim()) { if (sheetOpen) needName = true; else nameSheet(true); } }, /[?&](play|pl|share|text|url)=/.test(location.search) ? 6000 : 1500);
   Server.detect().then(ok => { if (!DIRECT() && (S.settings.ytPlayer || S.settings.engine === 'player')) setTimeout(() => Embed.ensure().catch(() => { }), 2500); if (ok) { IT.ok = null; softRender(); } });
@@ -5635,7 +5956,7 @@ function init() {
     navigator.serviceWorker.register('sw.js').catch(() => { });
   }
   window.TuneTune = { version: VER, engine: () => (IT.ok ? 'direct' : 'mirrors') };
-  if (window.__TT_TEST__) window.TuneTune._ = { Health, HEDGE_MS, BK, loadBackupSources, rowDl, Pod, go, Marquee, UI, podSave, podProg, rowHTML, dlProgress, sleepMenu, Src, CFG, ytWebSearch, srcInfo, Native, JSA, DES, Saavn, Player, Streams, Mirrors, IT, YT, S, nav, cv, Actions, itShelves, mem, Embed, MirrorHealth, download, share, probeAudio, qInfo, sharePlaylist, SvC, translit, Deck, SITE, Offline, landCheck, Party, offlineList, playOffline, offlineSheet, JS_RELAYS, SAAVN_DEFAULT, PIPED_DEFAULT, INV_DEFAULT, loadSiteConfig, Pre, deviceLangs, langSuggest, eqName, eqPins, Haptic, rtags: () => rtags(), podCats: () => podCats(), lyrSet: r => { lyrState = { id: Player.cur && Player.cur.id, ...r }; renderLyrics(); } };
+  if (window.__TT_TEST__) window.TuneTune._ = { Mixes, karaokeOn, karaokeToggle, offlinePods, offlineSheet, exportData, importBackup, Use, Health, HEDGE_MS, BK, loadBackupSources, rowDl, Pod, go, Marquee, UI, podSave, podProg, rowHTML, dlProgress, sleepMenu, Src, CFG, ytWebSearch, srcInfo, Native, JSA, DES, Saavn, Player, Streams, Mirrors, IT, YT, S, nav, cv, Actions, itShelves, mem, Embed, MirrorHealth, download, share, probeAudio, qInfo, sharePlaylist, SvC, translit, Deck, SITE, Offline, landCheck, Party, offlineList, playOffline, offlineSheet, JS_RELAYS, SAAVN_DEFAULT, PIPED_DEFAULT, INV_DEFAULT, loadSiteConfig, Pre, deviceLangs, langSuggest, eqName, eqPins, Haptic, rtags: () => rtags(), podCats: () => podCats(), lyrSet: r => { lyrState = { id: Player.cur && Player.cur.id, ...r }; renderLyrics(); } };
 }
 try { init(); }
 catch (err) {
