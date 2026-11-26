@@ -59,6 +59,20 @@ copyDir('build/android-extra/res', RES);
 const JAVA = 'android/app/src/main/java/com/h24creationz/tunetune';
 fs.mkdirSync(JAVA, { recursive: true });
 fs.copyFileSync('build/android-extra/java/TuneWidget.java', path.join(JAVA, 'TuneWidget.java'));
+// calls & notification sounds (audio focus): the plugin, registered in MainActivity
+fs.copyFileSync('build/android-extra/java/AudioFocusPlugin.java', path.join(JAVA, 'AudioFocusPlugin.java'));
+const MAIN = path.join(JAVA, 'MainActivity.java');
+if (fs.existsSync(MAIN)) {
+  let ma = fs.readFileSync(MAIN, 'utf8');
+  if (!ma.includes('AudioFocusPlugin')) {
+    if (/extends BridgeActivity\s*\{\s*\}/.test(ma)) {
+      ma = ma.replace(/extends BridgeActivity\s*\{\s*\}/, 'extends BridgeActivity {\n    @Override\n    public void onCreate(android.os.Bundle savedInstanceState) {\n        registerPlugin(AudioFocusPlugin.class);\n        super.onCreate(savedInstanceState);\n    }\n}');
+    } else if (/super\.onCreate\(/.test(ma)) {
+      ma = ma.replace(/super\.onCreate\(/, 'registerPlugin(AudioFocusPlugin.class);\n        super.onCreate(');
+    }
+    fs.writeFileSync(MAIN, ma);
+  }
+}
 const bg = path.join(RES, 'values/ic_launcher_background.xml');
 if (fs.existsSync(bg)) fs.writeFileSync(bg, '<?xml version="1.0" encoding="utf-8"?>\n<resources>\n    <color name="ic_launcher_background">#FF375F</color>\n</resources>\n');
 console.log('Android project prepared: permissions, open-with, widget, notification icon, app icons and splash screens.');

@@ -64,6 +64,14 @@ background timers. Set-up steps for backup servers: `relays/README.md`.
 * **Settings → Home & tabs / Offline** — choose what Home, Podcasts and Explore show, and keep songs and podcasts apart.
 * **Backup** — Settings → Export Backup saves everything except your name; Import restores it on any device.
 
+## Calls, notifications and gapless (new)
+* **Android app:** calls and alarms pause the music and it resumes afterwards; notification sounds lower songs for a
+  moment and briefly pause podcasts; another music app starting stops Tune Tune — like Spotify. Settings → Pause for
+  calls & notifications (on by default). This uses a small native plugin (`build/android-extra/java/AudioFocusPlugin.java`),
+  added to the Android project automatically by `scripts/android-setup.js` during “Build apps”.
+* **Gapless playback**, **search & sort inside playlists**, **hide a genre or language** (⋯ → Hide songs like this…) and
+  **Play a random album** (Library).
+
 ## Other things you can edit
 At the top of `app.js`: `PRODUCTS_URL` and `GITHUB_URL` (shown in Settings → More from H24 Creationz).
 

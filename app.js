@@ -270,7 +270,7 @@ const DEFAULTS = {
   pod: { follows: [], prog: {} }, stats: { plays: {}, days: {} }, colls: [],
   settings: { theme: 'auto', accent: '#ff375f', eqOn: false, eq: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0], eqPreset: 'Flat', eqCustom: [], eqPins: [], eqBoost: 0, eqPre: 0, eqBass: 0, eqTreble: 0, eqLoud: false, eqWidth: 1, autoplay: true, country: '', volume: 1, langs: null, quality: 'auto', mirror: '', server: '', saavn: '', proxy: '', ytPlayer: true, engine: 'auto', normalize: true, hideAppCard: false, apkUrl: '',
     crossfade: 0, preload: true, podSpeed: 1, podBack: 15, podFwd: 30, startTab: 'home', zoom: 1, motion: true, animBg: true, badge: true, haptics: true,
-    pauseHistory: false, hideExplicit: false, smartDl: false, lyricsSize: 'm', tapSound: false, crown: false, partyStyle: 'disco', partyBuzz: false, autoSave: true, autoSaveMax: 30, landCar: true, ownSrc: true, remindDays: 3,
+    pauseHistory: false, hideExplicit: false, smartDl: false, lyricsSize: 'm', tapSound: false, crown: false, partyStyle: 'disco', partyBuzz: false, autoSave: true, autoSaveMax: 30, landCar: true, ownSrc: false, remindDays: 3,
     homeSongs: true, homePods: true, homePins: true, podMine: true, exploreSongs: true, explorePods: true, exploreRadio: true, offSongs: true, offPods: true,
     karaoke: false, karaokeLyr: true, cleanFirst: true,
     homeSections: { mixes: true, langs: true, chart: true, following: true, radio: true, podcasts: true, free: true, moods: true } },
@@ -281,7 +281,7 @@ const S = (() => {
     const raw = JSON.parse(localStorage.getItem(KEY) || '{}');
     const out = { ...base, ...raw, settings: { ...base.settings, ...(raw.settings || {}) } };
     for (const k of ['liked', 'playlists', 'history', 'searches', 'downloads', 'locals', 'blocked', 'artists', 'cached', 'colls']) if (!Array.isArray(out[k])) out[k] = [];
-    if (!out.srvOn1) { out.settings.ownSrc = true; out.srvOn1 = 1; }
+    if (!out.srvOff2) { out.settings.ownSrc = false; out.srvOff2 = 1; }   // “My server” starts off for everyone (once); people turn it on when they need it
     out.colls = out.colls.filter(m => m && m.id && Array.isArray(m.items) && (m.kind === 'artists' || m.kind === 'shows'));
     if (!out.pod || typeof out.pod !== 'object') out.pod = { follows: [], prog: {} };
     if (!Array.isArray(out.pod.follows)) out.pod.follows = []; if (!out.pod.prog || typeof out.pod.prog !== 'object') out.pod.prog = {};
@@ -297,7 +297,7 @@ function save() {
   clearTimeout(saveT); if (RESET) return;
   saveT = setTimeout(() => { if (RESET) return; try { localStorage.setItem(KEY, JSON.stringify(S)); } catch (e) { toast('Storage is full — remove some downloads'); } }, 250);
 }
-const KEEP = ['enc', 'hq', 'su', 'albumId', 'year', 'svSu', 'id', 'source', 'sid', 'uid', 'title', 'artist', 'handle', 'album', 'art', 'artLarge', 'duration', 'full', 'genre', 'url', 'live', 'preview', 'explicit', 'plays', 'permalink', 'home', 'hasArt', 'ytId', 'podId', 'date', 'desc', 'codec', 'bitrate', 'fmt', 'q', 'sr', 'bits', 'ch', 'kbps', 'lossless', 'lang', 'label', 'copy'];
+const KEEP = ['enc', 'hq', 'su', 'albumId', 'year', 'svSu', 'id', 'source', 'sid', 'uid', 'title', 'artist', 'handle', 'album', 'art', 'artLarge', 'duration', 'full', 'genre', 'url', 'live', 'preview', 'explicit', 'plays', 'permalink', 'home', 'hasArt', 'ytId', 'podId', 'date', 'added', 'desc', 'codec', 'bitrate', 'fmt', 'q', 'sr', 'bits', 'ch', 'kbps', 'lossless', 'lang', 'label', 'copy'];
 const clean = t => { const o = {}; for (const k of KEEP) if (t[k] !== undefined && t[k] !== null && t[k] !== '') o[k] = t[k]; return o; };
 const isLiked = id => S.liked.some(t => t.id === id);
 const isDl = id => String(id).startsWith('lc:') || S.downloads.some(t => t.id === id);
@@ -1098,7 +1098,7 @@ function loadSiteConfig(force) {
       CFG.saavn = arr(j.saavnServers).map(b => { b = b.replace(/\/+$/, ''); return { base: b, shape: /\/api$/.test(b) ? 'A' : '?' }; });
       const p = arr(j.piped).map(b => b.replace(/\/+$/, '')), v = arr(j.invidious).map(b => b.replace(/\/+$/, ''));
       CFG.piped = p; CFG.inv = v;   // used after the built-in mirrors and the sources file
-      CFG.servers = srcEntries([].concat(j.musicServer || j.server || [], j.musicServers || [])).map((e, i) => ({ id: 'config:' + i, name: e.name || (i ? 'musicServer ' + (i + 1) : 'musicServer'), host: hostOf(e.url), url: normServer(e.url) }))
+      CFG.servers = srcEntries([].concat(j.musicServer || j.server || [], j.musicServers || [])).map((e, i) => ({ id: 'config:' + i, name: e.name || (i ? 'musicServer ' + (i + 1) : 'musicServer'), host: hostOf(e.url), cap: e.cap, url: normServer(e.url) }))
         .filter((x, i, a) => x.url && a.findIndex(y => y.url === x.url) === i);
       CFG.server = CFG.servers[0] ? CFG.servers[0].url : '';
     } catch (e) { }
@@ -1112,7 +1112,7 @@ const Health = {
   m: null,
   load() { if (!this.m) { try { this.m = JSON.parse(localStorage.getItem('tunetune.health') || '{}') || {}; } catch (e) { this.m = {}; } } return this.m; },
   save() { clearTimeout(this.t); this.t = setTimeout(() => { try { localStorage.setItem('tunetune.health', JSON.stringify(this.m)); } catch (e) { } }, 1500); },
-  wait(n) { return Math.min(2 * 3600e3, 5 * 60e3 * Math.pow(2, Math.max(0, n - 1))); },   // 5 min, 10, 20 … at most 2 h
+  wait(n) { return Math.min(90 * 60e3, 5 * 60e3 * Math.pow(2, Math.max(0, n - 1))); },   // 5 min, 10, 20, 40, 80 … at most 90 min
   bad(id) { const h = this.load()[id]; if (!h) return false; if (h.cool && Date.now() < h.cool) return true; return !!(h.n && Date.now() - h.at < this.wait(h.n)); },
   // “busy” (rate-limited, timed out, temporary server error) only pauses a route for 90 s — it is not dead
   fail(id, busy) {
@@ -1183,7 +1183,7 @@ const JSA = {
     if (tier === 'free') return JS_RELAYS;
     if (tier === 'backup') return [...BK.relays, ...CFG.relays.filter(c => !BK.relays.some(b => b.host === hostOf(c.wrap('https://x.y/'))))];
     if (tier === 'mine') return BK.servers.map(s => ({ id: s.id, name: s.name, host: s.host, cap: s.cap, srv: true, wrap: tplWrap(s.url) }));
-    if (tier === 'cfg') return Src.cfgServers().map(s => ({ id: s.id, name: s.name, host: s.host, srv: true, wrap: tplWrap(s.url) }));
+    if (tier === 'cfg') return Src.cfgServers().map(s => ({ id: s.id, name: s.name, host: s.host, cap: s.cap, srv: true, wrap: tplWrap(s.url) }));
     const s = tier === 'own' ? Src.ownServer() : '';
     return s ? [{ id: 'own', srv: true, wrap: tplWrap(s) }] : [];
   },
@@ -1844,7 +1844,14 @@ const Stats = {
   minutes(days) { let s = 0; for (let i = 0; i < days; i++) { const d = new Date(Date.now() - i * 864e5); s += S.stats.days[dayKey(d)] || 0; } return Math.round(s / 60); },
   streak() { let n = 0; for (let i = 0; i < 400; i++) { const d = new Date(Date.now() - i * 864e5); if ((S.stats.days[dayKey(d)] || 0) >= 60) n++; else if (i > 0) break; } return n; },
 };
-const notBlocked = list => list.filter(x => !S.blocked.includes(x.id));
+const hiddenTag = x => { const h = S.settings.hideTags; if (!h || !h.length || !x || x.source === 'podcast' || x.live) return false; const g = String(x.genre || '').toLowerCase(), l = String(x.lang || '').toLowerCase(); return h.some(k => k && (k === g || k === l)); };
+const notBlocked = list => list.filter(x => !S.blocked.includes(x.id) && !hiddenTag(x));
+function hideTagSheet(t) {
+  const opts = [t.genre && ['genre', t.genre], t.lang && ['language', t.lang]].filter(Boolean);
+  if (!opts.length) return toast('This song has no genre or language to hide');
+  actionSheet({ head: textHead('Hide songs like this', 'They won’t show up in suggestions, Home or autoplay. Undo any time in Settings.'),
+    acts: opts.map(([k, v]) => ({ label: `Hide ${k}: ${v}`, icon: 'ban', fn: () => { const L = S.settings.hideTags || (S.settings.hideTags = []); const x = String(v).toLowerCase(); if (!L.includes(x)) L.push(x); save(); toast(`Hidden: ${v}`, { label: 'Undo', fn: () => { S.settings.hideTags = (S.settings.hideTags || []).filter(y => y !== x); save(); } }); } })) });
+}
 const Haptic = {
   el: null,
   tap(ms = 8) {
@@ -2006,6 +2013,7 @@ const Player = {
       try { this._seekOn = undefined; this.session(); this.seekBtns(!!(t && t.source === 'podcast')); } catch (e) { }
       if (t) { clearTimeout(this.metaT); this.metaT = setTimeout(() => { if (this.cur === t) { try { this.meta(t); } catch (e) { } } }, 600); }
       try { if ('mediaSession' in navigator) navigator.mediaSession.playbackState = 'playing'; } catch (e) { }
+      Focus.pausedBy = ''; Focus.want(true);
       if (/^(piped|inv):/.test(this.via)) MirrorHealth.good();
       UI.state(); UI.track(t);
     }
@@ -2014,6 +2022,7 @@ const Player = {
       if (a === Embed && document.hidden && this.wantPlay && !this.userPaused && Date.now() - (this.hiddenAt || 0) < 2000) { setTimeout(() => { if (this.el === Embed && this.wantPlay) Embed.play(); }, 400); UI.state(); return; }
       if (a === Embed && document.hidden) { this.wantPlay = false; this.userPaused = true; UI.state(); return; }
       if (!this.loading && !a.ended) this.wantPlay = false; UI.state();
+      if (!this.loading && !a.ended && !Focus.pausedBy) setTimeout(() => { if (!this.wantPlay) Focus.want(false); }, 1500);
     }
     else if (ev === 'loadedmetadata') {
       if (this.pendingSeek) { try { a.currentTime = this.pendingSeek; } catch (e) { } this.pendingSeek = 0; }
@@ -2028,6 +2037,18 @@ const Player = {
     if (a.currentTime > 20 && !this.preWarm) { this.preWarm = true; Pre.prune([this.queue[this.i - 1], t, this.queue[this.i + 1]]); Pre.warm(this.queue[this.i + 1]); }
     if (a.currentTime > 45 && !this.preWarmPrev) { this.preWarmPrev = true; const pv = this.queue[this.i - 1]; if (pv && !Offline.has(pv.id) && !isDl(pv.id) && !Pre.busy) Pre.warm(pv); }
     const cf = IS_IOS ? 0 : (+S.settings.crossfade || 0);
+    // gapless (when crossfade is off): the next song, already loaded, is started ~90 ms before this one ends
+    if (cf <= 0 && S.settings.gapless !== false && !IS_IOS && !this.xfStarted && !this.gapT && !this.loading && a === this.plain && !a.paused && isFinite(a.duration) && a.duration > 20 && a.duration - a.currentTime <= 1.5 && a.duration - a.currentTime > 0.1 && this.repeat !== 'one' && t.source !== 'podcast' && !t.live) {
+      const n = this.queue[this.i + 1];
+      if (n && !n.live && n.source !== 'podcast' && this.ready(n)) {
+        const left = (a.duration - a.currentTime) / (a.playbackRate || 1), tok = this.ltok;
+        this.gapT = setTimeout(() => {
+          this.gapT = 0;
+          if (this.ltok !== tok || this.el !== a || a.paused || this.xfStarted || this.queue[this.i + 1] !== n) return;
+          this.xfStarted = true; this.xfSecs = 0.06; this.i++; this.load(true, 0, false, true);
+        }, Math.max(0, left * 1000 - 90));
+      }
+    }
     if (cf > 0 && !this.xfStarted && !this.loading && a === this.plain && !a.paused && isFinite(a.duration) && a.duration > cf * 3 && a.duration - a.currentTime <= cf && this.repeat !== 'one' && t.source !== 'podcast') {
       const n = this.queue[this.i + 1];
       if (n && !n.live && n.source !== 'podcast' && this.ready(n)) { this.xfStarted = true; this.i++; this.load(true, 0, false, true); }
@@ -2040,8 +2061,8 @@ const Player = {
     return !!(h && h.exp > Date.now() + 60e3);
   },
   crossfade(old, nw, secs) {
-    this.stopFade();
-    const target = clamp(this.vol * (this.norm || 1), 0, 1), from = old.volume, t0 = Date.now(), dur = secs * 1000;
+    this.stopFade(); clearTimeout(this.gapT); this.gapT = 0;
+    const target = clamp(this.vol * (this.norm || 1) * (this.duckMul == null ? 1 : this.duckMul), 0, 1), from = old.volume, t0 = Date.now(), dur = secs * 1000;
     nw.volume = 0;
     const iv = setInterval(() => {
       const p = clamp((Date.now() - t0) / dur, 0, 1);
@@ -2114,6 +2135,7 @@ const Player = {
   },
   async load(autoplay = true, startAt = 0, quiet = false, xfade = false) {
     const t = this.cur; if (!t) return;
+    clearTimeout(this.gapT); this.gapT = 0;
     const tok = ++this.ltok; this.loaded = true;
     if (!quiet) {
       this.attempts = 0; this.avoid = new Set(); this.via = ''; this.prefetched = false; this.previewMode = false; this.listened = 0; this.counted = false; addHistory(t);
@@ -2216,7 +2238,8 @@ const Player = {
     this.pendingSeek = startAt > 0 ? startAt : 0; this.srcAt = Date.now(); this.lastProgress = Date.now(); this.lastT = -1;
     a.src = src; this.applyVol();
     a.defaultPlaybackRate = a.playbackRate = t.live ? 1 : (t.source === 'podcast' ? (+S.settings.podSpeed || this.rate) : this.rate);
-    if (fadeFrom) this.crossfade(fadeFrom, a, +S.settings.crossfade || 6);
+    const xs = this.xfSecs; this.xfSecs = 0;
+    if (fadeFrom) this.crossfade(fadeFrom, a, xs || +S.settings.crossfade || 6);
     this.xfStarted = false;
     UI.track(t); this.meta(t);
     if (t.source === 'podcast' && !quiet) setTimeout(() => podFollow(t), 1200);
@@ -2320,7 +2343,9 @@ const Player = {
       if (e && e.name === 'NotAllowedError') { clearTimeout(this.playWd); this.loading = false; UI.state(); if (!document.hidden) toast('Tap play to start'); }
     }
   },
-  userPause() { this.stopIntr(); this.wantPlay = false; this.userPaused = true; this.stopFade(); this.el.pause(); },
+  userPause() { this.stopIntr(); this.wantPlay = false; this.userPaused = true; if (Focus.pausedBy) Focus.pausedBy = ''; this.stopFade(); this.el.pause(); },
+  focusPause() { this.stopIntr(); this.wantPlay = false; this.userPaused = false; try { this.el.pause(); } catch (e) { } UI.state(); },
+  duck(on) { this.duckMul = on ? 0.25 : 1; this.applyVol(); },
   interrupted() {
     this.stopIntr(); this.intrAt = Date.now(); this.intrOk = document.hidden; this.wantPlay = false;
     this.intrT = setInterval(() => this.intrTry(), 2000);
@@ -2551,7 +2576,7 @@ const Player = {
     this.vol = clamp(v, 0, 1); this.applyVol();
     S.settings.volume = this.vol; if (!silent) save();
   },
-  applyVol() { const v = clamp(this.vol * (this.norm || 1), 0, 1); if (this.fading) { this.fading.target = v; } else { this.plain.volume = v; } if (this.fx) this.fx.volume = v; Embed.volume = this.vol; },
+  applyVol() { const d = this.duckMul == null ? 1 : this.duckMul, v = clamp(this.vol * (this.norm || 1) * d, 0, 1); if (this.fading) { this.fading.target = v; } else { this.plain.volume = v; } if (this.fx) this.fx.volume = v; Embed.volume = clamp(this.vol * d, 0, 1); },
   setRate(r) { this.rate = r; if (this.cur && !this.cur.live) this.el.playbackRate = r; toast(`Speed ${r}×`); },
   sleep(min) {
     clearTimeout(this.sleepT); this.sleepT = null; this.sleepEnd = false; this.sleepAt = 0;
@@ -3307,6 +3332,7 @@ function trackMenu(t, meta = {}) {
       meta.np && lyrState && lyrState.id === t.id && (lyrState.plain || (lyrState.synced && lyrState.synced.length)) && { label: 'Copy Lyrics', icon: 'lyrics', fn: copyLyrics },
       { label: 'Song Info', icon: 'info', fn: () => songInfo(t) },
       meta.np && { label: 'Audio Quality & Source', icon: 'wave', fn: openAQ },
+      !t.live && t.source !== 'podcast' && (t.genre || t.lang) && { label: 'Hide songs like this…', icon: 'ban', fn: () => hideTagSheet(t) },
       meta.np && t.source === 'podcast' && t.podId && { label: S.settings.podOrder === 'older' ? 'Next episodes: older first — switch to newer' : 'Next episodes: newer first — switch to older', icon: 'repeat', fn: () => Actions.podorder(null, { x: S.settings.podOrder === 'older' ? 'newer' : 'older' }) },
       meta.np && !t.live && !['podcast', 'radio'].includes(t.source) && { label: S.settings.karaoke ? 'Karaoke: On — turn off' : 'Karaoke (sing along)', icon: 'mic', fn: karaokeToggle },
       meta.np && !showEq() && { label: 'Equalizer', icon: 'eq', fn: openEQ },
@@ -3649,7 +3675,7 @@ function eqToggle(on) {
 function newPlaylist(name, tracks = []) { const p = { id: uid(), name, tracks: tracks.map(clean), created: Date.now() }; S.playlists.unshift(p); save(); return p; }
 function addToPlaylist(p, t) {
   if (p.tracks.some(x => x.id === t.id)) return toast(`Already in “${p.name}”`);
-  p.tracks.push(clean(t)); save(); toast(`Added to “${p.name}”`); refreshIfLib();
+  p.tracks.push({ ...clean(t), added: Date.now() }); save(); toast(`Added to “${p.name}”`); refreshIfLib();
 }
 function removeFromPlaylist(id, t) {
   const p = S.playlists.find(x => x.id === id); if (!p) return;
@@ -4406,7 +4432,7 @@ function collCard(c) {
 }
 const gridCards = list => `<div class="cgrid">${list.map(collCard).join('')}</div>`;
 function shelfBody(items, from) {
-  const tracks = items.filter(isTrack), colls = items.filter(x => !isTrack(x));
+  const tracks = items.filter(x => isTrack(x) && !hiddenTag(x)), colls = items.filter(x => !isTrack(x));
   if (tracks.length >= colls.length) { const k = reg(tracks, { from }); return `<div class="cg">${tracks.slice(0, 24).map((t, i) => rowHTML(t, k, i)).join('')}</div>`; }
   return `<div class="hs">${colls.slice(0, 20).map(collCard).join('')}</div>`;
 }
@@ -4667,6 +4693,56 @@ function renderMixList() {
 }
 
 /* ================= Karaoke — reduces the lead vocals of songs (never podcasts or radio) ================= */
+/* ================= Calls & notification sounds (Android app; like Spotify) =================
+   call / alarm → pause, resume after · notification → songs dip in volume for a moment, podcasts pause and resume ·
+   another music app starts → stop. Settings → “Pause for calls & notifications” (on by default). */
+const ANDROID_APP = !!(window.Capacitor && window.Capacitor.getPlatform && window.Capacitor.getPlatform() === 'android');
+const Focus = {
+  held: false, pausedBy: '', ducked: false, reqAt: 0, strikes: [], disabled: false, wired: false,
+  plug() {
+    if (!ANDROID_APP) return null;
+    const c = window.Capacitor; let p = c.Plugins && c.Plugins.AudioFocus;
+    if (!p && c.registerPlugin) { try { p = c.registerPlugin('AudioFocus'); } catch (e) { p = null; } }
+    return p && typeof p.request === 'function' ? p : null;
+  },
+  on() { return S.settings.focusSmart !== false && !this.disabled && !!this.plug(); },
+  wire() {
+    const P = this.plug(); if (!P || this.wired) return; this.wired = true;
+    try { const r = P.addListener('focus', e => this.event(e && e.type)); if (r && r.catch) r.catch(() => { this.wired = false; }); } catch (e) { this.wired = false; }
+  },
+  want(playing) {
+    const P = this.plug(); if (!P) return;
+    if (playing && this.on()) {
+      this.wire();
+      if (!this.held) { this.held = true; this.reqAt = Date.now(); Promise.resolve(P.request({ speech: !!(Player.cur && Player.cur.source === 'podcast') })).catch(() => { this.held = false; }); }
+    } else if (this.held && !this.pausedBy && (!playing || !this.on())) {
+      this.held = false; Promise.resolve(P.abandon()).catch(() => { });
+    }
+  },
+  event(type) {
+    if (!type || S.settings.focusSmart === false || this.disabled) return;
+    const now = Date.now(), P = Player;
+    // safety: if focus keeps bouncing right after we ask for it, stop handling it for this session
+    if (type !== 'gain' && now - this.reqAt < 900) {
+      this.strikes = this.strikes.filter(x => now - x < 15000); this.strikes.push(now);
+      if (this.strikes.length >= 3) { this.disabled = true; this.pausedBy = ''; if (this.ducked) { this.ducked = false; P.duck(false); } this.held = false; try { this.plug().abandon(); } catch (e) { } warn('audio focus handling switched off for this session'); return; }
+    }
+    const pod = !!(P.cur && P.cur.source === 'podcast');
+    if (type === 'duck') {
+      if (pod) { if (P.wantPlay) { this.pausedBy = 'duck'; P.focusPause(); } }
+      else if (!this.ducked) { this.ducked = true; P.duck(true); }
+    } else if (type === 'transient') {
+      if (P.wantPlay) { this.pausedBy = 'transient'; P.focusPause(); }
+    } else if (type === 'loss') {
+      this.held = false; this.pausedBy = ''; if (this.ducked) { this.ducked = false; P.duck(false); }
+      if (P.wantPlay) P.userPause(); UI.state();
+    } else if (type === 'gain') {
+      if (this.ducked) { this.ducked = false; P.duck(false); }
+      const was = this.pausedBy; this.pausedBy = '';
+      if (was && P.cur && !P.userPaused && S.settings.autoResume !== false) P.play();
+    }
+  },
+};
 const karaokeOn = t => !!S.settings.karaoke && !!t && !t.live && !['podcast', 'radio'].includes(t.source);
 function karaokeToggle() {
   const t = Player.cur;
@@ -5101,6 +5177,24 @@ function loadRadio(e, tok) {
 }
 
 /* library */
+async function randomAlbum() {
+  const seen = new Map();
+  [...S.liked, ...S.history, ...S.downloads, ...Object.values(S.stats.plays || {}).map(p => p.t).filter(Boolean)].forEach(t => {
+    if (t && t.source === 'saavn' && t.albumId && t.album && !seen.has(t.albumId)) seen.set(t.albumId, { id: t.albumId, title: t.album, art: t.artLarge || t.art, source: 'saavn', kind: 'album' });
+  });
+  const off = () => { const g = {}; S.downloads.filter(t => t.source !== 'podcast' && t.album).forEach(t => { (g[t.album] = g[t.album] || []).push(t); }); return Object.entries(g).filter(([, l]) => l.length >= 2); };
+  if (!navigator.onLine || !seen.size) {
+    const groups = off(); if (!groups.length) return toast(navigator.onLine ? 'Play a few songs first — albums you’ve heard will be picked from' : 'No downloaded albums yet');
+    const [name, list] = groups[Math.floor(Math.random() * groups.length)];
+    Player.playList(list, 0, `Random album · ${name}`, false); setTimeout(openNP, 250); return toast(`🎲 ${name}`);
+  }
+  const all = [...seen.values()]; toast('🎲 Picking an album…');
+  for (let tries = 0; tries < 3 && all.length; tries++) {
+    const a = all.splice(Math.floor(Math.random() * all.length), 1)[0];
+    try { const r = await YT.collection(a); const L = (r.tracks || []).filter(t => t.source !== 'podcast'); if (L.length >= 2) { Player.playList(L, 0, `Random album · ${r.title || a.title}`, false); setTimeout(openNP, 250); return toast(`🎲 ${r.title || a.title}`); } } catch (e) { }
+  }
+  toast('Couldn’t open an album right now — try again');
+}
 function renderLibrary() {
   const items = [['liked', 'Favorite Songs', 'heart', KINDS.liked.get().length], ['playlists', 'Playlists', 'playlist', S.playlists.length],
     ['downloads', 'Downloaded', 'download', S.downloads.length], ['offline', 'Offline Mix', 'shuffle', offlineList().length], ['locals', 'On This Device', 'folder', S.locals.length],
@@ -5108,7 +5202,7 @@ function renderLibrary() {
     ['stations', 'Saved Stations', 'radio', KINDS.stations.get().length], ['history', 'Recently Played', 'clock', S.history.length], ['replay', 'Your Replay', 'bars', 0]];
   let html = header('Library', { right: nbBtn('newpl', 'plus', 'New playlist') + nbBtn('go', 'gear', 'Settings', 'data-v="settings"') });
   html += `<div class="nl">${items.map(([k, l, ic, n]) => `<div class="nli" data-a="go" data-v="coll" data-k="${k}" role="button" tabindex="0">${I[ic]}<div class="nb2"><span>${l}</span><span class="cnt">${n || ''}</span><span class="chev">${I.chevR}</span></div></div>`).join('')}</div>`;
-  html += `<div class="nl"><div class="nli" data-a="importpl" role="button" tabindex="0">${I.link}<div class="nb2"><span>Import a YouTube playlist</span><span class="chev">${I.chevR}</span></div></div></div>`;
+  html += `<div class="nl"><div class="nli" data-a="randalbum" role="button" tabindex="0">${I.shuffle}<div class="nb2"><span>Play a random album</span><span class="chev">${I.chevR}</span></div></div><div class="nli" data-a="importpl" role="button" tabindex="0">${I.link}<div class="nb2"><span>Import a YouTube playlist</span><span class="chev">${I.chevR}</span></div></div></div>`;
   if (S.playlists.length) html += sec('Your playlists', `<div class="hs">${S.playlists.map(myPlCard).join('')}</div>`);
   if ((S.colls || []).length) html += sec('Your mixes', `<div class="hs">${S.colls.map(mixCard).join('')}</div>`, { moreHTML: '<button class="see" data-a="go" data-v="coll" data-k="mixes">See All</button>' });
   if (S.history.length) { const r = dedupeSongs(S.history).slice(0, 12); html += sec('Recently played', cardsHTML(r, reg(r, { from: 'Recently played', hist: true })), { moreK: 'history' }); }
@@ -5123,10 +5217,35 @@ function renderPlaylists() {
 function renderMyPl(e) {
   const p = S.playlists.find(x => x.id === e.id);
   if (!p) return header('Playlist', { noLarge: true }) + emptyState({ icon: 'playlist', t: 'This playlist was deleted' });
-  const k = reg(p.tracks, { from: p.name, pl: p.id });
+  const L = plView(p, e.q || '');
+  const k = reg(L, { from: p.name, pl: p.id });
+  const PS = [['custom', 'Your order'], ['added', 'Recently added'], ['first', 'Oldest added'], ['title', 'Title'], ['artist', 'Artist'], ['dur', 'Length']];
+  const tools = p.tracks.length > 1 ? `<label class="psearch plq">${I.search}<input id="plq" type="search" autocomplete="off" placeholder="Search in this playlist" value="${esc(e.q || '')}"></label>
+    <div class="chips pg pl-s">${PS.map(([v, l]) => `<button class="chip ${(p.sort || 'custom') === v ? 'on' : ''}" data-a="plsort" data-x="${v}">${l}</button>`).join('')}</div>` : '';
+  if (tools) setTimeout(() => plSearchWire(e, p));
   return header(p.name, { noLarge: true, right: (p.tracks.length ? nbBtn('dlall', 'download', 'Download all') : '') + nbBtn('plmenu', 'more', 'Playlist options', `data-id="${p.id}"`) }) +
-    collHead(p.name, p.tracks, k) +
-    (p.tracks.length ? rowsHTML(p.tracks, k, { dur: true }) : emptyState({ icon: 'search', t: 'This playlist is empty', d: 'Add songs with “Add to Playlist…” from any song’s ••• menu.', btn: ['gosearch', 'Find Music'] }));
+    collHead(p.name, p.tracks, k) + tools +
+    `<div id="plb">${p.tracks.length ? plRows(p, L, k, e.q) : emptyState({ icon: 'search', t: 'This playlist is empty', d: 'Add songs with “Add to Playlist…” from any song’s ••• menu.', btn: ['gosearch', 'Find Music'] })}</div>`;
+}
+function plView(p, q) {
+  const s = p.sort || 'custom', idx = new Map(p.tracks.map((t, i) => [t.id, i]));
+  const added = t => t.added || 0, low = x => String(x || '').toLowerCase();
+  let L = p.tracks.slice();
+  if (s === 'added') L.sort((a, b) => (added(b) - added(a)) || (idx.get(b.id) - idx.get(a.id)));
+  else if (s === 'first') L.sort((a, b) => (added(a) - added(b)) || (idx.get(a.id) - idx.get(b.id)));
+  else if (s === 'title') L.sort((a, b) => low(a.title).localeCompare(low(b.title)));
+  else if (s === 'artist') L.sort((a, b) => low(a.artist).localeCompare(low(b.artist)) || low(a.title).localeCompare(low(b.title)));
+  else if (s === 'dur') L.sort((a, b) => (a.duration || 0) - (b.duration || 0));
+  const w = low(q).trim();
+  return w ? L.filter(t => [t.title, t.artist, t.album].some(v => low(v).includes(w))) : L;
+}
+const plRows = (p, L, k, q) => L.length ? rowsHTML(L, k, { dur: true }) : emptyState({ icon: 'search', t: `No songs match “${q}”`, d: 'Try another word.' });
+function plSearchWire(e, p) {
+  const inp = $('#plq'); if (!inp) return; let tmr = 0;
+  inp.addEventListener('input', () => { clearTimeout(tmr); tmr = setTimeout(() => {
+    e.q = inp.value; const box = $('#plb'); if (!box) return;
+    const L = plView(p, e.q); box.innerHTML = plRows(p, L, reg(L, { from: p.name, pl: p.id }), e.q); revealImgs && revealImgs();
+  }, 150); });
 }
 function renderYtColl(e, tok) {
   const c = e.c || {}; const ar = c.kind === 'artist';
@@ -5212,6 +5331,8 @@ function renderSettings() {
       sRow('Streaming quality', sSeg('quality', [['auto', 'Auto'], ['high', 'Highest'], ['normal', 'Normal'], ['saver', 'Data saver']], s.quality), 'Auto lowers quality on slow or data-saver connections so music never stops') +
       sLi({ icon: 'volHigh', color: '#bf5af2', label: 'Normalize volume', hint: 'Every song plays at a similar loudness', ctl: sSw('normalize', s.normalize) }) +
       sLi({ icon: 'download', color: '#0a84ff', label: 'Preload next song', hint: 'No gaps or buffering between songs', ctl: sSw('preload', s.preload) }) +
+      (IS_IOS ? '' : sLi({ icon: 'infinity', color: '#5e5ce6', label: 'Gapless playback', hint: 'Album tracks and live sets flow into each other with no gap (when Crossfade is off)', ctl: sSw('gapless', s.gapless !== false) })) +
+      sLi({ icon: 'ban', color: '#ff453a', label: 'Hidden genres & languages', hint: (s.hideTags || []).length ? 'Tap to show one again' : 'Use “Hide songs like this…” in any song’s ••• menu', value: (s.hideTags || []).length ? String(s.hideTags.length) : 'None', a: 'hidetags', chev: true }) +
       (IS_IOS ? '' : `<div class="li"><div class="lb"><span class="lx">Crossfade<small class="lh">Blend the end of one song into the next</small></span><span class="lv" id="v-crossfade">${+s.crossfade ? s.crossfade + ' s' : 'Off'}</span></div></div><div class="pad"><input class="slider" type="range" min="0" max="12" step="1" value="${+s.crossfade || 0}" data-set="crossfade" style="--p:${((+s.crossfade || 0) / 12) * 100}%" aria-label="Crossfade seconds"></div>`)) +
     sGrp('Music sources',
       sLi({ icon: 'server', color: Src.on() ? '#30d158' : '#8e8e93', label: 'My server', hint: Src.on() ? 'On · free sources first, then your own server, then your tunetune-config servers, then YouTube' : 'Off · free sources first, then YouTube. Turn on to try your servers before YouTube.', ctl: sSw('ownSrc', Src.on()) }) +
@@ -5223,6 +5344,7 @@ function renderSettings() {
       sLi({ icon: 'eq', color: '#ff9f0a', label: 'Equalizer', value: IS_IOS ? 'Not on iPhone' : s.eqOn ? eqName() : 'Off', a: 'eq', chev: true }) +
       (!IS_IOS && eqPins().length ? `<div class="pad"><div class="chips eqpins">${eqPins().filter(n => eqFind(n)).map(n => `<button class="chip ${s.eqOn && eqName() === n ? 'on' : ''}" data-a="eqp" data-n="${esc(n)}">${I.pin}${esc(n)}</button>`).join('')}</div></div>` : '') +
       sLi({ icon: 'infinity', color: '#30d158', label: 'Autoplay similar songs', ctl: sSw('autoplay', s.autoplay) }) +
+      (ANDROID_APP ? sLi({ icon: 'phone', color: '#ff9f0a', label: 'Pause for calls & notifications', hint: 'Like Spotify: calls pause the music and it comes back after. Notification sounds lower songs for a moment and briefly pause podcasts. Turn off to keep playing through them.', ctl: sSw('focusSmart', S.settings.focusSmart !== false) }) : '') +
       sLi({ icon: 'phone', color: '#30d158', label: 'Resume after calls', hint: 'Music continues by itself when a phone call or alarm ends', ctl: sSw('autoResume', S.settings.autoResume !== false) }) +
       sLi({ icon: 'mic', color: '#bf5af2', label: 'Mix podcasts with songs', hint: 'Off keeps podcasts and songs in separate queues', ctl: sSw('mixPods', !!S.settings.mixPods) }) +
       (IS_CAP || window.ttDesktop ? sRow('Remind me when I’m away', sSeg('remindDays', [[0, 'Off'], [3, '3 days'], [7, '7 days'], [14, '14 days']], Native.remindDays()), 'At most two gentle notifications, then it stays quiet until you listen again') : '') +
@@ -5444,6 +5566,13 @@ const Actions = {
   autoplay() { S.settings.autoplay = !S.settings.autoplay; save(); renderQueue(); toast(S.settings.autoplay ? 'Autoplay on' : 'Autoplay off'); },
   nplike() { if (Player.cur) toggleLike(Player.cur); },
   contsongs() { if (Player.cur) { Player.play(); openNP(); } },
+  randalbum() { randomAlbum(); },
+  hidetags() {
+    const L = S.settings.hideTags || [];
+    if (!L.length) return toast('Nothing hidden — use “Hide songs like this…” in a song’s ••• menu');
+    actionSheet({ head: textHead('Hidden genres & languages', 'Tap one to show it again'), acts: L.map(x => ({ label: `Show ${x.replace(/^./, c => c.toUpperCase())} again`, icon: 'eye', fn: () => { S.settings.hideTags = (S.settings.hideTags || []).filter(y => y !== x); save(); toast('Showing it again'); softRender(); } })) });
+  },
+  plsort(el, d) { const e = cv(), p = S.playlists.find(x => x.id === e.id); if (!p) return; p.sort = d.x === 'custom' ? undefined : d.x; save(); softRender(); },
   qlike(el, d) { const t = Player.queue.find(x => x.id === d.id) || (Player.cur && Player.cur.id === d.id ? Player.cur : null); if (!t) return; toggleLike(t); renderQueue(); },
   podorder(el, d) { S.settings.podOrder = d.x === 'older' ? 'older' : 'newer'; save(); buzz(); toast(d.x === 'older' ? 'Older episodes next' : 'Newer episodes next'); if (Player.cur) podFollow(Player.cur, true); renderQueue(); },
   npmore() { if (Player.cur) trackMenu(Player.cur, { np: true }); },
@@ -5785,6 +5914,7 @@ document.addEventListener('change', e => {
     if (k === 'ownSrc') Src.set(t.checked);
     if (/^btn/.test(k)) { npButtons(); if (k === 'btnEq' && t.checked && IS_IOS) toast('Shown — but the equalizer can’t change sound on iPhone and iPad'); }
     if (k === 'roll') Marquee.all();
+    if (k === 'focusSmart') { if (!t.checked) { if (Focus.ducked) { Focus.ducked = false; Player.duck(false); } Focus.pausedBy = ''; Focus.want(false); } else if (Player.wantPlay) Focus.want(true); }
     const pairs = { homeSongs: 'homePods', homePods: 'homeSongs', offSongs: 'offPods', offPods: 'offSongs' };
     if (pairs[k] && !t.checked && S.settings[pairs[k]] === false) { t.checked = true; S.settings[k] = true; save(); return toast('Keep at least one of these on'); }
     if (['exploreSongs', 'explorePods', 'exploreRadio'].includes(k) && !t.checked && ['exploreSongs', 'explorePods', 'exploreRadio'].every(x => x === k || S.settings[x] === false)) { t.checked = true; S.settings[k] = true; save(); return toast('Keep at least one section in Explore'); }
@@ -6044,7 +6174,7 @@ function init() {
     navigator.serviceWorker.register('sw.js').catch(() => { });
   }
   window.TuneTune = { version: VER, engine: () => (IT.ok ? 'direct' : 'mirrors') };
-  if (window.__TT_TEST__) window.TuneTune._ = { Mixes, karaokeOn, karaokeToggle, offlinePods, offlineSheet, exportData, importBackup, Use, Health, HEDGE_MS, BK, loadBackupSources, rowDl, Pod, go, Marquee, UI, podSave, podProg, rowHTML, dlProgress, sleepMenu, Src, CFG, ytWebSearch, srcInfo, Native, JSA, DES, Saavn, Player, Streams, Mirrors, IT, YT, S, nav, cv, Actions, itShelves, mem, Embed, MirrorHealth, download, share, probeAudio, qInfo, sharePlaylist, SvC, translit, Deck, SITE, Offline, landCheck, Party, offlineList, playOffline, offlineSheet, JS_RELAYS, SAAVN_DEFAULT, PIPED_DEFAULT, INV_DEFAULT, loadSiteConfig, Pre, deviceLangs, langSuggest, eqName, eqPins, Haptic, rtags: () => rtags(), podCats: () => podCats(), lyrSet: r => { lyrState = { id: Player.cur && Player.cur.id, ...r }; renderLyrics(); } };
+  if (window.__TT_TEST__) window.TuneTune._ = { hiddenTag, notBlocked, randomAlbum, Focus, Mixes, karaokeOn, karaokeToggle, offlinePods, offlineSheet, exportData, importBackup, Use, Health, HEDGE_MS, BK, loadBackupSources, rowDl, Pod, go, Marquee, UI, podSave, podProg, rowHTML, dlProgress, sleepMenu, Src, CFG, ytWebSearch, srcInfo, Native, JSA, DES, Saavn, Player, Streams, Mirrors, IT, YT, S, nav, cv, Actions, itShelves, mem, Embed, MirrorHealth, download, share, probeAudio, qInfo, sharePlaylist, SvC, translit, Deck, SITE, Offline, landCheck, Party, offlineList, playOffline, offlineSheet, JS_RELAYS, SAAVN_DEFAULT, PIPED_DEFAULT, INV_DEFAULT, loadSiteConfig, Pre, deviceLangs, langSuggest, eqName, eqPins, Haptic, rtags: () => rtags(), podCats: () => podCats(), lyrSet: r => { lyrState = { id: Player.cur && Player.cur.id, ...r }; renderLyrics(); } };
 }
 try { init(); }
 catch (err) {
