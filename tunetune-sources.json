@@ -113,7 +113,7 @@
   "backupServers": [
     {
       "name": "Cloudflare 2",
-      "url": "https://tunetune.monisha-s-665.workers.dev/",
+      "url": "https://tunetune.monisha-s-665.workers1.dev/",
       "dailyCap": 3000
     },
     {
