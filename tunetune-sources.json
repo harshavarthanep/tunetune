@@ -123,6 +123,11 @@
     },
     {
       "name": "Cloudflare 4",
+      "url": "https://tunetune.yugeshraja-ps.workers.dev/",
+      "dailyCap": 3000
+    },
+    {
+      "name": "Cloudflare 4",
       "url": "https://tunetune.XXXX.workers.dev",
       "dailyCap": 3000
     },
