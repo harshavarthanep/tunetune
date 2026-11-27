@@ -127,6 +127,11 @@
       "dailyCap": 3000
     },
     {
+      "name": "Relay Relay",
+      "url": "https://relay-relay.harshavarthanep-e.workers.dev/proxy?url={url}",
+      "dailyCap": 3000
+    },
+    {
       "name": "Cloudflare 5",
       "url": "https://tunetune.XXXX.workers.dev",
       "dailyCap": 3000
