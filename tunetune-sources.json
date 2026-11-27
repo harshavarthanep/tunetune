@@ -128,7 +128,7 @@
     },
     {
       "name": "Relay Relay",
-      "url": "https://relay-relay.harshavarthanep-e.workers.dev/proxy?url={url}",
+      "url": "https://relay-relay.harshavarthan-e.workers.dev/proxy?url={url}",
       "dailyCap": 3000
     },
     {
