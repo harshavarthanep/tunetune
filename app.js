@@ -1020,8 +1020,9 @@ const DES = (() => {
    MUSIC SOURCES — the order Tune Tune tries them in:
      1. FREE  — JioSaavn through free public relays, free community JioSaavn servers,
                 YouTube Music audio through public Piped / Invidious mirrors (no ads)
-     2. YOUR SERVERS — only when “My server” is switched on, and only after every free source failed:
-                the musicServer in tunetune-config.json first, then your own server saved in the app
+     1b. BACKUP SERVERS — tunetune-sources.json → backupServers, only after every free source failed
+     2. YOUR SERVERS — only when “My server” is switched on, and only after the backup servers failed:
+                your own server saved in the app first, then the musicServer in tunetune-config.json
      3. YOUTUBE PLAYER — the last resort for songs nothing else has
    tunetune-config.json (next to index.html, optional — see tunetune-config.example.json):
    {
@@ -1180,10 +1181,12 @@ const JSA = {
     // relays that wrap the answer (“{contents: …}” or “{body: …}”) are unwrapped automatically
     if (j && !p.unwrap && typeof j === 'object' && !Array.isArray(j)) { const w = typeof j.contents === 'string' ? j.contents : typeof j.body === 'string' ? j.body : null; if (w != null) j = parseLoose(w); }
     if (!j || typeof j !== 'object') throw new Error('not JSON');
+    // a relay that says OK but sends its own error text (“{error: '…'}”) failed — JioSaavn's own answers never look like this
+    if (!Array.isArray(j) && typeof (j.error || j.Error) === 'string' && !j.results && !j.songs && !j.list && !j.data) throw Object.assign(new Error('relay error'), { status: 502 });
     return j;
   },
   relays(tier = 'free') {
-    if (tier === 'free') return JS_RELAYS;
+    if (tier === 'free') return NATIVE ? JS_RELAYS : JS_RELAYS.filter(p => p.id !== 'direct');   // browsers always block direct calls
     if (tier === 'backup') return [...BK.relays, ...CFG.relays.filter(c => !BK.relays.some(b => b.host === hostOf(c.wrap('https://x.y/'))))];
     if (tier === 'mine') return BK.servers.map(s => ({ id: s.id, name: s.name, host: s.host, cap: s.cap, srv: true, wrap: tplWrap(s.url) }));
     if (tier === 'cfg') return Src.cfgServers().map(s => ({ id: s.id, name: s.name, host: s.host, cap: s.cap, srv: true, wrap: tplWrap(s.url) }));
@@ -1413,7 +1416,8 @@ const Saavn = {
     const list = tiers || ['free', 'backup', 'mine', ...Src.servers()];
     const freeT = list.filter(t => t === 'free' || t === 'backup'), srvT = list.filter(t => t === 'mine' || t === 'own' || t === 'cfg');
     if (Src.freeDown()) Health.nudge();   // free routes are down: quietly re-test them (at most every 3 min, only while in use)
-    if (!freeT.length || !srvT.length) return this.seq(fn, list);
+    // My server off: strictly one after another — backup servers only once every free source has failed (slow isn't failed)
+    if (!freeT.length || !srvT.length || !Src.on()) return this.seq(fn, list);
     // free routes always go first; your servers are asked only if free ones are known to be down, fail, or are slow
     const freeP = this.seq(fn, freeT); freeP.catch(() => { });
     const head = Src.freeDown() ? 0 : HEDGE_MS;
@@ -2252,17 +2256,21 @@ const Player = {
   },
   // Finds the cleanest way to play a song, always in this order:
   //   1. free — JioSaavn (free relays & community servers), YouTube Music audio (free mirrors / the apps' direct engine)
-  //   2. your servers — only when “My server” is on: tunetune-config.json server, then your own server
+  //   2. your servers — only when “My server” is on: your own server, then the tunetune-config.json server
   //   3. the YouTube player
   async resolve(t, tok) {
     const stale = () => tok !== this.ltok, eng = S.settings.engine, noSv = this.avoid.has('saavn');
     const sv = (x, route) => { const pk = x && Saavn.pick(x); return pk ? { src: pk.url, via: 'saavn', quality: `AAC · ${pk.kbps} kbps`, route: route || { tier: 'free', relay: 'cdn' } } : null; };
     const own = async tiers => { // JioSaavn songs carry their own link; it is refreshed only after a failure
       if (t.source !== 'saavn' || noSv) return null;
+      if (tiers && t._svNo) return null;   // JioSaavn already said it doesn't have this song — don't spend backup/server requests on it
       if (tiers || this.attempts > 0 || (!t.su && !t.enc)) {
         try { const f = await Saavn.song(t.sid, tiers || ['free']); if (f) { delete t.su; t.enc = f.enc; t.hq = f.hq; if (f.su) t.su = f.su; t._r = f._r; return sv(t, t._r); } }
         catch (e) { if (e.soft) t._svNo = true; }
         if (tiers || (!t.su && !t.enc)) return null;
+        // the saved link just failed and the free sources couldn't refresh it: ask the backup sources and servers
+        // (in their usual order) for a fresh link first; the saved link gets one more try just before YouTube
+        if (this.attempts > 0) { savedLater = true; return null; }
       }
       return sv(t, { tier: 'saved', was: t._r || null });   // link saved with the song: nothing is asked from any server now
     };
@@ -2279,7 +2287,7 @@ const Player = {
         return { src: s.url, via: s.via, quality: qLabel(s.mime, s.bitrate), norm: S.settings.normalize && s.loud > 0 ? clamp(Math.pow(10, -s.loud / 20), 0.25, 1) : 0, route: { tier: 'free', relay: s.via } };
       } catch (e) { if (!DIRECT() && !e.soft) MirrorHealth.bad(true); this.avoid.add('streams'); return null; }
     };
-    let r, yid = '', srvTried = false;
+    let r, yid = '', srvTried = false, savedLater = false;
     const servers = async () => {   // your own server first, then the tunetune-config musicServers last
       if (!Src.on() || srvTried) return null; srvTried = true;
       if ((r = await own(Src.servers()))) return r; if (stale()) return null;
@@ -2311,6 +2319,8 @@ const Player = {
     }
     // 2 — your servers, only when switched on and every free source failed
     if ((r = await servers())) return r; if (stale()) return null;
+    // the saved link once more (a short network hiccup), before falling back to the YouTube player
+    if (savedLater && (t.su || t.enc) && (r = sv(t, { tier: 'saved', was: t._r || null }))) return r;
     // 3 — YouTube player
     if (yid && (eng === 'player' || (eng !== 'audio' && (S.settings.ytPlayer || this.ytOnce)))) { const id = await this.pickEmbed(t, yid); if (stale()) return null; if (id) return { embedId: id }; }
     if (yid && t.source === 'yt' && !document.hidden && eng !== 'audio' && !S.settings.ytPlayer && !this.ytOnce) return 'ask';
@@ -2577,7 +2587,7 @@ const Player = {
     this.load(true, pos, true);
   },
   setVol(v, silent) {
-    this.vol = clamp(v, 0, 1); this.applyVol();
+    v = +v; this.vol = Number.isFinite(v) ? clamp(v, 0, 1) : 1; this.applyVol();   // a damaged or odd saved value never stops the app from opening
     S.settings.volume = this.vol; if (!silent) save();
   },
   applyVol() { const d = this.duckMul == null ? 1 : this.duckMul, v = clamp(this.vol * (this.norm || 1) * d, 0, 1); if (this.fading) { this.fading.target = v; } else { this.plain.volume = v; } if (this.fx) this.fx.volume = v; Embed.volume = clamp(this.vol * d, 0, 1); },
@@ -3405,7 +3415,7 @@ function srcInfo() {
     const r = Player.srcPath, srv = Src.kind(r) === 'server', bk = r && r.tier === 'backup', saved = r && r.tier === 'saved';
     return { k: srv ? 'server' : 'free', title: srv ? (r.tier === 'mine' ? 'JioSaavn · backup server' : 'JioSaavn · your server') : bk ? 'JioSaavn · free (backup)' : 'JioSaavn · free',
       sub: saved ? 'Plays straight from JioSaavn with the link saved with this song — no server used' : srv ? (r.tier === 'mine' ? 'Free sources didn’t answer, so one of your backup servers found it' : 'Free sources didn’t answer, so your server found it') : bk ? 'The usual free sources were busy — a backup free source from tunetune-sources.json answered' : 'Clean, ad-free audio from a free source',
-      rows: [['Music from', 'JioSaavn'], ['Found through', Src.describe(r) || 'Link saved with the song'], ['Audio stream', Player.audioVia === 'own' ? 'Your own server (for the equalizer)' : Player.audioVia === 'config' ? 'Your tunetune-config server (for the equalizer)' : 'JioSaavn’s servers, direct']] };
+      rows: [['Music from', 'JioSaavn'], ['Found through', Src.describe(r) || 'Link saved with the song'], ['Audio stream', Player.audioVia === 'own' ? 'Your own server (for the equalizer)' : String(Player.audioVia).startsWith('config') ? 'Your tunetune-config server (for the equalizer)' : 'JioSaavn’s servers, direct']] };
   }
   if (/^piped:/.test(v)) return { k: 'free', title: 'YouTube Music audio · free', sub: 'Ad-free audio from a public mirror', rows: [['Music from', 'YouTube Music'], ['Through', 'Piped mirror · ' + hostOf(mirror)]] };
   if (/^inv:/.test(v)) return { k: 'free', title: 'YouTube Music audio · free', sub: 'Ad-free audio from a public mirror', rows: [['Music from', 'YouTube Music'], ['Through', 'Invidious mirror · ' + hostOf(mirror)]] };
@@ -3448,7 +3458,7 @@ function aqInner() {
   const big = x.tier === 'hires' || x.tier === 'lossless' || x.tier === 'hq'
     ? `<div class="aq-hero ${x.tier}"><span class="aq-medal">${x.tier === 'hq' ? 'HQ' : I.wave}</span><div><b>${esc(x.label)}</b><small>${esc(x.spec || '')}</small></div></div>`
     : `<div class="aq-hero"><div><b>${esc(x.label || 'Standard')}</b><small>${yt ? 'Quality is chosen by YouTube' : 'Standard quality'}</small></div></div>`;
-  const order = Src.on() ? 'Free sources → backup servers → your own server → your tunetune-config servers → YouTube player' : 'Free sources → backup free sources → YouTube player';
+  const order = Src.on() ? 'Free sources → backup servers → your own server → your tunetune-config server → YouTube player' : 'Free sources → backup servers → YouTube player';
   return `<div class="aq-h"><b>Audio Quality</b><small>${esc(t.title)} · ${esc(t.artist)}</small></div>${big}
     <div class="sub-h">Playing from</div>${srcCard}
     <div class="li"><div class="lb"><span class="lx">My server<small class="lh">${esc(order)}</small></span>${sSw('ownSrc', Src.on())}</div></div>
@@ -5171,7 +5181,8 @@ async function runSearch(e) {
   if (e.seg === 'all') {
     box.innerHTML = `<div id="s-top"><div class="spin"></div></div><div id="s-songs"></div><div id="s-pods"></div><div id="s-eps"></div><div id="s-arts"></div><div id="s-albs"></div><div id="s-pls"></div><div id="s-none"></div>`;
     const put = (id, html) => { if (!live()) return; const el = document.getElementById(id); if (el) el.innerHTML = html; };
-    const songsP = YT.songs(q).catch(() => []), artsP = YT.artists(q).catch(() => []), podsP = Pod.search(q).catch(() => []);
+    let srcDown = false;   // true when the songs search failed because no source answered (not “nothing found”)
+    const songsP = YT.songs(q).catch(err => { srcDown = !(err && err.soft); return []; }), artsP = YT.artists(q).catch(() => []), podsP = Pod.search(q).catch(() => []);
     songsP.then(songs => { if (!songs.length) return; const k = reg(songs, { from: `Search: ${q}` }); e.sk = k; put('s-songs', `<div class="sub-h row-h"><span>Songs</span>${seeAll('songs')}</div>` + rowsHTML(songs.slice(0, 5), k, { dur: true })); });
     podsP.then(pods => { if (pods.length) put('s-pods', `<div class="sub-h row-h"><span>Podcasts</span>${seeAll('podcasts')}</div><div class="hs">${pods.slice(0, 12).map(collCard).join('')}</div>`); });
     artsP.then(arts => { if (arts.length) put('s-arts', `<div class="sub-h row-h"><span>Artists</span>${seeAll('artists')}</div><div class="hs">${arts.slice(0, 10).map(collCard).join('')}</div>`); });
@@ -5193,7 +5204,8 @@ async function runSearch(e) {
     put('s-top', best ? `<div class="sub-h">Top result</div>${topCard(best.kind, best.item, e.sk || reg(songs, { from: `Search: ${q}` }))}` : '');
     if (!songs.length && !arts.length && !pods.length) {
       const au = await Audius.search(q).catch(() => []); if (!live()) return;
-      put('s-none', au.length ? `<div class="note">${I.pulse}<span>Music sources are busy right now, so here are free full songs. Try again in a minute for everything else.</span></div>` + rowsHTML(au, reg(au, { from: `Search: ${q}` }), { dur: true }) : none);
+      put('s-none', au.length ? `<div class="note">${I.pulse}<span>Music sources are busy right now, so here are free full songs. Try again in a minute for everything else.</span></div>` + rowsHTML(au, reg(au, { from: `Search: ${q}` }), { dur: true })
+        : srcDown || !navigator.onLine ? errBox('Music sources aren’t responding', navigator.onLine ? 'The free sources are busy right now. Try again in a moment.' : 'You’re offline. Check your connection, then try again.') : none);
     }
     return;
   }
@@ -5398,7 +5410,7 @@ function renderSettings() {
       sLi({ icon: 'ban', color: '#ff453a', label: 'Hidden genres & languages', hint: (s.hideTags || []).length ? 'Tap to show one again' : 'Use “Hide songs like this…” in any song’s ••• menu', value: (s.hideTags || []).length ? String(s.hideTags.length) : 'None', a: 'hidetags', chev: true }) +
       (IS_IOS ? '' : `<div class="li"><div class="lb"><span class="lx">Crossfade<small class="lh">Blend the end of one song into the next</small></span><span class="lv" id="v-crossfade">${+s.crossfade ? s.crossfade + ' s' : 'Off'}</span></div></div><div class="pad"><input class="slider" type="range" min="0" max="12" step="1" value="${+s.crossfade || 0}" data-set="crossfade" style="--p:${((+s.crossfade || 0) / 12) * 100}%" aria-label="Crossfade seconds"></div>`)) +
     sGrp('Music sources',
-      sLi({ icon: 'server', color: Src.on() ? '#30d158' : '#8e8e93', label: 'My server', hint: Src.on() ? 'On · free sources first, then your own server, then your tunetune-config servers, then YouTube' : 'Off · free sources first, then YouTube. Turn on to try your servers before YouTube.', ctl: sSw('ownSrc', Src.on()) }) +
+      sLi({ icon: 'server', color: Src.on() ? '#30d158' : '#8e8e93', label: 'My server', hint: Src.on() ? 'On · free sources, then backup servers, then your own server, then your tunetune-config server, then YouTube' : 'Off · free sources, then backup servers, then YouTube. Turn on to try your server before YouTube.', ctl: sSw('ownSrc', Src.on()) }) +
       sLi({ icon: 'link', color: '#0a84ff', label: 'Your own music server', value: s.proxy ? hostOf(s.proxy) : 'Set up', a: 'setproxy', chev: true }) +
       (Player.cur ? sLi({ label: 'Now playing from', value: (srcInfo() || {}).title || '—', a: 'srcinfo', chev: true }) : '') +
       sLi({ icon: 'pulse', color: '#30d158', label: 'Test music sources', a: 'testsrc', chev: true }),
@@ -5618,7 +5630,7 @@ const Actions = {
       const p = newPlaylist(r.title || 'Imported playlist', r.tracks); toast(`Imported ${plural(r.tracks.length, 'song')}`); go('coll', { k: 'playlist', id: p.id });
     } catch (e) { toast('Couldn’t import that playlist right now'); }
   },
-  getapp() { const b = releasesBase(); if (b) window.open(b + '/download/TuneTune.apk', '_blank', 'noopener'); else toast('Build the Android app with GitHub Actions — see the README'); },
+  getapp() { const b = releasesBase(); if (b) window.open(b + '/download/TuneTune-Android.apk', '_blank', 'noopener'); else toast('Build the Android app with GitHub Actions — see the README'); },
   getdesk() { const b = releasesBase(); if (b) window.open(b, '_blank', 'noopener'); else toast('Build the desktop app with GitHub Actions — see the README'); },
   hideapp() { S.settings.hideAppCard = true; save(); const c = $('.appcard'); if (c) c.remove(); },
   lang(el, d) { go('coll', { k: 'lang', l: d.l, title: d.l }); },
@@ -5744,7 +5756,7 @@ const Actions = {
     }
   },
   relayclear() { S.settings.proxy = ''; save(); JSA.fails.delete('own'); Src.state.own = ''; closeSheet(); toast('Removed your music server'); softRender(); UI.ownPill(); },
-  async setapk() { const v = await ask('Android app link', 'https://github.com/you/repo/releases/latest/download/TuneTune.apk', S.settings.apkUrl || '', 'Save'); if (v === null) return; S.settings.apkUrl = v; save(); softRender(); },
+  async setapk() { const v = await ask('Android app link', 'https://github.com/you/repo/releases/latest/download/TuneTune-Android.apk', S.settings.apkUrl || '', 'Save'); if (v === null) return; S.settings.apkUrl = v; save(); softRender(); },
   copysrv(el, d) { copyText(d.u, 'Address copied'); },
   clearcache() { PC.clear(); mem.clear(); Streams.c.clear(); toast('Cache cleared'); },
   errlog() { openSheet(`<div class="sg form"><b class="ft">Error log</b><pre class="log selectable">${esc(LOG.slice().reverse().join('\n') || 'No errors — everything is running smoothly.')}</pre><div class="fbtns"><button class="fb" data-a="copylog">Copy</button><button class="fb pri" data-a="sclose">Done</button></div></div>`); },

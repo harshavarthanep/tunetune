@@ -2,7 +2,7 @@
   "_readme": "Rename to tunetune-config.json to use it. Every line is optional. relays, saavnServers, piped and invidious are FREE sources: always used, tried before the built-in ones. musicServers are YOUR servers: used only when 'My server' is switched on in the app, only after every free source (and tunetune-sources.json) failed, and before the YouTube player. Give each server a name so the app can show which one is playing.",
   "musicServers": [
     { "name": "Main worker", "url": "https://tunetune.yourname.workers.dev" },
-    { "name": "Spare worker", "url": "https://tunetune2.harshavarthan-e.workers.dev" }
+    { "name": "Spare worker", "url": "https://tunetune2.yourname.workers.dev" }
   ],
   "relays": ["https://your-cors-relay.example/?url={url}"],
   "saavnServers": ["https://your-jiosaavn-api.vercel.app/api"],
