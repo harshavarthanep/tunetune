@@ -6316,4 +6316,24 @@ catch (err) {
   const v = document.getElementById('view');
   if (v) v.innerHTML = `<div style="padding:40px 24px;font-family:system-ui;max-width:520px;margin:auto"><h2>Tune Tune couldn’t start</h2><p>${esc(err && err.message || err)}</p><p>Reload the page. If it keeps happening, clear this site’s data in your browser settings.</p></div>`;
 }
+/* ===== Relay Relay announcements — shows the newest message sent from Relay Relay → Alerts (app: tunetune) ===== */
+(() => {
+  const FEED = 'https://relay-relay.harshavarthanep-e.workers.dev/feed/tunetune';
+  const KEY = 'tunetune.lastNotice';
+  async function checkNotice() {
+    try {
+      const since = Number(localStorage.getItem(KEY)) || 0;
+      const r = await fetch(FEED + '?since=' + since);
+      if (!r.ok) return;
+      const d = await r.json();
+      const n = d && d.items && d.items[0];
+      if (!n) return;
+      localStorage.setItem(KEY, d.latest);
+      const text = [n.title, n.body].filter(Boolean).join(' — ');
+      toast(text, n.url ? { label: 'Open', fn: () => window.open(n.url, '_blank', 'noopener'), ms: 9000 } : { ms: 7000 });
+    } catch (e) { /* announcements are optional — never break the app */ }
+  }
+  setTimeout(checkNotice, 5000);
+  document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') checkNotice(); });
+})();
 })();
