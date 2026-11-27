@@ -118,6 +118,11 @@
     },
     {
       "name": "Cloudflare 3",
+      "url": "https://tunetune.mohammadajmal-kt.workers.dev",
+      "dailyCap": 3000
+    },
+    {
+      "name": "Cloudflare 4",
       "url": "https://tunetune.XXXX.workers.dev",
       "dailyCap": 3000
     },
