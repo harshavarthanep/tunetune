@@ -127,7 +127,7 @@
       "dailyCap": 3000
     },
     {
-      "name": "Cloudflare 4",
+      "name": "Cloudflare ",
       "url": "https://tunetune.XXXX.workers.dev",
       "dailyCap": 3000
     },
