@@ -6316,24 +6316,59 @@ catch (err) {
   const v = document.getElementById('view');
   if (v) v.innerHTML = `<div style="padding:40px 24px;font-family:system-ui;max-width:520px;margin:auto"><h2>Tune Tune couldn’t start</h2><p>${esc(err && err.message || err)}</p><p>Reload the page. If it keeps happening, clear this site’s data in your browser settings.</p></div>`;
 }
-/* ===== Relay Relay announcements — shows the newest message sent from Relay Relay → Alerts (app: tunetune) ===== */
+/* ===== Relay Relay announcements — shows messages sent from Relay Relay → Alerts (app: tunetune) =====
+   A banner at the top that stays until the user closes it. Each message is shown once per device. */
 (() => {
   const FEED = 'https://relay-relay.harshavarthanep-e.workers.dev/feed/tunetune';
   const KEY = 'tunetune.lastNotice';
+  const MAX_AGE = 14 * 864e5;   // ignore messages older than 14 days (new users won't see old news)
+  let showing = false, busy = false;
+  function css() {
+    if (document.getElementById('rr-notice-css')) return;
+    const st = document.createElement('style'); st.id = 'rr-notice-css';
+    st.textContent = `
+      #rr-notice{position:fixed;left:12px;right:12px;top:calc(env(safe-area-inset-top,0px) + 10px);z-index:2147483000;max-width:520px;margin:0 auto;
+        display:flex;gap:12px;align-items:flex-start;padding:14px 14px 14px 16px;border-radius:18px;
+        background:rgba(255,255,255,.92);color:#111;box-shadow:0 12px 40px rgba(0,0,0,.25);
+        -webkit-backdrop-filter:blur(20px);backdrop-filter:blur(20px);font:15px/1.4 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;
+        transform:translateY(-140%);transition:transform .35s cubic-bezier(.2,.8,.2,1)}
+      #rr-notice.on{transform:none}
+      #rr-notice .rr-t{font-weight:700;margin-bottom:2px}
+      #rr-notice .rr-b{opacity:.8;white-space:pre-line}
+      #rr-notice .rr-main{flex:1;min-width:0}
+      #rr-notice button{border:0;cursor:pointer;font:inherit}
+      #rr-notice .rr-open{margin-top:10px;padding:7px 14px;border-radius:999px;background:#fa2d48;color:#fff;font-weight:600}
+      #rr-notice .rr-x{width:30px;height:30px;border-radius:50%;background:rgba(0,0,0,.07);color:inherit;font-size:18px;line-height:30px;flex:none}
+      @media (prefers-color-scheme:dark){#rr-notice{background:rgba(40,40,44,.92);color:#fff}#rr-notice .rr-x{background:rgba(255,255,255,.12)}}`;
+    document.head.appendChild(st);
+  }
+  function show(n, latest) {
+    css(); showing = true;
+    const el = document.createElement('div'); el.id = 'rr-notice'; el.setAttribute('role', 'alert');
+    const t = document.createElement('div'); t.className = 'rr-main';
+    if (n.title) { const h = document.createElement('div'); h.className = 'rr-t'; h.textContent = n.title; t.appendChild(h); }
+    if (n.body) { const p = document.createElement('div'); p.className = 'rr-b'; p.textContent = n.body; t.appendChild(p); }
+    const done = () => { try { localStorage.setItem(KEY, String(latest)); } catch (e) { } el.classList.remove('on'); setTimeout(() => el.remove(), 400); showing = false; };
+    if (n.url) { const o = document.createElement('button'); o.className = 'rr-open'; o.textContent = 'Open'; o.onclick = () => { done(); window.open(n.url, '_blank', 'noopener'); }; t.appendChild(o); }
+    const x = document.createElement('button'); x.className = 'rr-x'; x.setAttribute('aria-label', 'Close'); x.textContent = '×'; x.onclick = done;
+    el.append(t, x); document.body.appendChild(el);
+    requestAnimationFrame(() => requestAnimationFrame(() => el.classList.add('on')));
+  }
   async function checkNotice() {
+    if (showing || busy || document.hidden) return; busy = true;
     try {
       const since = Number(localStorage.getItem(KEY)) || 0;
-      const r = await fetch(FEED + '?since=' + since);
+      const r = await fetch(FEED + '?since=' + since, { cache: 'no-store' });
       if (!r.ok) return;
       const d = await r.json();
-      const n = d && d.items && d.items[0];
-      if (!n) return;
-      localStorage.setItem(KEY, d.latest);
-      const text = [n.title, n.body].filter(Boolean).join(' — ');
-      toast(text, n.url ? { label: 'Open', fn: () => window.open(n.url, '_blank', 'noopener'), ms: 9000 } : { ms: 7000 });
+      const n = d && d.items && d.items.find(x => Date.now() - (x.created || 0) < MAX_AGE);
+      if (n && (n.title || n.body)) show(n, d.latest);
+      else if (d && d.latest > since) { try { localStorage.setItem(KEY, String(d.latest)); } catch (e) { } }
     } catch (e) { /* announcements are optional — never break the app */ }
+    finally { busy = false; }
   }
-  setTimeout(checkNotice, 5000);
-  document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') checkNotice(); });
+  setTimeout(checkNotice, 2500);
+  document.addEventListener('visibilitychange', () => { if (!document.hidden) setTimeout(checkNotice, 800); });
+  window.TuneTuneNotice = { check: checkNotice, reset: () => { localStorage.removeItem(KEY); checkNotice(); } };
 })();
 })();
