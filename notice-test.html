@@ -1,0 +1,101 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Tune Tune notification test</title>
+<style>
+  :root { color-scheme: light dark; }
+  body { margin: 0; padding: calc(env(safe-area-inset-top, 0px) + 20px) 18px 40px; font: 16px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; max-width: 640px; margin-inline: auto; }
+  h1 { font-size: 24px; margin: 0 0 4px; }
+  p.sub { margin: 0 0 18px; opacity: .7; }
+  .row { display: flex; gap: 12px; padding: 12px 0; border-top: 1px solid rgba(128,128,128,.25); }
+  .ico { width: 26px; height: 26px; border-radius: 50%; display: grid; place-items: center; flex: none; font-weight: 700; color: #fff; background: #999; }
+  .ok .ico { background: #1a9e5c; } .bad .ico { background: #e0364f; } .warn .ico { background: #d98a00; }
+  .t { font-weight: 600; }
+  .d { opacity: .75; font-size: 14px; word-break: break-word; white-space: pre-line; }
+  button { font: inherit; font-weight: 600; padding: 10px 16px; border-radius: 999px; border: 0; background: #fa2d48; color: #fff; margin: 14px 8px 0 0; cursor: pointer; }
+  button.alt { background: rgba(128,128,128,.2); color: inherit; }
+</style>
+</head>
+<body>
+<h1>Notification test</h1>
+<p class="sub">Checks every step between Relay Relay and Tune Tune on this device. Take a screenshot of the results.</p>
+<div id="out"></div>
+<button id="again">Run again</button><button class="alt" id="reset">Show the newest message again in Tune Tune</button>
+<script>
+const SERVER = 'https://relay-relay.harshavarthan-e.workers.dev';
+const KEY = 'tunetune.lastNotice';
+const out = document.getElementById('out');
+function line(state, title, detail) {
+  const r = document.createElement('div'); r.className = 'row ' + state;
+  r.innerHTML = `<div class="ico">${state === 'ok' ? '✓' : state === 'bad' ? '✗' : '!'}</div><div><div class="t"></div><div class="d"></div></div>`;
+  r.querySelector('.t').textContent = title; r.querySelector('.d').textContent = detail || '';
+  out.appendChild(r);
+}
+const ago = t => { const m = Math.round((Date.now() - t) / 60000); return m < 60 ? m + ' min ago' : m < 1440 ? Math.round(m / 60) + ' h ago' : Math.round(m / 1440) + ' days ago'; };
+
+async function run() {
+  out.innerHTML = '';
+  line('ok', 'This page', location.origin + location.pathname);
+
+  // 1. server reachable
+  try {
+    const r = await fetch(SERVER + '/', { cache: 'no-store' });
+    const d = await r.json();
+    line(d.name === 'Relay Relay' ? 'ok' : 'bad', 'Relay Relay server answers', `${SERVER}\nversion ${d.version}, database ${d.db ? 'connected' : 'NOT connected'}`);
+  } catch (e) {
+    line('bad', 'Relay Relay server does not answer', `${SERVER}\n${e.message}\nCheck the address is exactly right, or your network blocks workers.dev.`);
+    return;
+  }
+
+  // 2. feed reachable from this website (CORS)
+  let feed;
+  try {
+    const r = await fetch(SERVER + '/feed/tunetune?since=0', { cache: 'no-store' });
+    feed = await r.json();
+    if (!r.ok) { line('bad', 'Message list gives an error', r.status + ' ' + (feed.error || '')); return; }
+    line('ok', 'Tune Tune is allowed to read messages', 'The server accepts this website.');
+  } catch (e) {
+    line('bad', 'This website is blocked from reading messages', e.message + '\nIn Relay Relay → Settings → "Websites allowed to use this server", put * (or add ' + location.origin + ') and save.');
+    return;
+  }
+
+  // 3. messages exist
+  const items = feed.items || [];
+  if (!items.length) {
+    line('bad', 'No messages for tunetune on the server', 'In Relay Relay → Alerts, App must be exactly tunetune (or all) and "Apps (announcements feed)" must be on. Then send again.');
+  } else {
+    const n = items[0];
+    line('ok', `${items.length} message(s) on the server`, `Newest (#${n.id}, ${ago(n.created)}, app "${n.app}"):\n${n.title || ''}${n.body ? '\n' + n.body : ''}`);
+    if (Date.now() - n.created > 14 * 864e5) line('warn', 'Newest message is older than 14 days', 'Tune Tune skips old messages. Send a new one.');
+  }
+
+  // 4. already seen on this device?
+  const seen = Number(localStorage.getItem(KEY)) || 0;
+  if (items.length && seen >= items[0].id) line('warn', 'This device already marked the newest message as seen', `Seen up to #${seen}. Tap the button below to show it again, or send a new message.`);
+  else line('ok', 'Newest message not seen yet on this device', seen ? `Seen up to #${seen}` : 'Nothing seen yet');
+
+  // 5. is the new app.js live?
+  try {
+    const t = await (await fetch('app.js?check=' + Date.now(), { cache: 'no-store' })).text();
+    const hasBanner = t.includes('rr-notice-css');
+    const m = t.match(/const FEED = '([^']+)'/);
+    if (!hasBanner) line('bad', 'The website still has the OLD app.js', 'Upload the new app.js to the tunetune repo and wait 2 minutes.');
+    else if (!m || !m[1].startsWith(SERVER)) line('bad', 'app.js points to a different server', (m ? m[1] : 'no address found') + '\nIt should start with ' + SERVER);
+    else line('ok', 'The website has the new app.js', m[1]);
+  } catch (e) { line('warn', 'Could not check app.js', e.message); }
+
+  // 6. old copy kept by the installed app?
+  if ('serviceWorker' in navigator && navigator.serviceWorker.controller) {
+    const cached = await caches.keys().then(async keys => { for (const k of keys) { const c = await caches.open(k); const r = await c.match('app.js') || await c.match('./app.js'); if (r) return (await r.text()).includes('rr-notice-css'); } return null; }).catch(() => null);
+    if (cached === false) line('warn', 'This device still has an old saved copy of Tune Tune', 'Fully close Tune Tune and open it twice. On iPhone: swipe it away from the app switcher, then open it again, twice.');
+    else line('ok', 'Saved offline copy is up to date', '');
+  }
+}
+document.getElementById('again').onclick = run;
+document.getElementById('reset').onclick = () => { localStorage.removeItem(KEY); run(); alert('Done. Open Tune Tune now — the newest message should appear at the top within a few seconds.'); };
+run();
+</script>
+</body>
+</html>
