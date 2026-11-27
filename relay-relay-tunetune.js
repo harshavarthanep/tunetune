@@ -4,7 +4,7 @@
 
 const RR = {
   // Used if the remote config can't be loaded. Paste extra servers here too.
-  servers: ['https://relay-relay.harshavarthanep-e.workers.dev'],
+  servers: ['https://relay-relay.harshavarthan-e.workers.dev'],
   saavnPath: '/r/saavn',          // relay with caching: search, songs, albums, playlists
   streamPath: '/r/saavn-stream',  // relay without caching: stream links
   app: 'tunetune'
