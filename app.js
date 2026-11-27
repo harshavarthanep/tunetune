@@ -284,6 +284,9 @@ const S = (() => {
     const raw = JSON.parse(localStorage.getItem(KEY) || '{}');
     const out = { ...base, ...raw, settings: { ...base.settings, ...(raw.settings || {}) } };
     for (const k of ['liked', 'playlists', 'history', 'searches', 'downloads', 'locals', 'blocked', 'artists', 'cached', 'colls']) if (!Array.isArray(out[k])) out[k] = [];
+    // damaged entries (from an odd backup file or an old version) are dropped instead of breaking a page later
+    for (const k of ['liked', 'history', 'downloads', 'locals']) out[k] = out[k].filter(t => t && typeof t === 'object' && t.id);
+    out.playlists = out.playlists.filter(p => p && typeof p === 'object').map(p => ({ ...p, id: String(p.id || 'pl' + Math.random().toString(36).slice(2, 9)), name: String(p.name || 'Playlist'), tracks: Array.isArray(p.tracks) ? p.tracks.filter(t => t && typeof t === 'object' && t.id) : [] }));
     if (!out.srvOff2) { out.settings.ownSrc = false; out.srvOff2 = 1; }   // “My server” starts off for everyone (once); people turn it on when they need it
     out.colls = out.colls.filter(m => m && m.id && Array.isArray(m.items) && (m.kind === 'artists' || m.kind === 'shows'));
     if (!out.pod || typeof out.pod !== 'object') out.pod = { follows: [], prog: {} };
@@ -3016,7 +3019,8 @@ const Party = {
 /* ================= shell & now playing ================= */
 const CAN_AIRPLAY = !!window.WebKitPlaybackTargetAvailabilityEvent;
 const CAN_CAST = !CAN_AIRPLAY && typeof HTMLMediaElement !== 'undefined' && 'remote' in HTMLMediaElement.prototype && !IS_DESKTOP;
-const TABS = [['home', 'Home', 'home'], ['explore', 'Explore', 'explore'], ['search', 'Search', 'search'], ['songs', 'Songs', 'music'], ['podcasts', 'Podcasts', 'mic'], ['library', 'Library', 'library']].filter(([k]) => k !== 'songs' || S.settings.tabSongs !== false);
+// Home · Songs · Search (in the centre) · Podcasts · Library — browsing (the old Explore tab) lives under the search bar, like Spotify and Apple Music
+const TABS = [['home', 'Home', 'home'], ['songs', 'Songs', 'music'], ['search', 'Search', 'search'], ['podcasts', 'Podcasts', 'mic'], ['library', 'Library', 'library']].filter(([k]) => k !== 'songs' || S.settings.tabSongs !== false);
 function splash() {
   if (!S.settings.motion || S.settings.splash === false || document.getElementById('splash')) return;
   const d = document.createElement('div'); d.id = 'splash';
@@ -3414,8 +3418,8 @@ function srcInfo() {
   if (v === 'saavn') {
     const r = Player.srcPath, srv = Src.kind(r) === 'server', bk = r && r.tier === 'backup', saved = r && r.tier === 'saved';
     return { k: srv ? 'server' : 'free', title: srv ? (r.tier === 'mine' ? 'JioSaavn · backup server' : 'JioSaavn · your server') : bk ? 'JioSaavn · free (backup)' : 'JioSaavn · free',
-      sub: saved ? 'Plays straight from JioSaavn with the link saved with this song — no server used' : srv ? (r.tier === 'mine' ? 'Free sources didn’t answer, so one of your backup servers found it' : 'Free sources didn’t answer, so your server found it') : bk ? 'The usual free sources were busy — a backup free source from tunetune-sources.json answered' : 'Clean, ad-free audio from a free source',
-      rows: [['Music from', 'JioSaavn'], ['Found through', Src.describe(r) || 'Link saved with the song'], ['Audio stream', Player.audioVia === 'own' ? 'Your own server (for the equalizer)' : String(Player.audioVia).startsWith('config') ? 'Your tunetune-config server (for the equalizer)' : 'JioSaavn’s servers, direct']] };
+      sub: saved ? 'Plays from this song’s own JioSaavn link — no relay or server needed' : srv ? (r.tier === 'mine' ? 'Free sources didn’t answer, so one of your backup servers found it' : 'Free sources didn’t answer, so your server found it') : bk ? 'The usual free sources were busy — a backup free source from tunetune-sources.json answered' : 'Clean, ad-free audio from a free source',
+      rows: [['Music from', 'JioSaavn'], ['Found through', Src.describe(r) || 'Link saved with the song'], ['Audio stream', Player.audioVia === 'own' ? 'Your own server (for the equalizer)' : String(Player.audioVia).startsWith('config') ? 'Your tunetune-config server (for the equalizer)' : 'JioSaavn’s music CDN (normal — free, no server)']] };
   }
   if (/^piped:/.test(v)) return { k: 'free', title: 'YouTube Music audio · free', sub: 'Ad-free audio from a public mirror', rows: [['Music from', 'YouTube Music'], ['Through', 'Piped mirror · ' + hostOf(mirror)]] };
   if (/^inv:/.test(v)) return { k: 'free', title: 'YouTube Music audio · free', sub: 'Ad-free audio from a public mirror', rows: [['Music from', 'YouTube Music'], ['Through', 'Invidious mirror · ' + hostOf(mirror)]] };
@@ -3575,8 +3579,8 @@ function pickPlaylist(t) {
   actionSheet({
     head: textHead('Add to Playlist', t.title),
     acts: [
-      { label: 'New Playlist…', icon: 'plus', fn: async () => { const n = await ask('New Playlist', 'Playlist name', `My Playlist ${S.playlists.length + 1}`, 'Create'); if (n) { newPlaylist(n, [t]); toast(`Added to “${n}”`); refreshIfLib(); } } },
-      ...S.playlists.map(p => ({ label: p.name, icon: 'playlist', fn: () => addToPlaylist(p, t) })),
+      { label: 'New Playlist…', icon: 'plus', fn: async () => { const n = await ask('New Playlist', 'Playlist name', `My Playlist ${S.playlists.length + 1}`, 'Create'); if (!n) return; const same = plNamed(n); if (same) return addToPlaylist(same, t); newPlaylist(n, [t]); toast(`Added to “${n}”`); refreshIfLib(); } },
+      ...S.playlists.map(p => { const has = p.tracks.some(x => x.id === t.id); return { label: has ? `${p.name} — already added` : p.name, icon: has ? 'check' : 'playlist', fn: () => addToPlaylist(p, t) }; }),
     ],
   });
 }
@@ -3687,6 +3691,37 @@ function eqToggle(on) {
 
 /* ================= library operations ================= */
 function newPlaylist(name, tracks = []) { const p = { id: uid(), name, tracks: tracks.map(clean), created: Date.now() }; S.playlists.unshift(p); save(); return p; }
+/* Saving a page's list (album, playlist, mix, shared or imported playlist) to the Library: each one remembers where it came
+   from, so it is saved once, the button turns into ✓ and saving again opens it instead of making a copy */
+const strHash = s => { let h = 5381; s = String(s || ''); for (let i = 0; i < s.length; i++) h = ((h * 33) ^ s.charCodeAt(i)) >>> 0; return h.toString(36); };
+const listSrc = c => (c && c.id ? `${c.source || 'yt'}:${c.kind || 'list'}:${c.plId || c.id}` : '');
+function savedList(src, name, tracks) {
+  if (src) { const p = S.playlists.find(x => x.src === src); if (p) return p; }
+  // lists saved before this version have no origin yet: the same name and mostly the same songs counts as saved
+  const ids = new Set((tracks || []).map(t => t.id)); if (!name || !ids.size) return null;
+  const p = S.playlists.find(x => !x.src && x.name === name && x.tracks.length && x.tracks.filter(t => ids.has(t.id)).length >= Math.ceil(Math.min(ids.size, x.tracks.length) * 0.8));
+  if (p && src) { p.src = src; save(); }
+  return p || null;
+}
+function saveList(src, name, tracks, quiet) {
+  const have = savedList(src, name, tracks);
+  if (have) { if (!quiet) toast(`“${have.name}” is already in your Library`, { label: 'Open', fn: () => go('coll', { k: 'playlist', id: have.id }) }); return { p: have, isNew: false }; }
+  const p = newPlaylist(name, tracks); if (src) { p.src = src; save(); } buzz(); refreshIfLib();
+  if (!quiet) toast(`Saved “${name}” to your Library`, { label: 'Open', fn: () => go('coll', { k: 'playlist', id: p.id }) });
+  return { p, isNew: true };
+}
+// the ✓ / + button on album, playlist and mix pages
+function saveBtn(src, name, tracks) {
+  const on = !!savedList(src, name, tracks);
+  return `<button class="nb-btn sv-btn ${on ? 'on' : ''}" id="svbtn" data-a="savecoll" aria-pressed="${on}" aria-label="${on ? 'Saved in your Library' : 'Save to Library'}">${on ? I.check : I.plus}</button>`;
+}
+function saveBtnSync(pop) {
+  const b = $('#svbtn'), e = cv(); if (!b || !e) return;
+  const on = !!savedList(e.src, e.title, e.tracks); if (b.classList.contains('on') === on && !pop) return;
+  b.classList.toggle('on', on); b.setAttribute('aria-pressed', on); b.setAttribute('aria-label', on ? 'Saved in your Library' : 'Save to Library'); b.innerHTML = on ? I.check : I.plus;
+  if (pop) { b.classList.remove('pop'); void b.offsetWidth; b.classList.add('pop'); }
+}
+const plNamed = n => S.playlists.find(p => p.name.trim().toLowerCase() === String(n || '').trim().toLowerCase());
 function addToPlaylist(p, t) {
   if (p.tracks.some(x => x.id === t.id)) return toast(`Already in “${p.name}”`);
   p.tracks.push({ ...clean(t), added: Date.now() }); save(); toast(`Added to “${p.name}”`); refreshIfLib();
@@ -3697,6 +3732,7 @@ function removeFromPlaylist(id, t) {
 }
 async function createPlaylistFlow() {
   const n = await ask('New Playlist', 'Playlist name', `My Playlist ${S.playlists.length + 1}`, 'Create'); if (!n) return;
+  const same = plNamed(n); if (same) { toast(`You already have “${same.name}”`); return go('coll', { k: 'playlist', id: same.id }); }
   const p = newPlaylist(n); toast('Playlist created'); go('coll', { k: 'playlist', id: p.id });
 }
 function refreshIfLib() { const v = cv().v; if (v === 'library' || v === 'coll') softRender(); }
@@ -4032,7 +4068,7 @@ async function openSharedPlaylist(code) {
     acts: [
       { label: 'Play', icon: 'play', fn: () => { Player.playList(tracks, 0, name); setTimeout(openNP, 250); } },
       { label: 'Shuffle', icon: 'shuffle', fn: () => { Player.playList(tracks, Math.floor(Math.random() * tracks.length), name, true); setTimeout(openNP, 250); } },
-      { label: 'Save to Library', icon: 'plus', fn: () => { const p = newPlaylist(name, tracks); toast('Saved to your playlists'); go('coll', { k: 'playlist', id: p.id }); } },
+      { label: savedList('share:' + strHash(code), name, tracks) ? 'Open in Library' : 'Save to Library', icon: savedList('share:' + strHash(code), name, tracks) ? 'check' : 'plus', fn: () => { const { p } = saveList('share:' + strHash(code), name, tracks); go('coll', { k: 'playlist', id: p.id }); } },
     ] });
 }
 async function openShared() {
@@ -4275,7 +4311,7 @@ function applyTheme() {
 }
 
 /* ================= navigation ================= */
-const nav = { tab: 'home', stacks: { home: [{ v: 'home' }], explore: [{ v: 'explore' }], search: [{ v: 'search' }], songs: [{ v: 'songs' }], podcasts: [{ v: 'podcasts' }], library: [{ v: 'library' }] } };
+const nav = { tab: 'home', stacks: { home: [{ v: 'home' }], search: [{ v: 'search' }], songs: [{ v: 'songs' }], podcasts: [{ v: 'podcasts' }], library: [{ v: 'library' }] } };
 const cv = () => { const s = nav.stacks[nav.tab]; return s[s.length - 1]; };
 let renderTok = 0;
 function render() {
@@ -4309,8 +4345,9 @@ function go(v, params = {}) {
   st.push({ v, ...params }); history.pushState({ v: 1 }, ''); render(); enter();
 }
 function popView() { const st = nav.stacks[nav.tab]; if (st.length > 1) { st.pop(); render(); enter('pop'); } }
+const tabOf = t => (t === 'explore' ? 'search' : t);   // the Explore tab is now part of Search (old links and settings still work)
 function switchTab(t) {
-  if (!nav.stacks[t]) return;
+  t = tabOf(t); if (!nav.stacks[t]) return;
   const v = $('#view'); const cur = nav.stacks[nav.tab]; cur[cur.length - 1].scroll = v.scrollTop;
   if (nav.tab === t) {
     if (cur.length > 1) { cur.length = 1; cur[0].scroll = 0; }
@@ -4915,11 +4952,12 @@ async function mixTracks(seed) {
 }
 function renderMix(e, tok) {
   const seed = e.seed || {}; const title = e.title || 'Mix';
+  e.src = 'mix:' + (seed.id || title);
   setTimeout(() => fill('#cb', tok, mixTracks(seed), tr => {
-    e.tracks = tr; const k = reg(tr, { from: title });
+    e.tracks = tr; const k = reg(tr, { from: title }); setTimeout(saveBtnSync);
     return collHead(title, tr, k, { art: artOf(seed, true), sub: `Built around ${seed.artist || 'your music'}` }) + (tr.length ? rowsHTML(tr, k, { dur: true }) : emptyState({ icon: 'music', t: 'Couldn’t build this mix right now' }));
   }));
-  return header(title, { noLarge: true, right: nbBtn('savecoll', 'plus', 'Save to Library') }) + `<div id="cb">${collHead(title, [], '', { art: artOf(seed, true), sub: 'Mixing…' })}<div class="spin"></div></div>`;
+  return header(title, { noLarge: true, right: saveBtn(e.src, title, e.tracks) }) + `<div id="cb">${collHead(title, [], '', { art: artOf(seed, true), sub: 'Mixing…' })}<div class="spin"></div></div>`;
 }
 function madeForYou() {
   const arts = Stats.artists(8).filter(a => a.seed.source === 'saavn' || ytIdOf(a.seed)).slice(0, 4);
@@ -5037,9 +5075,11 @@ function renderHome(e, tok) {
   });
   return html;
 }
-function renderExplore(e, tok) {
+function renderExplore(e, tok) { return header('Explore') + exploreBody(tok); }
+// Charts, languages, moods, genres, podcasts and radio — shown under the search bar before you type
+function exploreBody(tok) {
   const cc = detectCC();
-  let html = header('Explore');
+  let html = '';
   const exS = S.settings.exploreSongs !== false, exP = S.settings.explorePods !== false, exR = S.settings.exploreRadio !== false;
   if (exS) html += sec('Charts', `<div class="tiles">${[[`Top songs in ${countryName(cc)}`, cc, 350], ['Global top songs', 'global', 210], ['Viral right now', 'viral', 30]]
     .map(([t, r, h]) => tile(t, `data-a="chart" data-r="${r}" data-title="${esc(t)}"`, h)).join('')}</div>`);
@@ -5143,9 +5183,9 @@ function searchInput(v) {
 function showSearchHome() {
   const box = $('#sres'); if (!box) return; ++sTok;
   let h = '';
-  if (S.searches.length) h += `<div class="sub-h row-h"><span>Recent</span><button class="see" data-a="clearRecent">Clear all</button></div><div class="rows">${S.searches.map(q => `<div class="row" data-a="recent" data-q="${esc(q)}"><span class="thumb ptile ghost">${I.clock}</span><div class="rb"><div class="rtx"><div class="rt"><span class="tx">${esc(q)}</span></div></div><button class="more" data-a="rmrecent" data-q="${esc(q)}" aria-label="Remove ${esc(q)}">${I.x}</button></div></div>`).join('')}</div>`;
-  h += `<div class="sub-h">Browse by language</div>${langTiles()}<div class="sub-h">Moods & moments</div>${moodTiles()}<div class="sub-h">Podcast categories</div><div class="tiles">${PODCATS.slice(0, 8).map(([c, hh]) => tile(c, `data-a="podcat" data-q="${esc(c)}"`, hh)).join('')}</div>`;
-  box.innerHTML = h;
+  if (S.searches.length) h += `<div class="sub-h row-h"><span>Recent searches</span><button class="see" data-a="clearRecent">Clear all</button></div><div class="rows">${S.searches.slice(0, 5).map(q => `<div class="row" data-a="recent" data-q="${esc(q)}"><span class="thumb ptile ghost">${I.clock}</span><div class="rb"><div class="rtx"><div class="rt"><span class="tx">${esc(q)}</span></div></div><button class="more" data-a="rmrecent" data-q="${esc(q)}" aria-label="Remove ${esc(q)}">${I.x}</button></div></div>`).join('')}</div>`;
+  h += `<div class="browse">${exploreBody(renderTok)}</div>`;   // everything the old Explore tab had, right under the search bar
+  box.innerHTML = h; if (typeof revealImgs === 'function') revealImgs();
 }
 function libSearch(q) {
   q = q.toLowerCase(); const pool = new Map();
@@ -5325,9 +5365,10 @@ function plSearchWire(e, p) {
 function renderYtColl(e, tok) {
   const c = e.c || {}; const ar = c.kind === 'artist';
   const followed = ar && S.artists.some(x => x.id === c.id);
-  const right = ar ? nbBtn('addmix', 'playlist', 'Add to an artist mix') + nbBtn('followart', followed ? 'check' : 'plus', followed ? 'Unfollow artist' : 'Follow artist') : nbBtn('savecoll', 'plus', 'Save to Library') + nbBtn('dlall', 'download', 'Download all');
+  if (!ar) e.src = listSrc(c);
+  const right = ar ? nbBtn('addmix', 'playlist', 'Add to an artist mix') + nbBtn('followart', followed ? 'check' : 'plus', followed ? 'Unfollow artist' : 'Follow artist') : saveBtn(e.src, e.title || c.title, e.tracks) + nbBtn('dlall', 'download', 'Download all');
   setTimeout(() => fill('#cb', tok, YT.collection(c), r => {
-    e.tracks = r.tracks || []; e.title = r.title || c.title;
+    e.tracks = r.tracks || []; e.title = r.title || c.title; if (!ar) setTimeout(saveBtnSync);
     const k = reg(e.tracks, { from: e.title });
     let h = collHead(e.title, e.tracks, k, { art: r.art || c.art, sub: r.sub || c.sub, round: ar, icon: (r.art || c.art) ? null : 'music' });
     if (ar) {
@@ -5437,9 +5478,9 @@ function renderSettings() {
       sLi({ icon: 'play', color: '#0a84ff', label: 'Continue listening (songs) on Home', hint: 'Pick your queue up where you left off', ctl: sSw('homeCont', s.homeCont !== false) }) +
       sLi({ icon: 'pin', color: '#ff9f0a', label: 'Pinned mixes on Home', hint: 'Artist and show mixes you pin', ctl: sSw('homePins', s.homePins !== false) }) +
       sLi({ icon: 'mic', color: '#5e5ce6', label: 'Your podcasts first', hint: 'Recently listened, downloaded and your show mixes at the top of Podcasts', ctl: sSw('podMine', s.podMine !== false) }) +
-      sLi({ icon: 'explore', color: '#ff375f', label: 'Songs in Explore', ctl: sSw('exploreSongs', s.exploreSongs !== false) }) +
-      sLi({ icon: 'mic', color: '#bf5af2', label: 'Podcasts in Explore', ctl: sSw('explorePods', s.explorePods !== false) }) +
-      sLi({ icon: 'radio', color: '#30d158', label: 'Radio in Explore', ctl: sSw('exploreRadio', s.exploreRadio !== false) }) +
+      sLi({ icon: 'explore', color: '#ff375f', label: 'Songs to browse in Search', ctl: sSw('exploreSongs', s.exploreSongs !== false) }) +
+      sLi({ icon: 'mic', color: '#bf5af2', label: 'Podcasts to browse in Search', ctl: sSw('explorePods', s.explorePods !== false) }) +
+      sLi({ icon: 'radio', color: '#30d158', label: 'Radio to browse in Search', ctl: sSw('exploreRadio', s.exploreRadio !== false) }) +
       sLi({ icon: 'ban', color: '#ff453a', label: 'Ad-free sources first', hint: 'Hides YouTube-only shelves; songs play from clean, ad-free sources that keep playing when the screen locks — YouTube only as a last resort', ctl: sSw('cleanFirst', s.cleanFirst !== false) }),
       'Songs and podcasts stay apart unless “Mix podcasts with songs” is on. At least one of each pair stays on.') +
     sGrp('Offline',
@@ -5459,7 +5500,7 @@ function renderSettings() {
       sRow('Skip back', sSeg('podBack', [[10, '10 s'], [15, '15 s'], [30, '30 s']], s.podBack)) +
       sRow('Skip forward', sSeg('podFwd', [[15, '15 s'], [30, '30 s'], [45, '45 s']], s.podFwd))) +
     sGrp('Home screen',
-      sRow('Open the app on', sSeg('startTab', [['home', 'Home'], ['explore', 'Explore'], ...(s.tabSongs !== false ? [['songs', 'Songs']] : []), ['podcasts', 'Podcasts'], ['library', 'Library']], s.startTab)) +
+      sRow('Open the app on', sSeg('startTab', [['home', 'Home'], ...(s.tabSongs !== false ? [['songs', 'Songs']] : []), ['search', 'Search'], ['podcasts', 'Podcasts'], ['library', 'Library']], s.startTab === 'explore' ? 'search' : s.startTab)) +
       [['mixes', 'Daily Mixes'], ['following', 'Artists you follow'], ['langs', 'Your languages'], ['chart', 'Top hits worldwide'], ['radio', 'Live radio'], ['podcasts', 'Popular podcasts'], ['free', 'Free & independent'], ['moods', 'Moods & moments']]
         .map(([k, l]) => sLi({ label: l, ctl: sSw('home.' + k, hs[k]) })).join(''),
       'Choose what shows on your Home page.') +
@@ -5627,7 +5668,7 @@ const Actions = {
     try {
       const r = await YT.collection({ kind: 'playlist', id, plId: id, title: 'Imported playlist', source: 'yt' });
       if (!r.tracks || !r.tracks.length) throw new Error('empty');
-      const p = newPlaylist(r.title || 'Imported playlist', r.tracks); toast(`Imported ${plural(r.tracks.length, 'song')}`); go('coll', { k: 'playlist', id: p.id });
+      const { p, isNew } = saveList('yt:playlist:' + id, r.title || 'Imported playlist', r.tracks, true); toast(isNew ? `Imported ${plural(r.tracks.length, 'song')}` : `“${p.name}” is already in your Library`); go('coll', { k: 'playlist', id: p.id });
     } catch (e) { toast('Couldn’t import that playlist right now'); }
   },
   getapp() { const b = releasesBase(); if (b) window.open(b + '/download/TuneTune-Android.apk', '_blank', 'noopener'); else toast('Build the Android app with GitHub Actions — see the README'); },
@@ -5692,7 +5733,16 @@ const Actions = {
   plmenu(el, d) { playlistMenu(d.id); },
   savecoll() {
     const e = cv(); if (!e.tracks || !e.tracks.length) return toast('Still loading — try again in a moment');
-    newPlaylist(e.title || 'Playlist', e.tracks); toast(`Saved “${e.title || 'Playlist'}” to your Library`);
+    const have = savedList(e.src, e.title, e.tracks);
+    if (have) {   // already saved: open it, refresh it with the latest songs, or remove it — never a second copy
+      const fresh = e.tracks.filter(t => !have.tracks.some(x => x.id === t.id)).length;
+      return actionSheet({ head: textHead(have.name, 'Saved in your Library · ' + plural(have.tracks.length, 'song')), acts: [
+        { label: 'Open in Library', icon: 'library', fn: () => go('coll', { k: 'playlist', id: have.id }) },
+        fresh && { label: `Add ${plural(fresh, 'new song')}`, icon: 'plus', fn: () => { e.tracks.forEach(t => { if (!have.tracks.some(x => x.id === t.id)) have.tracks.push({ ...clean(t), added: Date.now() }); }); save(); toast(`Added ${plural(fresh, 'song')} to “${have.name}”`); } },
+        { label: 'Remove from Library', icon: 'trash', danger: true, fn: () => confirmSheet(`Remove “${have.name}”?`, 'You can save it again any time.', 'Remove', () => { S.playlists = S.playlists.filter(x => x.id !== have.id); save(); buzz(); toast('Removed from your Library'); saveBtnSync(true); }) },
+      ].filter(Boolean) });
+    }
+    saveList(e.src, e.title || 'Playlist', e.tracks); saveBtnSync(true);
   },
   dlall() {
     const e = cv(); let tr = [];
@@ -6223,8 +6273,9 @@ function init() {
   Mirrors.init();
   Player.init();
   bindGestures();
+  if (S.settings.startTab === 'explore') S.settings.startTab = 'search';
   if (nav.stacks[S.settings.startTab]) nav.tab = S.settings.startTab;
-  try { const qt = new URLSearchParams(location.search).get('tab'); if (nav.stacks[qt]) nav.tab = qt; } catch (e) { }
+  try { const qt = tabOf(new URLSearchParams(location.search).get('tab')); if (nav.stacks[qt]) nav.tab = qt; } catch (e) { }
   history.replaceState({ root: 1 }, '');
   let back = null; try { back = JSON.parse(localStorage.getItem('tunetune.nav') || 'null'); } catch (e) { }
   const deepLink = /[?&](tab|open|play|pl|text|url|share)=/.test(location.search);

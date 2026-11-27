@@ -54,7 +54,7 @@ background timers. Set-up steps for backup servers: `relays/README.md`.
   filtered, sorted (shows: continue where you left by default), pinned to Home, downloaded and shared as a link.
   Artists and shows are never mixed, and mixes stay apart from normal playlists.
 * **Karaoke** — ⋯ menu, the lyrics bar or Car Mode. Turns the lead vocals down for songs (never podcasts or radio).
-* **Settings → Home & tabs / Offline** — choose what Home, Podcasts and Explore show, and keep songs and podcasts apart.
+* **Settings → Home & tabs / Offline** — choose what Home, Podcasts and the Search page show, and keep songs and podcasts apart. Tabs: Home · Songs · Search · Podcasts · Library — Search also has everything to browse (charts, languages, moods, genres, podcasts, radio) under the search bar.
 * **Backup** — Settings → Export Backup saves everything except your name; Import restores it on any device.
 
 ## Calls, notifications and gapless (new)
