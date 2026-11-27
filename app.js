@@ -6319,7 +6319,7 @@ catch (err) {
 /* ===== Relay Relay announcements — shows messages sent from Relay Relay → Alerts (app: tunetune) =====
    A banner at the top that stays until the user closes it. Each message is shown once per device. */
 (() => {
-  const FEED = 'https://relay-relay.harshavarthanep-e.workers.dev/feed/tunetune';
+  const FEED = 'https://relay-relay.harshavarthan-e.workers.dev/feed/tunetune';
   const KEY = 'tunetune.lastNotice';
   const MAX_AGE = 14 * 864e5;   // ignore messages older than 14 days (new users won't see old news)
   let showing = false, busy = false;
