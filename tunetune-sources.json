@@ -2,11 +2,6 @@
   "_readme": "Order every song follows: built-in free sources → the free lists in this file → the free lists in tunetune-config.json → your backupServers (one by one) → with My server on: your own server, then the tunetune-config musicServer → YouTube player. relays / saavnServers / piped / invidious = FREE public sources (dead ones are skipped automatically and re-checked later; a route is only called down after two failures in a row). backupServers = YOUR own free servers (Cloudflare Workers on other accounts, Google Apps Script) — used only when every free source has failed. Replace XXXX with your real link; entries still containing XXXX are ignored. dailyCap = how many times one device may use it per day. Set-up: relays/README.md. Relays use {url} where the link goes: …?url={url} (encoded) or …/{url} (as is). Settings → Test music sources shows ✓/✗ for every route.",
   "relays": [
     {
-      "name": "Relay Relay",
-      "url": "https://relay-relay.harshavarthan-e.workers.dev/proxy?url={url}"
-      "dailyCap": 3000
-    },
-    {
       "name": "corsproxy.io",
       "url": "https://corsproxy.io/?url={url}"
     },
@@ -116,6 +111,11 @@
     "https://invidious.lunar.icu"
   ],
   "backupServers": [
+    {
+      "name": "Relay Relay",
+      "url": "https://relay-relay.harshavarthan-e.workers.dev/proxy?url={url}",
+      "dailyCap": 3000
+    },
     {
       "name": "Cloudflare 2",
       "url": "https://tunetune.monisha-s-665.workers.dev/",
