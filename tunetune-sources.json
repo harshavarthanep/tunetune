@@ -4,6 +4,7 @@
     {
       "name": "Relay Relay",
       "url": "https://relay-relay.harshavarthan-e.workers.dev/proxy?url={url}",
+      "dailyCap": 3000
     },
     {
       "name": "corsproxy.io",
