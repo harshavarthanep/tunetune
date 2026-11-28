@@ -6371,4 +6371,77 @@ catch (err) {
   document.addEventListener('visibilitychange', () => { if (!document.hidden) setTimeout(checkNotice, 800); });
   window.TuneTuneNotice = { check: checkNotice, reset: () => { localStorage.removeItem(KEY); checkNotice(); } };
 })();
+/* ===== Relay Relay promotions — a pop-up with an image, set in Relay Relay → Alerts → Promotion pop-up =====
+   Reads App data "tunetune/promo" from Relay Relay (your own server — never the music backup servers). */
+(() => {
+  const PROMO = 'https://relay-relay.harshavarthan-e.workers.dev/v/tunetune/promo';
+  const KEY = 'tunetune.promoSeen';
+  let open = false, lastCheck = 0;
+  const okUrl = u => /^https:\/\//i.test(String(u || ''));
+  const okImg = u => /^https:\/\//i.test(String(u || '')) || /^data:image\/(png|jpe?g|webp|gif);base64,/i.test(String(u || ''));
+  function css() {
+    if (document.getElementById('rr-promo-css')) return;
+    const st = document.createElement('style'); st.id = 'rr-promo-css';
+    st.textContent = `
+      #rr-promo{position:fixed;inset:0;z-index:2147482990;display:grid;place-items:center;padding:24px;background:rgba(0,0,0,.45);opacity:0;transition:opacity .25s}
+      #rr-promo.on{opacity:1}
+      #rr-promo .rp-card{position:relative;width:100%;max-width:380px;max-height:calc(100% - 20px);overflow:auto;border-radius:22px;background:#fff;color:#111;box-shadow:0 20px 60px rgba(0,0,0,.35);
+        font:15px/1.45 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;transform:scale(.94);transition:transform .3s cubic-bezier(.2,.8,.2,1)}
+      #rr-promo.on .rp-card{transform:none}
+      #rr-promo img{display:block;width:100%;max-height:52vh;object-fit:cover;background:#eee}
+      #rr-promo .rp-body{padding:16px 18px 18px}
+      #rr-promo .rp-tag{font-size:12px;opacity:.6;margin-bottom:4px}
+      #rr-promo .rp-t{font-size:19px;font-weight:700;line-height:1.25}
+      #rr-promo .rp-d{opacity:.8;margin-top:6px;white-space:pre-line}
+      #rr-promo .rp-go{display:block;width:100%;margin-top:14px;padding:12px;border:0;border-radius:999px;background:#fa2d48;color:#fff;font:inherit;font-weight:600;cursor:pointer}
+      #rr-promo .rp-x{position:absolute;top:10px;right:10px;width:32px;height:32px;border:0;border-radius:50%;background:rgba(0,0,0,.55);color:#fff;font-size:20px;line-height:32px;cursor:pointer}
+      @media (prefers-color-scheme:dark){#rr-promo .rp-card{background:#1f1f22;color:#fff}}`;
+    document.head.appendChild(st);
+  }
+  function seen(p) { try { return JSON.parse(localStorage.getItem(KEY) || '{}') || {}; } catch (e) { return {}; } }
+  function markSeen(p) { try { localStorage.setItem(KEY, JSON.stringify({ id: p.id, at: Date.now() })); } catch (e) { } }
+  function due(p) {
+    const s = seen(); if (s.id !== p.id) return true;
+    if (p.freq === 'always') return true;
+    if (p.freq === 'daily') return Date.now() - (s.at || 0) > 20 * 3600e3;
+    return false;   // once per person
+  }
+  function show(p) {
+    css(); open = true; markSeen(p);
+    const wrap = document.createElement('div'); wrap.id = 'rr-promo'; wrap.setAttribute('role', 'dialog'); wrap.setAttribute('aria-modal', 'true');
+    const card = document.createElement('div'); card.className = 'rp-card';
+    const close = () => { wrap.classList.remove('on'); setTimeout(() => wrap.remove(), 300); open = false; document.removeEventListener('keydown', esc); };
+    const esc = e => { if (e.key === 'Escape') close(); };
+    if (okImg(p.image)) { const im = document.createElement('img'); im.src = p.image; im.alt = p.title || 'Promotion'; if (okUrl(p.url)) { im.style.cursor = 'pointer'; im.onclick = () => { close(); window.open(p.url, '_blank', 'noopener'); }; } card.appendChild(im); }
+    const body = document.createElement('div'); body.className = 'rp-body';
+    const tag = document.createElement('div'); tag.className = 'rp-tag'; tag.textContent = p.sponsor ? 'Sponsored by ' + p.sponsor : 'Sponsored'; body.appendChild(tag);
+    if (p.title) { const t = document.createElement('div'); t.className = 'rp-t'; t.textContent = p.title; body.appendChild(t); }
+    if (p.text) { const d = document.createElement('div'); d.className = 'rp-d'; d.textContent = p.text; body.appendChild(d); }
+    if (okUrl(p.url)) { const b = document.createElement('button'); b.className = 'rp-go'; b.textContent = p.cta || 'Learn more'; b.onclick = () => { close(); window.open(p.url, '_blank', 'noopener'); }; body.appendChild(b); }
+    card.appendChild(body);
+    const x = document.createElement('button'); x.className = 'rp-x'; x.setAttribute('aria-label', 'Close'); x.textContent = '×'; x.onclick = close; card.appendChild(x);
+    wrap.appendChild(card); wrap.onclick = e => { if (e.target === wrap) close(); };
+    document.addEventListener('keydown', esc);
+    document.body.appendChild(wrap);
+    requestAnimationFrame(() => requestAnimationFrame(() => wrap.classList.add('on')));
+  }
+  async function checkPromo(start) {
+    if (open || document.hidden) return;
+    if (!start && Date.now() - lastCheck < 30 * 60e3) return;   // at most every 30 min while the app is in use
+    if (document.getElementById('rr-notice')) { setTimeout(() => checkPromo(true), 6000); return; }   // let the message banner go first
+    lastCheck = Date.now();
+    try {
+      const r = await fetch(PROMO, { cache: 'no-store' });
+      if (!r.ok) return;   // no promotion saved
+      const p = await r.json();
+      if (!p || !p.active || !p.id || !(okImg(p.image) || p.title)) return;
+      const today = new Date().toISOString().slice(0, 10);
+      if (p.start && today < p.start) return;
+      if (p.end && today > p.end) return;
+      if (due(p)) show(p);
+    } catch (e) { /* promotions are optional — never break the app */ }
+  }
+  setTimeout(() => checkPromo(true), 7000);
+  document.addEventListener('visibilitychange', () => { if (!document.hidden) setTimeout(() => checkPromo(false), 1500); });
+})();
 })();
